@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:#000}
+#terminal{height:100%;width:100%}
+.xterm{padding:2px 0 0 2px}
+.xterm-viewport::-webkit-scrollbar{width:4px}
+.xterm-viewport::-webkit-scrollbar-thumb{background:#333}
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11.0/lib/addon-web-links.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.8.0/lib/addon-unicode11.js"></script>
+<script>
+var term = new Terminal({
+    cursorBlink:true, cursorStyle:'block', fontSize:14,
+    fontFamily:"'Noto Sans Mono','DejaVu Sans Mono','Droid Sans Mono',monospace",
+    scrollback:5000, allowProposedApi:true,
+    theme:{background:'#000',foreground:'#e0e0e0',cursor:'#00e676',cursorAccent:'#000',
+        selectionBackground:'#ffffff40',
+        black:'#000',red:'#ef5350',green:'#00e676',yellow:'#ffd54f',
+        blue:'#64b5f6',magenta:'#ce93d8',cyan:'#4dd0e1',white:'#e0e0e0',
+        brightBlack:'#757575',brightRed:'#ff8a80',brightGreen:'#69f0ae',
+        brightYellow:'#ffe082',brightBlue:'#90caf9',brightMagenta:'#ea80fc',
+        brightCyan:'#80deea',brightWhite:'#fff'}
+});
+var fitAddon=new FitAddon.FitAddon();
+var webLinksAddon=new WebLinksAddon.WebLinksAddon(function(e,uri){if(window.AndroidPty)AndroidPty.onUrlClick(uri)});
+var unicode11Addon=new Unicode11Addon.Unicode11Addon();
+term.loadAddon(fitAddon);term.loadAddon(webLinksAddon);term.loadAddon(unicode11Addon);
+term.unicode.activeVersion='11';
+term.open(document.getElementById('terminal'));
+try{fitAddon.fit()}catch(e){}
+
+term.onData(function(d){if(window.AndroidPty)AndroidPty.onInput(d)});
+term.onResize(function(s){if(window.AndroidPty)AndroidPty.onResize(s.cols,s.rows)});
+term.onBell(function(){if(window.AndroidPty)AndroidPty.onBell()});
+window.addEventListener('resize',function(){try{fitAddon.fit()}catch(e){}});
+
+function termWrite(b64){
+    try{var r=atob(b64);var b=new Uint8Array(r.length);
+    for(var i=0;i<r.length;i++)b[i]=r.charCodeAt(i);
+    var t=new TextDecoder('utf-8').decode(b);term.write(t);
+    if(window.AndroidPty&&AndroidPty.onOutput)AndroidPty.onOutput(b64);
+    }catch(e){term.write(b64)}
+}
+function setFontSize(sz){term.options.fontSize=sz;try{fitAddon.fit()}catch(e){}}
+function setTheme(bg,fg,cursor){
+    term.options.theme=Object.assign({},term.options.theme,{background:bg,foreground:fg,cursor:cursor});
+    document.body.style.background=bg;
+}
+function setFullTheme(bg,fg,cursor,black,red,green,yellow,blue,magenta,cyan,white){
+    term.options.theme={background:bg,foreground:fg,cursor:cursor,cursorAccent:bg,
+        selectionBackground:'#ffffff40',
+        black:black,red:red,green:green,yellow:yellow,blue:blue,magenta:magenta,cyan:cyan,white:white,
+        brightBlack:black,brightRed:red,brightGreen:green,brightYellow:yellow,
+        brightBlue:blue,brightMagenta:magenta,brightCyan:cyan,brightWhite:white};
+    document.body.style.background=bg;
+}
+function sendKey(k){
+    var m={'ESC':'\x1b','TAB':'\t','ENTER':'\r','BKSP':'\x7f',
+        'UP':'\x1b[A','DOWN':'\x1b[B','RIGHT':'\x1b[C','LEFT':'\x1b[D',
+        'HOME':'\x1b[H','END':'\x1b[F','PGUP':'\x1b[5~','PGDN':'\x1b[6~','DEL':'\x1b[3~'};
+    var d=m[k]||k;if(window.AndroidPty)AndroidPty.onInput(d);
+}
+function focusTerminal(){term.focus()}
+function clearTerminal(){term.clear()}
+function getSelection(){return term.getSelection()||''}
+function getDimensions(){try{fitAddon.fit()}catch(e){}return JSON.stringify({cols:term.cols,rows:term.rows})}
+
+setTimeout(function(){try{fitAddon.fit()}catch(e){}term.focus();
+    if(window.AndroidPty)AndroidPty.onReady(term.cols,term.rows)},300);
+</script>
+</body>
+</html>

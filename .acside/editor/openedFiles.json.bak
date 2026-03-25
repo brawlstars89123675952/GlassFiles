@@ -1,0 +1,20 @@
+{
+  "allFiles": [
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/build.gradle",
+      "selection": {
+        "end": {
+          "column": 1,
+          "index": 211,
+          "line": 4
+        },
+        "start": {
+          "column": 1,
+          "index": 211,
+          "line": 4
+        }
+      }
+    }
+  ],
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/build.gradle"
+}
