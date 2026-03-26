@@ -7,14 +7,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.lang.reflect.Method
 
-/**
- * ShizukuManager — executes privileged commands through Shizuku.
- * Uses direct Shizuku API (dev.rikka.shizuku:api).
- */
 object ShizukuManager {
 
-    private const val TAG = "ShizukuManager"
+    private const val TAG = "ShizukuMgr"
     private const val SHIZUKU_PACKAGE = "moe.shizuku.privileged.api"
 
     // ═══════════════════════════════════
@@ -42,25 +39,54 @@ object ShizukuManager {
     }
 
     // ═══════════════════════════════════
-    // Shell execution — direct API
+    // Shell execution — reflection with fallbacks
     // ═══════════════════════════════════
 
-    private val newProcessMethod by lazy {
-        rikka.shizuku.Shizuku::class.java.getDeclaredMethod(
-            "newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java
-        ).apply { isAccessible = true }
+    private var cachedMethod: Method? = null
+
+    private fun getNewProcessMethod(): Method? {
+        if (cachedMethod != null) return cachedMethod
+        return try {
+            val m = rikka.shizuku.Shizuku::class.java.getDeclaredMethod(
+                "newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java
+            )
+            m.isAccessible = true
+            cachedMethod = m
+            m
+        } catch (e: Exception) {
+            Log.e(TAG, "Method lookup failed: ${e.message}")
+            // Fallback: try all declared methods
+            try {
+                val m = rikka.shizuku.Shizuku::class.java.declaredMethods.firstOrNull { it.name == "newProcess" && it.parameterCount == 3 }
+                m?.isAccessible = true
+                cachedMethod = m
+                m
+            } catch (e2: Exception) {
+                Log.e(TAG, "Fallback lookup failed: ${e2.message}")
+                null
+            }
+        }
     }
 
     private suspend fun exec(command: String): ShellResult = withContext(Dispatchers.IO) {
         try {
-            val process = newProcessMethod.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
-            val stdout = BufferedReader(InputStreamReader(process.inputStream)).readText()
-            val stderr = BufferedReader(InputStreamReader(process.errorStream)).readText()
+            val method = getNewProcessMethod()
+            if (method == null) return@withContext ShellResult(false, "", "Shizuku newProcess method not found")
+
+            val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
+            val stdout = process.inputStream.bufferedReader().use { it.readText() }
+            val stderr = process.errorStream.bufferedReader().use { it.readText() }
             val exitCode = process.waitFor()
+            process.destroy()
+            Log.d(TAG, "exec[$command] exit=$exitCode stdout=${stdout.take(100)}")
             ShellResult(exitCode == 0, stdout.trim(), stderr.trim())
+        } catch (e: java.lang.reflect.InvocationTargetException) {
+            val cause = e.cause ?: e
+            Log.e(TAG, "exec invoke error[$command]: ${cause.message}")
+            ShellResult(false, "", "Invoke: ${cause.message}")
         } catch (e: Exception) {
-            Log.e(TAG, "exec[$command]: ${e.message}")
-            ShellResult(false, "", e.message ?: "Unknown error")
+            Log.e(TAG, "exec error[$command]: ${e.message}")
+            ShellResult(false, "", "Error: ${e.message}")
         }
     }
 
@@ -107,10 +133,35 @@ object ShizukuManager {
     // File operations
     // ═══════════════════════════════════
 
+    /** List directory with improved parsing and error feedback */
     suspend fun listRestrictedDir(path: String): List<ShizukuFileItem> = withContext(Dispatchers.IO) {
-        val r = exec("ls -la \"$path\"")
-        if (!r.success) return@withContext emptyList()
-        r.stdout.lines().mapNotNull { parseListLine(it, path) }
+        // Try ls -la first
+        var r = exec("ls -la \"$path\" 2>&1")
+        if (!r.success && r.stdout.isBlank()) {
+            // Fallback: simple ls
+            r = exec("ls -1 \"$path\" 2>&1")
+            if (!r.success) {
+                Log.e(TAG, "listDir failed: ${r.stderr}")
+                return@withContext emptyList()
+            }
+            // Simple parsing: one name per line
+            return@withContext r.stdout.lines().filter { it.isNotBlank() && it != "." && it != ".." }.map { name ->
+                val isDir = exec("test -d \"$path/$name\" && echo D || echo F").stdout.trim() == "D"
+                ShizukuFileItem(name.trim(), "$path/${name.trim()}", isDir, 0L)
+            }
+        }
+
+        val items = r.stdout.lines().mapNotNull { line -> parseListLine(line, path) }
+        if (items.isEmpty() && r.stdout.isNotBlank()) {
+            Log.w(TAG, "Parse returned 0 from: ${r.stdout.take(200)}")
+        }
+        items
+    }
+
+    /** Get last listing error for UI display */
+    suspend fun getLastError(path: String): String {
+        val r = exec("ls -la \"$path\" 2>&1")
+        return if (r.success) "" else r.stderr.ifBlank { r.stdout }
     }
 
     suspend fun copyFromRestricted(src: String, dest: String): Boolean = exec("cp -r \"$src\" \"$dest\"").success
@@ -154,7 +205,6 @@ object ShizukuManager {
         return if (r.success) r.stdout else r.stderr
     }
     suspend fun clearLogcat(): Boolean = exec("logcat -c").success
-
     suspend fun getBatteryStats(): String = exec("dumpsys battery").let { if (it.success) it.stdout else "" }
 
     suspend fun getRunningProcesses(): List<ProcessInfo> = withContext(Dispatchers.IO) {
@@ -174,17 +224,48 @@ object ShizukuManager {
     // ═══════════════════════════════════
 
     private fun parseListLine(line: String, parentPath: String): ShizukuFileItem? {
-        val parts = line.trim().split("\\s+".toRegex())
-        if (parts.size < 8) return null
-        val perms = parts[0]; if (perms == "total") return null
-        val isDir = perms.startsWith("d")
-        val size = parts[4].toLongOrNull() ?: 0L
-        val name = parts.drop(7).joinToString(" ")
-        if (name == "." || name == "..") return null
+        val trimmed = line.trim()
+        if (trimmed.isBlank() || trimmed.startsWith("total")) return null
+        val parts = trimmed.split("\\s+".toRegex())
+        if (parts.size < 7) return null
+
+        val perms = parts[0]
+        val isDir = perms.startsWith("d") || perms.startsWith("l")
+        val size = parts.getOrNull(4)?.toLongOrNull() ?: 0L
+
+        // Name can start at index 7 or 8 depending on ls format
+        // Try to find the name by looking for date patterns
+        val nameStartIdx = findNameIndex(parts)
+        if (nameStartIdx < 0 || nameStartIdx >= parts.size) return null
+
+        val name = parts.drop(nameStartIdx).joinToString(" ")
+            .let { if (it.contains(" -> ")) it.substringBefore(" -> ") else it } // handle symlinks
+        if (name.isBlank() || name == "." || name == "..") return null
+
         return ShizukuFileItem(name, "$parentPath/$name", isDir, size)
+    }
+
+    /** Find where filename starts in ls -la output by detecting date/time columns */
+    private fun findNameIndex(parts: List<String>): Int {
+        // Common ls -la formats:
+        // drwxrwx--x 3 system ext_data_rw 4096 2024-01-15 12:30 dirname
+        // drwxrwx--x 3 system ext_data_rw 4096 Jan 15 12:30 dirname
+        for (i in 5 until parts.size) {
+            // Check for time pattern HH:MM or HH:MM:SS
+            if (parts[i].matches(Regex("\\d{1,2}:\\d{2}(:\\d{2})?"))) {
+                return i + 1
+            }
+            // Check for year pattern (4 digits alone)
+            if (parts[i].matches(Regex("\\d{4}")) && i > 5) {
+                return i + 1
+            }
+        }
+        // Fallback: assume index 7 (standard format)
+        return if (parts.size > 7) 7 else -1
     }
 
     data class ShellResult(val success: Boolean, val stdout: String, val stderr: String)
     data class ShizukuFileItem(val name: String, val path: String, val isDirectory: Boolean, val size: Long)
     data class ProcessInfo(val pid: Int, val memKb: Long, val name: String)
 }
+

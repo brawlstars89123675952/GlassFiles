@@ -53,11 +53,17 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     var folderStack by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var driveSignedIn by remember { mutableStateOf(false) }
     var activeScreen by remember { mutableStateOf(AppScreen.MAIN) }
+    var previousScreen by remember { mutableStateOf(AppScreen.MAIN) }
     var terminalDir by remember { mutableStateOf<String?>(null) }
     var terminalWasOpened by remember { mutableStateOf(false) }
     var aiInitialPrompt by remember { mutableStateOf<String?>(null) }
     var aiInitialImage by remember { mutableStateOf<String?>(null) }
     var selectedTagName by remember { mutableStateOf("") }
+
+    fun navigateTo(screen: AppScreen) {
+        previousScreen = activeScreen
+        activeScreen = screen
+    }
 
     val backdrop = rememberLayerBackdrop()
     val trashManager = remember { TrashManager(context) }
@@ -83,10 +89,21 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
         } catch (_: Exception) {}
     }
 
+    fun goBack() {
+        val prev = previousScreen
+        previousScreen = AppScreen.MAIN
+        activeScreen = prev
+    }
+
     BackHandler(enabled = true) {
         when {
-            activeScreen != AppScreen.MAIN -> activeScreen = AppScreen.MAIN
-            folderStack.isNotEmpty() -> folderStack = folderStack.dropLast(1)
+            activeScreen != AppScreen.MAIN -> goBack()
+            folderStack.isNotEmpty() -> {
+                folderStack = folderStack.dropLast(1)
+                if (folderStack.isEmpty() && previousScreen != AppScreen.MAIN) {
+                    val prev = previousScreen; previousScreen = AppScreen.MAIN; activeScreen = prev
+                }
+            }
             else -> (context as? Activity)?.moveTaskToBack(true)
         }
     }
@@ -99,7 +116,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                     alpha = if (activeScreen == AppScreen.TERMINAL) 1f else 0f
                 }
             ) {
-                TerminalScreen(initialDir = terminalDir, onBackClick = { activeScreen = AppScreen.MAIN }, onOpenFile = { openFileExternal(it) })
+                TerminalScreen(initialDir = terminalDir, onBackClick = { goBack() }, onOpenFile = { openFileExternal(it) })
             }
         }
 
@@ -118,80 +135,54 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
             label = "screen"
         ) { screen ->
             when (screen) {
-                AppScreen.TERMINAL -> {
-                    // Прозрачный — терминал виден под ним
-                    Box(Modifier.fillMaxSize())
-                }
+                AppScreen.TERMINAL -> Box(Modifier.fillMaxSize())
                 AppScreen.SEARCH -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    GlobalSearchScreen(onBack = { activeScreen = AppScreen.MAIN }, onFileClick = { p ->
-                        val f = File(p); if (f.isDirectory) { folderStack = listOf(f.name to f.absolutePath); activeScreen = AppScreen.MAIN } else openFileExternal(p)
+                    GlobalSearchScreen(onBack = { goBack() }, onFileClick = { p ->
+                        val f = File(p); if (f.isDirectory) { previousScreen = AppScreen.SEARCH; folderStack = listOf(f.name to f.absolutePath); activeScreen = AppScreen.MAIN } else openFileExternal(p)
                     })
                 }
-                AppScreen.TRASH -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    TrashScreen(trashManager, onBack = { activeScreen = AppScreen.MAIN })
-                }
-                AppScreen.STORAGE -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    StorageAnalyzerScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
+                AppScreen.TRASH -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { TrashScreen(trashManager, onBack = { goBack() }) }
+                AppScreen.STORAGE -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { StorageAnalyzerScreen(onBack = { goBack() }) }
                 AppScreen.AI_CHAT -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    AiChatScreen(
-                        onBack = { activeScreen = AppScreen.MAIN; aiInitialPrompt = null; aiInitialImage = null },
-                        initialPrompt = aiInitialPrompt,
-                        initialImageBase64 = aiInitialImage
-                    )
+                    AiChatScreen(onBack = { goBack(); aiInitialPrompt = null; aiInitialImage = null }, initialPrompt = aiInitialPrompt, initialImageBase64 = aiInitialImage)
                 }
-                AppScreen.SETTINGS -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    SettingsScreen(settings = settings, onBack = { activeScreen = AppScreen.MAIN })
-                }
-                AppScreen.DUPLICATES -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    DuplicatesScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
-                AppScreen.QR_SCANNER -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    QrScannerScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
-                AppScreen.OCR -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    OcrScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
+                AppScreen.SETTINGS -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { SettingsScreen(settings = settings, onBack = { goBack() }) }
+                AppScreen.DUPLICATES -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { DuplicatesScreen(onBack = { goBack() }) }
+                AppScreen.QR_SCANNER -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { QrScannerScreen(onBack = { goBack() }) }
+                AppScreen.OCR -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { OcrScreen(onBack = { goBack() }) }
                 AppScreen.TAGGED_FILES -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    TaggedFilesScreen(tagName = selectedTagName, onBack = { activeScreen = AppScreen.MAIN },
+                    TaggedFilesScreen(tagName = selectedTagName, onBack = { goBack() },
                         onFileClick = { path -> val f = java.io.File(path); if (f.isDirectory) { folderStack = listOf(f.name to f.absolutePath); activeScreen = AppScreen.MAIN } else openFileExternal(path) })
                 }
-                AppScreen.DEVICE_INFO -> DeviceInfoScreen(onBack = { activeScreen = AppScreen.MAIN })
-                AppScreen.APP_MANAGER -> AppManagerScreen(onBack = { activeScreen = AppScreen.MAIN })
-                AppScreen.BOOKMARKS -> BookmarksScreen(onBack = { activeScreen = AppScreen.MAIN },
+                AppScreen.DEVICE_INFO -> DeviceInfoScreen(onBack = { goBack() })
+                AppScreen.APP_MANAGER -> AppManagerScreen(onBack = { goBack() })
+                AppScreen.BOOKMARKS -> BookmarksScreen(onBack = { goBack() },
                     onNavigate = { path -> folderStack = listOf(File(path).name to path); activeScreen = AppScreen.MAIN })
-                AppScreen.DIFF -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    DiffScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
-                AppScreen.NOTES -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    NotesScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
+                AppScreen.DIFF -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { DiffScreen(onBack = { goBack() }) }
+                AppScreen.NOTES -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { NotesScreen(onBack = { goBack() }) }
                 AppScreen.CONTENT_SEARCH -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    ContentSearchScreen(onBack = { activeScreen = AppScreen.MAIN }, onFileClick = { p ->
-                        val f = File(p); if (f.isDirectory) { folderStack = listOf(f.name to f.absolutePath); activeScreen = AppScreen.MAIN } else openFileExternal(p)
+                    ContentSearchScreen(onBack = { goBack() }, onFileClick = { p ->
+                        val f = File(p); if (f.isDirectory) { previousScreen = AppScreen.CONTENT_SEARCH; folderStack = listOf(f.name to f.absolutePath); activeScreen = AppScreen.MAIN } else openFileExternal(p)
                     })
                 }
                 AppScreen.SHIZUKU -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    ShizukuScreen(onBack = { activeScreen = AppScreen.MAIN }, onBrowseRestricted = { path ->
-                        folderStack = listOf(File(path).name to path); activeScreen = AppScreen.MAIN
+                    ShizukuScreen(onBack = { goBack() }, onBrowseRestricted = { path ->
+                        previousScreen = AppScreen.SHIZUKU
+                        val displayName = path.removePrefix("shizuku://").substringAfterLast("/")
+                        folderStack = listOf(displayName to path)
+                        activeScreen = AppScreen.MAIN
                     })
                 }
-                AppScreen.FTP -> Box(Modifier.fillMaxSize().background(SurfaceLight)) {
-                    FtpScreen(onBack = { activeScreen = AppScreen.MAIN })
-                }
+                AppScreen.FTP -> Box(Modifier.fillMaxSize().background(SurfaceLight)) { FtpScreen(onBack = { goBack() }) }
                 AppScreen.MAIN -> {
-                    // layerBackdrop ТОЛЬКО на контенте — стеклянные элементы (bar, FAB) снаружи
                     Box(Modifier.fillMaxSize().background(SurfaceLight).layerBackdrop(backdrop)) {
-                        // Animated folder navigation
                         AnimatedContent(
                             targetState = folderStack,
                             transitionSpec = {
                                 if (targetState.size > initialState.size) {
-                                    // Going deeper — slide in from right
                                     (fadeIn(tween(200)) + slideInHorizontally(tween(300)) { it / 3 }) togetherWith
                                     (fadeOut(tween(150)) + slideOutHorizontally(tween(200)) { -it / 5 })
                                 } else {
-                                    // Going back — slide in from left
                                     (fadeIn(tween(200)) + slideInHorizontally(tween(300)) { -it / 3 }) togetherWith
                                     (fadeOut(tween(150)) + slideOutHorizontally(tween(200)) { it / 5 })
                                 }
@@ -199,51 +190,84 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                             label = "folder"
                         ) { stack ->
                             if (stack.isNotEmpty()) {
-                                val (name, path) = stack.last(); val isDrive = path.startsWith("gdrive://")
+                                val (name, path) = stack.last()
+                                val isDrive = path.startsWith("gdrive://")
+                                val isShizuku = path.startsWith("shizuku://")
                                 var files by remember(path) { mutableStateOf<List<FileItem>>(emptyList()) }
-                                var loading by remember(path) { mutableStateOf(true) }; var errorMsg by remember(path) { mutableStateOf("") }
+                                var loading by remember(path) { mutableStateOf(true) }
+                                var errorMsg by remember(path) { mutableStateOf("") }
+
                                 LaunchedEffect(path) {
                                     loading = true; errorMsg = ""
                                     try {
-                                        if (isDrive) { val r = GoogleDriveManager.listFilesDebug(context, path.removePrefix("gdrive://")); files = r.files
-                                            if (r.error.isNotEmpty()) errorMsg = "${r.error}\n\n${r.debug}" else if (files.isEmpty()) errorMsg = "0 файлов\n\n${r.debug}"
-                                        } else files = FileManager.listFiles(path, settings.showHiddenFiles)
+                                        if (isDrive) {
+                                            val r = GoogleDriveManager.listFilesDebug(context, path.removePrefix("gdrive://"))
+                                            files = r.files
+                                            if (r.error.isNotEmpty()) errorMsg = "${r.error}\n\n${r.debug}"
+                                            else if (files.isEmpty()) errorMsg = "0 файлов\n\n${r.debug}"
+                                        } else if (isShizuku) {
+                                            val realPath = path.removePrefix("shizuku://")
+                                            val shizukuFiles = ShizukuManager.listRestrictedDir(realPath)
+                                            files = shizukuFiles.map { sf ->
+                                                val ext = sf.name.substringAfterLast('.', "").lowercase()
+                                                FileItem(
+                                                    name = sf.name,
+                                                    path = "shizuku://${sf.path}",
+                                                    size = sf.size,
+                                                    isDirectory = sf.isDirectory,
+                                                    type = if (sf.isDirectory) FileType.FOLDER else getFileType(ext),
+                                                    extension = if (sf.isDirectory) "" else ext
+                                                )
+                                            }
+                                            if (files.isEmpty()) {
+                                                errorMsg = ShizukuManager.getLastError(realPath).ifBlank { "Пусто или нет доступа" }
+                                            }
+                                        } else {
+                                            files = FileManager.listFiles(path, settings.showHiddenFiles)
+                                        }
                                     } catch (e: Exception) { errorMsg = "${e.javaClass.simpleName}: ${e.message}" }
                                     loading = false
                                 }
+
                                 FolderDetailScreen(folderName = name, files = files, loading = loading, subtitle = errorMsg,
+                                    folderPath = path,
                                     onFileClick = { if (it.isDirectory) folderStack = folderStack + (it.name to it.path) },
-                                    onBackClick = { folderStack = folderStack.dropLast(1) },
-                                    onOpenTerminal = if (!isDrive) {{ terminalDir = path; terminalWasOpened = true; activeScreen = AppScreen.TERMINAL }} else null,
-                                    onAiAction = { prompt, image -> aiInitialPrompt = prompt; aiInitialImage = image; activeScreen = AppScreen.AI_CHAT },
+                                    onBackClick = {
+                                        folderStack = folderStack.dropLast(1)
+                                        if (folderStack.isEmpty() && previousScreen != AppScreen.MAIN) {
+                                            val prev = previousScreen; previousScreen = AppScreen.MAIN; activeScreen = prev
+                                        }
+                                    },
+                                    onOpenTerminal = if (!isDrive && !isShizuku) {{ terminalDir = path; terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }} else null,
+                                    onAiAction = { prompt, image -> aiInitialPrompt = prompt; aiInitialImage = image; navigateTo(AppScreen.AI_CHAT) },
                                     appSettings = settings)
                             } else {
                                 AnimatedContent(selectedTab, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) }, label = "tab") { tab ->
                                     when (tab) {
                                         0 -> RecentsScreen(context = context, onFileClick = { file ->
                                             if (file.isDirectory) folderStack = listOf(file.name to file.path)
-                                        }, onAiAction = { prompt, image -> aiInitialPrompt = prompt; aiInitialImage = image; activeScreen = AppScreen.AI_CHAT })
+                                        }, onAiAction = { prompt, image -> aiInitialPrompt = prompt; aiInitialImage = image; navigateTo(AppScreen.AI_CHAT) })
                                         1 -> SharedScreen()
                                         2 -> BrowseScreen(driveSignedIn = driveSignedIn,
                                             onFolderClick = { folderStack = listOf(it.name to it.path) },
                                             onLocationClick = { folderStack = listOf(it.name to it.path) },
                                             onDriveSignIn = { signInLauncher.launch(GoogleDriveManager.getSignInIntent(context)) },
                                             onDriveOpen = { folderStack = listOf("Google Drive" to "gdrive://root") },
-                                            onSearch = { activeScreen = AppScreen.SEARCH },
-                                            onTrash = { activeScreen = AppScreen.TRASH },
-                                            onStorage = { activeScreen = AppScreen.STORAGE },
-                                            onDuplicates = { activeScreen = AppScreen.DUPLICATES },
-                                            onQrScan = { activeScreen = AppScreen.QR_SCANNER },
-                                            onOcr = { activeScreen = AppScreen.OCR },
-                                            onDeviceInfo = { activeScreen = AppScreen.DEVICE_INFO },
-                                            onAppManager = { activeScreen = AppScreen.APP_MANAGER },
-                                            onBookmarks = { activeScreen = AppScreen.BOOKMARKS },
-                                            onDiff = { activeScreen = AppScreen.DIFF },
-                                            onNotes = { activeScreen = AppScreen.NOTES },
-                                            onContentSearch = { activeScreen = AppScreen.CONTENT_SEARCH },
-                                            onShizuku = { activeScreen = AppScreen.SHIZUKU },
-                                            onFtp = { activeScreen = AppScreen.FTP },
-                                            onTagClick = { tag -> selectedTagName = tag; activeScreen = AppScreen.TAGGED_FILES })
+                                            onSearch = { navigateTo(AppScreen.SEARCH) },
+                                            onTrash = { navigateTo(AppScreen.TRASH) },
+                                            onStorage = { navigateTo(AppScreen.STORAGE) },
+                                            onDuplicates = { navigateTo(AppScreen.DUPLICATES) },
+                                            onQrScan = { navigateTo(AppScreen.QR_SCANNER) },
+                                            onOcr = { navigateTo(AppScreen.OCR) },
+                                            onDeviceInfo = { navigateTo(AppScreen.DEVICE_INFO) },
+                                            onAppManager = { navigateTo(AppScreen.APP_MANAGER) },
+                                            onBookmarks = { navigateTo(AppScreen.BOOKMARKS) },
+                                            onDiff = { navigateTo(AppScreen.DIFF) },
+                                            onNotes = { navigateTo(AppScreen.NOTES) },
+                                            onContentSearch = { navigateTo(AppScreen.CONTENT_SEARCH) },
+                                            onShizuku = { navigateTo(AppScreen.SHIZUKU) },
+                                            onFtp = { navigateTo(AppScreen.FTP) },
+                                            onTagClick = { tag -> selectedTagName = tag; navigateTo(AppScreen.TAGGED_FILES) })
                                     }
                                 }
                             }
@@ -254,10 +278,10 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                     AnimatedVisibility(folderStack.isEmpty(), enter = fadeIn(tween(300)) + scaleIn(tween(300)),
                         exit = fadeOut(tween(200)) + scaleOut(tween(200)), modifier = Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxSize()) {
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 152.dp).clickable { activeScreen = AppScreen.AI_CHAT }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 152.dp).clickable { navigateTo(AppScreen.AI_CHAT) }) {
                                 GlassFab(backdrop, Icons.Rounded.AutoAwesome, iconTint = Color.White, tintColor = Color(0x66238636))
                             }
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 96.dp).clickable { terminalWasOpened = true; activeScreen = AppScreen.TERMINAL }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 96.dp).clickable { terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }) {
                                 GlassFab(backdrop, Icons.Rounded.Terminal, iconTint = Color(0xFF00E676), tintColor = Color(0x441A1A2E))
                                 if (terminalWasOpened) Box(Modifier.align(Alignment.TopEnd).size(12.dp).background(Color(0xFF00E676), CircleShape))
                             }
@@ -266,7 +290,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                     GlassBottomTabBar(backdrop, selectedTab, { selectedTab = it }, tabs)
                                     Spacer(Modifier.width(8.dp))
                                     Box(Modifier.size(44.dp).background(CardBackground.copy(0.85f), CircleShape)
-                                        .clickable { activeScreen = AppScreen.SETTINGS },
+                                        .clickable { navigateTo(AppScreen.SETTINGS) },
                                         contentAlignment = Alignment.Center) {
                                         Icon(Icons.Rounded.Settings, null, Modifier.size(22.dp), tint = TextSecondary)
                                     }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -54,12 +55,24 @@ fun SharedScreen(modifier: Modifier = Modifier) {
 enum class SortMode { NAME, DATE, SIZE, TYPE; val label: String get() = when (this) { NAME -> Strings.sortName; DATE -> Strings.sortDate; SIZE -> Strings.sortSize; TYPE -> Strings.sortType } }
 enum class ViewMode { GRID, LIST }
 
+/** Stores scroll positions per folder path */
+object ScrollPositionStore {
+    private val listPositions = mutableMapOf<String, Pair<Int, Int>>() // path → (index, offset)
+    private val gridPositions = mutableMapOf<String, Pair<Int, Int>>()
+
+    fun saveList(path: String, index: Int, offset: Int) { listPositions[path] = index to offset }
+    fun saveGrid(path: String, index: Int, offset: Int) { gridPositions[path] = index to offset }
+    fun getList(path: String): Pair<Int, Int> = listPositions[path] ?: (0 to 0)
+    fun getGrid(path: String): Pair<Int, Int> = gridPositions[path] ?: (0 to 0)
+}
+
 @Composable
 fun FolderDetailScreen(
     folderName: String, files: List<FileItem>, loading: Boolean = false, subtitle: String = "",
     onFileClick: (FileItem) -> Unit = {}, onBackClick: () -> Unit = {},
     onOpenTerminal: (() -> Unit)? = null, onAiAction: ((String, String?) -> Unit)? = null,
     appSettings: com.glassfiles.data.AppSettings? = null,
+    folderPath: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
@@ -106,6 +119,22 @@ fun FolderDetailScreen(
 
     // ZIP viewer
     var zipViewFile by remember { mutableStateOf<String?>(null) }
+
+    // Scroll position — restore from store
+    val savedList = remember(folderPath) { ScrollPositionStore.getList(folderPath) }
+    val savedGrid = remember(folderPath) { ScrollPositionStore.getGrid(folderPath) }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = savedList.first, initialFirstVisibleItemScrollOffset = savedList.second)
+    val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = savedGrid.first, initialFirstVisibleItemScrollOffset = savedGrid.second)
+
+    // Save scroll position when leaving this screen
+    DisposableEffect(folderPath) {
+        onDispose {
+            if (folderPath.isNotBlank()) {
+                ScrollPositionStore.saveList(folderPath, listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset)
+                ScrollPositionStore.saveGrid(folderPath, gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+            }
+        }
+    }
 
     val sorted = remember(files, sortMode, sortAsc, searchQuery, refreshKey) {
         val f = if (searchQuery.isEmpty()) files else files.filter { it.name.contains(searchQuery, true) }
@@ -314,6 +343,7 @@ fun FolderDetailScreen(
         else AnimatedContent(viewMode, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) }, label = "v") { mode ->
             when (mode) {
                 ViewMode.GRID -> LazyVerticalGrid(GridCells.Fixed(3), Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                    state = gridState,
                     verticalArrangement = Arrangement.spacedBy(16.dp), horizontalArrangement = Arrangement.SpaceEvenly,
                     contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)) {
                     items(sorted, key = { it.path }) { file ->
@@ -328,7 +358,7 @@ fun FolderDetailScreen(
                         }
                     }
                 }
-                ViewMode.LIST -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 100.dp)) {
+                ViewMode.LIST -> LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 100.dp)) {
                     items(sorted, key = { it.path }) { file ->
                         val isSel = file.path in selectedPaths
                         Column(Modifier.animateItem(fadeInSpec = tween(300), fadeOutSpec = tween(200))) {

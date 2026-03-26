@@ -1,17 +1,32 @@
 {
   "allFiles": [
     {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/ShizukuScreen.kt",
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/SharedAndFolderScreens.kt",
       "selection": {
         "end": {
-          "column": 1,
-          "index": 33291,
-          "line": 561
+          "column": 0,
+          "index": 31431,
+          "line": 478
         },
         "start": {
-          "column": 1,
-          "index": 33291,
-          "line": 561
+          "column": 0,
+          "index": 31431,
+          "line": 478
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/GlassFilesApp.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 20600,
+          "line": 318
+        },
+        "start": {
+          "column": 0,
+          "index": 20600,
+          "line": 318
         }
       }
     },
@@ -20,13 +35,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 8976,
-          "line": 190
+          "index": 12498,
+          "line": 271
         },
         "start": {
           "column": 0,
-          "index": 8976,
-          "line": 190
+          "index": 12498,
+          "line": 271
         }
       }
     }
