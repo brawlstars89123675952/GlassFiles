@@ -1,7 +1,7 @@
 {
   "allFiles": [
     {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/ShizukuScreen.kt",
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/Logger.java",
       "selection": {
         "end": {
           "column": 0,
@@ -16,20 +16,50 @@
       }
     },
     {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/AppManagerScreen.kt",
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/LoggerApplication.java",
       "selection": {
         "end": {
           "column": 0,
-          "index": 15805,
-          "line": 315
+          "index": 0,
+          "line": 0
         },
         "start": {
           "column": 0,
-          "index": 15805,
-          "line": 315
+          "index": 0,
+          "line": 0
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/ShizukuScreen.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 30441,
+          "line": 436
+        },
+        "start": {
+          "column": 0,
+          "index": 30441,
+          "line": 436
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/ShizukuManager.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 15444,
+          "line": 429
+        },
+        "start": {
+          "column": 0,
+          "index": 15444,
+          "line": 429
         }
       }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/AppManagerScreen.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/ShizukuManager.kt"
 }

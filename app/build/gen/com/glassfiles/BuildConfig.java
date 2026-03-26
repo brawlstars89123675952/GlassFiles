@@ -1,10 +1,12 @@
-/** Automatically generated file. DO NOT MODIFY */
+/**
+* Automatically generated file. DO NOT MODIFY
+*/
 package com.glassfiles;
 
 public final class BuildConfig {
-    public final static boolean DEBUG = true;
-    public final static String APPLICATION_ID = "com.glassfiles";
-    public final static String BUILD_TYPE = "debug";
-    public final static long VERSION_CODE = 1;
-    public final static String VERSION_NAME = "1.0";
+    public static final boolean DEBUG = Boolean.parseBoolean("true");
+    public static final String APPLICATION_ID = "com.glassfiles";
+    public static final String BUILD_TYPE = "debug";
+    public static final int VERSION_CODE = 2;
+    public static final String VERSION_NAME = "2.0-pre1";
 }

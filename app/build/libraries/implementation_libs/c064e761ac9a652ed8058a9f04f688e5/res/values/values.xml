@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="collapsed">Collapsed</string>
+    <string name="dialog">"Dialog"</string>
+    <string name="expanded">Expanded</string>
+</resources>

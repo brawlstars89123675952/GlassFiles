@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="2863935784364843033" name="glance_error_layout_text">"‏بااستفاده از "<b><tt>"adb logcat"</tt></b>" و جستجوی "<b><tt>"GlanceAppWidget"</tt></b>"، خطا را به‌طور دقیق بررسی کنید"</string>
+    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"محتوا نشان داده نشد"</string>
+    <string msgid="3631961919234443531" name="glance_error_layout_title">"‏"<b>"خطا در ابزارک برنامه Glance"</b></string>
+</resources>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="2863935784364843033" name="glance_error_layout_text">"Gaan die presiese fout na deur "<b><tt>"adb logcat"</tt></b>" te gebruik en te soek na "<b><tt>"GlanceAppWidget"</tt></b></string>
+    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Kan nie inhoud wys nie"</string>
+    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance-applegstukfout"</b></string>
+</resources>

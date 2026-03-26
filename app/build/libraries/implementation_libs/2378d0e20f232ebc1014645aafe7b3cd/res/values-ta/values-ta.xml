@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"adb logcat"</tt></b>" என்பதைப் பயன்படுத்தி சரியான பிழையைக் கண்டறியவும், "<b><tt>"GlanceAppWidget"</tt></b>" தேடப்படுகிறது"</string>
+    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"உள்ளடக்கத்தைக் காட்ட முடியவில்லை"</string>
+    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Glance ஆப்ஸ் விட்ஜெட் பிழை"</b></string>
+</resources>

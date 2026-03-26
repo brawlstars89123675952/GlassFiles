@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="2863935784364843033" name="glance_error_layout_text">"Skoðaðu villuna með "<b><tt>"adb logcat"</tt></b>" og leitaðu að "<b><tt>"GlanceAppWidget"</tt></b></string>
+    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"Ekki er hægt að sýna efnið"</string>
+    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"Villa í forritsgræju „Í fljótu bragði“"</b></string>
+</resources>

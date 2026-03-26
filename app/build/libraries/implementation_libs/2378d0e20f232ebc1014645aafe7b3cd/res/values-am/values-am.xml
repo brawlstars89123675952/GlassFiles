@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string msgid="2863935784364843033" name="glance_error_layout_text"><b><tt>"GlanceAppWidet"</tt></b>" እየፈለጉ ሳለ "<b><tt>"adb logcat "</tt></b>" በመጠቀም ትክክለኛውን ስህተት ያጣሩ"</string>
+    <string msgid="5191168365305634625" name="glance_error_layout_text_v2">"ይዘትን ማሳየት አልተቻለም"</string>
+    <string msgid="3631961919234443531" name="glance_error_layout_title"><b>"የGlance መተግበሪያ ምግብር ስህተት"</b></string>
+</resources>

@@ -166,11 +166,234 @@ object ShizukuManager {
         return result.success
     }
 
+    /** Rename file in restricted directory */
+    suspend fun renameInRestricted(oldPath: String, newPath: String): Boolean {
+        val result = executeShell("mv \"$oldPath\" \"$newPath\"")
+        return result.success
+    }
+
     /** Get size of a directory via Shizuku */
     suspend fun getDirectorySize(path: String): Long {
         val result = executeShell("du -sb \"$path\" 2>/dev/null | cut -f1")
         return result.stdout.trim().toLongOrNull() ?: 0L
     }
+
+    /** Change file permissions */
+    suspend fun chmod(path: String, mode: String): Boolean {
+        val result = executeShell("chmod $mode \"$path\"")
+        return result.success
+    }
+
+    /** Change file owner */
+    suspend fun chown(path: String, owner: String): Boolean {
+        val result = executeShell("chown $owner \"$path\"")
+        return result.success
+    }
+
+    /** Create symbolic link */
+    suspend fun symlink(target: String, linkPath: String): Boolean {
+        val result = executeShell("ln -s \"$target\" \"$linkPath\"")
+        return result.success
+    }
+
+    /** List system directory (e.g. /data/local/tmp) */
+    suspend fun listSystemDir(path: String): List<ShizukuFileItem> = listRestrictedDir(path)
+
+    // ═══════════════════════════════════
+    // Advanced app management
+    // ═══════════════════════════════════
+
+    /** Uninstall app without confirmation */
+    suspend fun uninstallApp(packageName: String): Boolean {
+        val result = executeShell("pm uninstall $packageName")
+        return result.success
+    }
+
+    /** Downgrade install APK */
+    suspend fun downgradeInstall(apkPath: String): Boolean {
+        val result = executeShell("pm install -r -d -t \"$apkPath\"")
+        return result.success
+    }
+
+    /** Clear ALL app data (not just cache) */
+    suspend fun clearAllData(packageName: String): Boolean {
+        val result = executeShell("pm clear $packageName")
+        return result.success
+    }
+
+    /** Get real data size of app */
+    suspend fun getAppDataSize(packageName: String): Long {
+        val result = executeShell("du -sb /data/data/$packageName 2>/dev/null | cut -f1")
+        return result.stdout.trim().toLongOrNull() ?: 0L
+    }
+
+    /** Revoke a permission from app */
+    suspend fun revokePermission(packageName: String, permission: String): Boolean {
+        val result = executeShell("pm revoke $packageName $permission")
+        return result.success
+    }
+
+    /** Grant a permission to app */
+    suspend fun grantPermission(packageName: String, permission: String): Boolean {
+        val result = executeShell("pm grant $packageName $permission")
+        return result.success
+    }
+
+    /** Restrict app background activity */
+    suspend fun restrictBackground(packageName: String, restrict: Boolean): Boolean {
+        val op = if (restrict) "ignore" else "allow"
+        val result = executeShell("appops set $packageName RUN_IN_BACKGROUND $op")
+        return result.success
+    }
+
+    /** Get list of running processes with memory usage */
+    suspend fun getRunningProcesses(): List<ProcessInfo> = withContext(Dispatchers.IO) {
+        val result = executeShell("ps -A -o PID,RSS,NAME 2>/dev/null || ps -A")
+        if (!result.success) return@withContext emptyList()
+        result.stdout.lines().drop(1).mapNotNull { line ->
+            val parts = line.trim().split("\\s+".toRegex())
+            if (parts.size >= 3) {
+                ProcessInfo(
+                    pid = parts[0].toIntOrNull() ?: 0,
+                    memKb = parts[1].toLongOrNull() ?: 0L,
+                    name = parts.drop(2).joinToString(" ")
+                )
+            } else null
+        }.sortedByDescending { it.memKb }
+    }
+
+    /** Get memory info for specific package */
+    suspend fun getAppMemoryInfo(packageName: String): String {
+        val result = executeShell("dumpsys meminfo $packageName 2>/dev/null | head -20")
+        return if (result.success) result.stdout else ""
+    }
+
+    // ═══════════════════════════════════
+    // System tools
+    // ═══════════════════════════════════
+
+    /** Take screenshot and save to path */
+    suspend fun takeScreenshot(outputPath: String): Boolean {
+        val result = executeShell("screencap -p \"$outputPath\"")
+        return result.success
+    }
+
+    /** Start screen recording */
+    suspend fun startScreenRecord(outputPath: String, durationSec: Int = 30): Boolean {
+        val result = executeShell("screenrecord --time-limit $durationSec \"$outputPath\" &")
+        return result.success
+    }
+
+    /** Stop screen recording */
+    suspend fun stopScreenRecord(): Boolean {
+        val result = executeShell("pkill -INT screenrecord")
+        return result.success
+    }
+
+    /** Get current screen DPI */
+    suspend fun getScreenDpi(): Int {
+        val result = executeShell("wm density")
+        val match = Regex("(\\d+)").find(result.stdout)
+        return match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    }
+
+    /** Set screen DPI */
+    suspend fun setScreenDpi(dpi: Int): Boolean {
+        val result = executeShell("wm density $dpi")
+        return result.success
+    }
+
+    /** Reset screen DPI to default */
+    suspend fun resetScreenDpi(): Boolean {
+        val result = executeShell("wm density reset")
+        return result.success
+    }
+
+    /** Get current screen resolution */
+    suspend fun getScreenResolution(): String {
+        val result = executeShell("wm size")
+        return result.stdout.trim()
+    }
+
+    /** Set screen resolution */
+    suspend fun setScreenResolution(width: Int, height: Int): Boolean {
+        val result = executeShell("wm size ${width}x${height}")
+        return result.success
+    }
+
+    /** Reset screen resolution to default */
+    suspend fun resetScreenResolution(): Boolean {
+        val result = executeShell("wm size reset")
+        return result.success
+    }
+
+    /** Toggle WiFi */
+    suspend fun setWifi(enabled: Boolean): Boolean {
+        val result = executeShell("svc wifi ${if (enabled) "enable" else "disable"}")
+        return result.success
+    }
+
+    /** Toggle Bluetooth */
+    suspend fun setBluetooth(enabled: Boolean): Boolean {
+        val result = executeShell("svc bluetooth ${if (enabled) "enable" else "disable"}")
+        return result.success
+    }
+
+    /** Reboot device */
+    suspend fun reboot(mode: String = ""): Boolean {
+        val cmd = if (mode.isBlank()) "reboot" else "reboot $mode"
+        val result = executeShell(cmd)
+        return result.success
+    }
+
+    /** Get logcat (last N lines) */
+    suspend fun getLogcat(lines: Int = 200, filter: String = ""): String {
+        val filterArg = if (filter.isNotBlank()) " | grep -i \"$filter\"" else ""
+        val result = executeShell("logcat -d -t $lines$filterArg")
+        return if (result.success) result.stdout else result.stderr
+    }
+
+    /** Clear logcat */
+    suspend fun clearLogcat(): Boolean {
+        val result = executeShell("logcat -c")
+        return result.success
+    }
+
+    /** Get battery stats summary */
+    suspend fun getBatteryStats(): String {
+        val result = executeShell("dumpsys battery")
+        return if (result.success) result.stdout else ""
+    }
+
+    /** Get detailed battery stats per app */
+    suspend fun getBatteryStatsDetailed(): String {
+        val result = executeShell("dumpsys batterystats --charged 2>/dev/null | head -100")
+        return if (result.success) result.stdout else ""
+    }
+
+    /** Mount/remount partition */
+    suspend fun remount(partition: String, mode: String = "rw"): Boolean {
+        val result = executeShell("mount -o remount,$mode $partition")
+        return result.success
+    }
+
+    /** Get mount points */
+    suspend fun getMounts(): String {
+        val result = executeShell("mount")
+        return if (result.success) result.stdout else ""
+    }
+
+    /** Backup app data to tar file */
+    suspend fun backupAppData(packageName: String, outputPath: String): Boolean {
+        val result = executeShell("tar -czf \"$outputPath\" -C /data/data/$packageName . 2>/dev/null")
+        return result.success
+    }
+
+    // ═══════════════════════════════════
+    // Data models
+    // ═══════════════════════════════════
+
+    data class ProcessInfo(val pid: Int, val memKb: Long, val name: String)
 
     // ═══════════════════════════════════
     // Helpers
