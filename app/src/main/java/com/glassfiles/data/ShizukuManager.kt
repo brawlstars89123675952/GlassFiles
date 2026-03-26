@@ -45,9 +45,15 @@ object ShizukuManager {
     // Shell execution — direct API
     // ═══════════════════════════════════
 
+    private val newProcessMethod by lazy {
+        rikka.shizuku.Shizuku::class.java.getDeclaredMethod(
+            "newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java
+        ).apply { isAccessible = true }
+    }
+
     private suspend fun exec(command: String): ShellResult = withContext(Dispatchers.IO) {
         try {
-            val process = rikka.shizuku.Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)
+            val process = newProcessMethod.invoke(null, arrayOf("sh", "-c", command), null, null) as Process
             val stdout = BufferedReader(InputStreamReader(process.inputStream)).readText()
             val stderr = BufferedReader(InputStreamReader(process.errorStream)).readText()
             val exitCode = process.waitFor()

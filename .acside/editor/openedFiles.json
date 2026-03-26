@@ -1,36 +1,6 @@
 {
   "allFiles": [
     {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/Logger.java",
-      "selection": {
-        "end": {
-          "column": 0,
-          "index": 0,
-          "line": 0
-        },
-        "start": {
-          "column": 0,
-          "index": 0,
-          "line": 0
-        }
-      }
-    },
-    {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/LoggerApplication.java",
-      "selection": {
-        "end": {
-          "column": 0,
-          "index": 0,
-          "line": 0
-        },
-        "start": {
-          "column": 0,
-          "index": 0,
-          "line": 0
-        }
-      }
-    },
-    {
       "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/ShizukuScreen.kt",
       "selection": {
         "end": {
@@ -49,14 +19,14 @@
       "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/ShizukuManager.kt",
       "selection": {
         "end": {
-          "column": 1,
-          "index": 8717,
-          "line": 183
+          "column": 0,
+          "index": 8976,
+          "line": 190
         },
         "start": {
-          "column": 1,
-          "index": 8717,
-          "line": 183
+          "column": 0,
+          "index": 8976,
+          "line": 190
         }
       }
     }
