@@ -14,7 +14,22 @@
           "line": 288
         }
       }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/MainActivity.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 9745,
+          "line": 248
+        },
+        "start": {
+          "column": 0,
+          "index": 9745,
+          "line": 248
+        }
+      }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/security/SecurityManager.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/MainActivity.kt"
 }

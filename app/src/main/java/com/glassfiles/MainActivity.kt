@@ -69,13 +69,13 @@ class MainActivity : ComponentActivity() {
         appSettings = AppSettings(this)
 
         // ── Security checks ──
-        // Reset hashes on app update
-        val currentVersion = try { packageManager.getPackageInfo(packageName, 0).versionCode } catch (_: Exception) { 0 }
+        // Reset hashes on app update/reinstall (lastUpdateTime changes even if versionCode doesn't)
+        val updateTime = try { packageManager.getPackageInfo(packageName, 0).lastUpdateTime } catch (_: Exception) { 0L }
         val prefs = getSharedPreferences("gf_sec", MODE_PRIVATE)
-        val storedVersion = prefs.getInt("v", 0)
-        if (currentVersion != storedVersion) {
+        val storedUpdateTime = prefs.getLong("ut", 0L)
+        if (updateTime != storedUpdateTime) {
             SecurityManager.resetHashes(this)
-            prefs.edit().putInt("v", currentVersion).apply()
+            prefs.edit().putLong("ut", updateTime).apply()
         }
 
         val securityResult = SecurityManager.performChecks(this)
