@@ -81,7 +81,7 @@ class MainActivity : ComponentActivity() {
         val securityResult = SecurityManager.performChecks(this)
 
         setContent {
-            GlassFilesTheme(themeMode = appSettings.themeMode) {
+            GlassFilesTheme(themeMode = appSettings.themeMode, accentColor = appSettings.accentColor.color) {
                 var showSplash by remember { mutableStateOf(true) }
                 var showOnboarding by remember { mutableStateOf(!appSettings.onboardingDone) }
                 val isTampered = remember { !securityResult.isSecure && !BuildConfig.DEBUG }

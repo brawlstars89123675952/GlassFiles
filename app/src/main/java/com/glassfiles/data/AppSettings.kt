@@ -76,6 +76,7 @@ class AppSettings(context: Context) {
 
     fun changeAccentColor(color: AccentColor) {
         accentColor = color
+        com.glassfiles.ui.theme.ThemeState.accent = color.color
         prefs.edit().putString("accent_color", color.name).apply()
     }
 
@@ -88,6 +89,7 @@ class AppSettings(context: Context) {
 
     fun changeFolderIconStyle(style: FolderIconStyle) {
         folderIconStyle = style
+        com.glassfiles.ui.theme.ThemeState.folderStyle = style
         prefs.edit().putString("folder_icon_style", style.name).apply()
     }
 
@@ -124,7 +126,7 @@ class AppSettings(context: Context) {
     fun changeDefaultSort(v: DefaultSort) { defaultSort = v; prefs.edit().putString("default_sort", v.name).apply() }
     fun changeConfirmDelete(v: Boolean) { confirmDelete = v; prefs.edit().putBoolean("confirm_delete", v).apply() }
     fun changeStartFolder(v: StartFolder) { startFolder = v; prefs.edit().putString("start_folder", v.name).apply() }
-    fun changeFileFontSize(v: Int) { fileFontSize = v.coerceIn(12, 20); prefs.edit().putInt("file_font_size", fileFontSize).apply() }
+    fun changeFileFontSize(v: Int) { fileFontSize = v.coerceIn(12, 20); com.glassfiles.ui.theme.ThemeState.fileFontSize = fileFontSize; prefs.edit().putInt("file_font_size", fileFontSize).apply() }
 
     // ═══ AI ═══
     var aiDefaultModel by mutableStateOf(prefs.getString("ai_default_model", "GEMINI_FLASH") ?: "GEMINI_FLASH")
@@ -166,6 +168,11 @@ class AppSettings(context: Context) {
     init {
         // Sync language on startup
         Strings.lang = appLanguage
+        // Sync accent color
+        com.glassfiles.ui.theme.ThemeState.accent = accentColor.color
+        // Sync font size and folder style
+        com.glassfiles.ui.theme.ThemeState.fileFontSize = fileFontSize
+        com.glassfiles.ui.theme.ThemeState.folderStyle = folderIconStyle
     }
 
     // ═══ Сброс ═══

@@ -9,6 +9,8 @@ import com.glassfiles.data.AppThemeMode
 object ThemeState {
     var mode by mutableStateOf(AppThemeMode.LIGHT)
     var accent by mutableStateOf(Color(0xFF007AFF))
+    var fileFontSize by mutableStateOf(15)
+    var folderStyle by mutableStateOf(com.glassfiles.data.FolderIconStyle.DEFAULT)
     val isDark: Boolean get() = mode == AppThemeMode.DARK || mode == AppThemeMode.AMOLED
     val isAmoled: Boolean get() = mode == AppThemeMode.AMOLED
 }
@@ -36,7 +38,7 @@ val SurfaceLight: Color get() = when {
     else -> Color(0xFFF2F2F7)
 }
 val SurfaceWhite: Color get() = when {
-    ThemeState.isAmoled -> Color(0xFF000000)
+    ThemeState.isAmoled -> Color(0xFF0D0D0D)
     ThemeState.isDark -> Color(0xFF2C2C2E)
     else -> Color(0xFFFFFFFF)
 }
@@ -61,7 +63,7 @@ val TabBarInactiveColor: Color get() = when {
     else -> Color(0xFF999999)
 }
 val CardBackground: Color get() = when {
-    ThemeState.isAmoled -> Color(0xFF0A0A0A)
+    ThemeState.isAmoled -> Color(0xFF111111)
     ThemeState.isDark -> Color(0xFF2C2C2E)
     else -> Color(0xFFFFFFFF)
 }

@@ -286,7 +286,11 @@ private fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit) {
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var fileContent by remember { mutableStateOf<String?>(null) }
+    var editingPath by remember { mutableStateOf("") }
+    var isEditing by remember { mutableStateOf(false) }
     var cloneProgress by remember { mutableStateOf<String?>(null) }
+    var showUpload by remember { mutableStateOf(false) }
+    var showCreateFile by remember { mutableStateOf(false) }
 
     LaunchedEffect(selectedTab, currentPath) {
         loading = true
@@ -299,19 +303,89 @@ private fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit) {
         loading = false
     }
 
-    // File viewer overlay
+    // File viewer/editor overlay
     if (fileContent != null) {
+        var editText by remember(editingPath) { mutableStateOf(fileContent ?: "") }
+        var saving by remember { mutableStateOf(false) }
+        var commitMsg by remember { mutableStateOf("Update ${editingPath.substringAfterLast("/")}") }
+
         Column(Modifier.fillMaxSize().background(Color(0xFF1C1C1E))) {
             Row(Modifier.fillMaxWidth().background(Color(0xFF252526)).padding(top = 44.dp, start = 4.dp, end = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { fileContent = null }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = Color.White) }
-                Text(currentPath.substringAfterLast("/"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                IconButton(onClick = { fileContent = null; isEditing = false }) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = Color.White) }
+                Text(editingPath.substringAfterLast("/"), color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+                // Toggle edit mode
+                IconButton(onClick = { isEditing = !isEditing }) {
+                    Icon(if (isEditing) Icons.Rounded.Visibility else Icons.Rounded.Edit, null, Modifier.size(20.dp),
+                        tint = if (isEditing) Color(0xFF34C759) else Color.White) }
+                // Save
+                if (isEditing) {
+                    IconButton(onClick = {
+                        saving = true
+                        scope.launch {
+                            val sha = GitHubManager.getFileSha(context, repo.owner, repo.name, editingPath)
+                            val ok = GitHubManager.createOrUpdateFile(context, repo.owner, repo.name, editingPath, editText, commitMsg, sha.ifBlank { null })
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            saving = false
+                            if (ok) { fileContent = editText }
+                        }
+                    }) {
+                        if (saving) CircularProgressIndicator(Modifier.size(18.dp), color = Color(0xFF34C759), strokeWidth = 2.dp)
+                        else Icon(Icons.Rounded.Save, null, Modifier.size(20.dp), tint = Color(0xFF34C759))
+                    }
+                }
+                // Delete
+                IconButton(onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.deleteFile(context, repo.owner, repo.name, editingPath, "Delete ${editingPath.substringAfterLast("/")}")
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        if (ok) { fileContent = null; isEditing = false; contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) }
+                    }
+                }) { Icon(Icons.Rounded.Delete, null, Modifier.size(20.dp), tint = Color(0xFFFF3B30)) }
             }
-            Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).padding(10.dp)) {
-                Text(fileContent!!, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4), lineHeight = 18.sp)
+            if (isEditing) {
+                // Commit message
+                Row(Modifier.fillMaxWidth().background(Color(0xFF333336)).padding(horizontal = 12.dp, vertical = 6.dp)) {
+                    BasicTextField(commitMsg, { commitMsg = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF98989D), fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                        singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+                // Editable text
+                BasicTextField(editText, { editText = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFFD4D4D4), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp),
+                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(10.dp))
+            } else {
+                Box(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).horizontalScroll(rememberScrollState()).padding(10.dp)) {
+                    Text(fileContent!!, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4), lineHeight = 18.sp)
+                }
             }
         }
         return
+    }
+
+    // Create new file dialog
+    if (showCreateFile) {
+        var fileName by remember { mutableStateOf("") }
+        var fileBody by remember { mutableStateOf("") }
+        var commitMessage by remember { mutableStateOf("Create new file") }
+        AlertDialog(onDismissRequest = { showCreateFile = false }, containerColor = SurfaceWhite,
+            title = { Text(Strings.ghNewFile, fontWeight = FontWeight.Bold, color = TextPrimary) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(fileName, { fileName = it }, label = { Text(Strings.ghFileName) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(fileBody, { fileBody = it }, label = { Text(Strings.ghFileContent) }, modifier = Modifier.fillMaxWidth().height(150.dp), maxLines = 10)
+                OutlinedTextField(commitMessage, { commitMessage = it }, label = { Text(Strings.ghCommitMsg) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            } },
+            confirmButton = { TextButton(onClick = {
+                if (fileName.isNotBlank()) scope.launch {
+                    val path = if (currentPath.isNotBlank()) "$currentPath/$fileName" else fileName
+                    val ok = GitHubManager.createOrUpdateFile(context, repo.owner, repo.name, path, fileBody, commitMessage)
+                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                    if (ok) { showCreateFile = false; contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) }
+                }
+            }) { Text(Strings.create, color = Blue) } },
+            dismissButton = { TextButton(onClick = { showCreateFile = false }) { Text(Strings.cancel, color = TextSecondary) } }
+        )
     }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
@@ -327,6 +401,16 @@ private fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit) {
                 Text(repo.name, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 17.sp)
                 Text(if (currentPath.isNotBlank()) currentPath else repo.owner, fontSize = 12.sp, color = TextSecondary)
             }
+            // Create file
+            if (selectedTab == RepoTab.FILES) {
+                IconButton(onClick = { showCreateFile = true }) { Icon(Icons.Rounded.NoteAdd, null, Modifier.size(20.dp), tint = Color(0xFF34C759)) }
+            }
+            // Star
+            IconButton(onClick = { scope.launch { GitHubManager.starRepo(context, repo.owner, repo.name); Toast.makeText(context, "★", Toast.LENGTH_SHORT).show() } }) {
+                Icon(Icons.Rounded.Star, null, Modifier.size(20.dp), tint = Color(0xFFFFCC00)) }
+            // Fork
+            IconButton(onClick = { scope.launch { val ok = GitHubManager.forkRepo(context, repo.owner, repo.name); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } }) {
+                Icon(Icons.Rounded.CallSplit, null, Modifier.size(18.dp), tint = TextSecondary) }
             // Clone
             IconButton(onClick = {
                 cloneProgress = "Starting..."
@@ -371,7 +455,7 @@ private fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit) {
                     items(contents) { item ->
                         Row(Modifier.fillMaxWidth().clickable {
                             if (item.type == "dir") currentPath = item.path
-                            else scope.launch { fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, item.path); currentPath = item.path }
+                            else scope.launch { editingPath = item.path; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, item.path) }
                         }.padding(horizontal = 16.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(if (item.type == "dir") Icons.Rounded.Folder else Icons.Rounded.InsertDriveFile, null, Modifier.size(22.dp),

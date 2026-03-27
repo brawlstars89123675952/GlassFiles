@@ -32,9 +32,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.glassfiles.data.*
 import com.glassfiles.data.drive.GoogleDriveManager
+import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.components.*
 import com.glassfiles.ui.screens.*
 import com.glassfiles.ui.theme.*
+import coil.compose.AsyncImage
+import androidx.compose.ui.draw.clip
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -59,6 +62,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     var aiInitialPrompt by remember { mutableStateOf<String?>(null) }
     var aiInitialImage by remember { mutableStateOf<String?>(null) }
     var selectedTagName by remember { mutableStateOf("") }
+    val ghUser = remember { GitHubManager.getCachedUser(context) }
 
     fun navigateTo(screen: AppScreen) {
         previousScreen = activeScreen
@@ -291,14 +295,28 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                 GlassFab(backdrop, Icons.Rounded.Terminal, iconTint = Color(0xFF00E676), tintColor = Color(0x441A1A2E))
                                 if (terminalWasOpened) Box(Modifier.align(Alignment.TopEnd).size(12.dp).background(Color(0xFF00E676), CircleShape))
                             }
-                            Box(Modifier.align(Alignment.BottomCenter)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    GlassBottomTabBar(backdrop, selectedTab, { selectedTab = it }, tabs)
-                                    Spacer(Modifier.width(8.dp))
-                                    Box(Modifier.size(44.dp).background(CardBackground.copy(0.85f), CircleShape)
-                                        .clickable { navigateTo(AppScreen.SETTINGS) },
+                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 12.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                    // Left side — tab bar + settings
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        GlassBottomTabBar(backdrop, selectedTab, { selectedTab = it }, tabs)
+                                        Spacer(Modifier.width(8.dp))
+                                        Box(Modifier.size(44.dp).background(CardBackground.copy(0.85f), CircleShape)
+                                            .clickable { navigateTo(AppScreen.SETTINGS) },
+                                            contentAlignment = Alignment.Center) {
+                                            Icon(Icons.Rounded.Settings, null, Modifier.size(22.dp), tint = TextSecondary)
+                                        }
+                                    }
+                                    // Right side — GitHub avatar
+                                    Box(Modifier.size(44.dp).clip(CircleShape)
+                                        .background(CardBackground.copy(0.85f), CircleShape)
+                                        .clickable { navigateTo(AppScreen.GITHUB) },
                                         contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Rounded.Settings, null, Modifier.size(22.dp), tint = TextSecondary)
+                                        if (ghUser != null && ghUser.avatarUrl.isNotBlank()) {
+                                            AsyncImage(ghUser.avatarUrl, ghUser.login, Modifier.size(44.dp).clip(CircleShape))
+                                        } else {
+                                            Icon(Icons.Rounded.Code, null, Modifier.size(22.dp), tint = TextSecondary)
+                                        }
                                     }
                                 }
                             }

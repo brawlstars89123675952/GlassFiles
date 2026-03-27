@@ -162,6 +162,63 @@ object GitHubManager {
         } catch (e: Exception) { "" }
     }
 
+    /** Get file SHA (needed for update/delete) */
+    suspend fun getFileSha(context: Context, owner: String, repo: String, path: String): String {
+        val r = request(context, "/repos/$owner/$repo/contents/$path")
+        if (!r.success) return ""
+        return try { JSONObject(r.body).optString("sha", "") } catch (_: Exception) { "" }
+    }
+
+    /** Create or update file in repository */
+    suspend fun createOrUpdateFile(context: Context, owner: String, repo: String, path: String, content: String, message: String, sha: String? = null): Boolean {
+        val encoded = android.util.Base64.encodeToString(content.toByteArray(), android.util.Base64.NO_WRAP)
+        val body = JSONObject().apply {
+            put("message", message)
+            put("content", encoded)
+            if (sha != null) put("sha", sha)
+        }.toString()
+        return request(context, "/repos/$owner/$repo/contents/$path", "PUT", body).success
+    }
+
+    /** Delete file from repository */
+    suspend fun deleteFile(context: Context, owner: String, repo: String, path: String, message: String): Boolean {
+        val sha = getFileSha(context, owner, repo, path)
+        if (sha.isBlank()) return false
+        val body = JSONObject().apply {
+            put("message", message)
+            put("sha", sha)
+        }.toString()
+        return request(context, "/repos/$owner/$repo/contents/$path", "DELETE", body).success
+    }
+
+    /** Upload file to repository (from local file) */
+    suspend fun uploadFile(context: Context, owner: String, repo: String, remotePath: String, localFile: java.io.File, message: String): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                val bytes = localFile.readBytes()
+                val encoded = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                val existingSha = getFileSha(context, owner, repo, remotePath)
+                val body = JSONObject().apply {
+                    put("message", message)
+                    put("content", encoded)
+                    if (existingSha.isNotBlank()) put("sha", existingSha)
+                }.toString()
+                request(context, "/repos/$owner/$repo/contents/$remotePath", "PUT", body).success
+            } catch (e: Exception) { Log.e(TAG, "Upload error: ${e.message}"); false }
+        }
+
+    /** Star a repository */
+    suspend fun starRepo(context: Context, owner: String, repo: String): Boolean =
+        request(context, "/user/starred/$owner/$repo", "PUT").let { it.success || it.code == 204 }
+
+    /** Unstar a repository */
+    suspend fun unstarRepo(context: Context, owner: String, repo: String): Boolean =
+        request(context, "/user/starred/$owner/$repo", "DELETE").let { it.success || it.code == 204 }
+
+    /** Fork a repository */
+    suspend fun forkRepo(context: Context, owner: String, repo: String): Boolean =
+        request(context, "/repos/$owner/$repo/forks", "POST").success
+
     // ═══════════════════════════════════
     // Commits
     // ═══════════════════════════════════

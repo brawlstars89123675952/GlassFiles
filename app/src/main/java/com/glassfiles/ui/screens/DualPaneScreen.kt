@@ -149,6 +149,7 @@ fun DualPaneScreen(onBack: () -> Unit, appSettings: AppSettings? = null) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PaneView(
     path: String, files: List<FileItem>, loading: Boolean, selected: Set<String>,
@@ -192,10 +193,6 @@ private fun PaneView(
                     val isSel = file.path in selected
                     Row(Modifier.fillMaxWidth()
                         .background(if (isSel) Blue.copy(0.1f) else Color.Transparent)
-                        .clickable {
-                            if (selected.isNotEmpty()) onSelect(file.path)
-                            else if (file.isDirectory) onPathChange(file.path)
-                        }
                         .combinedClickable(
                             onClick = {
                                 if (selected.isNotEmpty()) onSelect(file.path)

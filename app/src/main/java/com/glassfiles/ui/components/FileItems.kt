@@ -141,7 +141,7 @@ fun FolderGridItem(item: FileItem, onClick: () -> Unit, onLongClick: (() -> Unit
             if (selected) Box(Modifier.align(Alignment.TopStart).size(22.dp).background(Blue, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, null, Modifier.size(14.dp), tint = Color.White) }
         }
-        Text(item.name, fontSize = 12.sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 15.sp, modifier = Modifier.widthIn(max = 100.dp))
+        Text(item.name, fontSize = (ThemeState.fileFontSize - 3).coerceAtLeast(10).sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 15.sp, modifier = Modifier.widthIn(max = 100.dp))
         if (item.itemCount > 0) Text("${item.itemCount} ${Strings.objects}", fontSize = 11.sp, color = TextSecondary, textAlign = TextAlign.Center)
         else Text(item.shortDate, fontSize = 11.sp, color = TextSecondary)
     }
@@ -163,7 +163,7 @@ fun FileGridItem(item: FileItem, onClick: () -> Unit, onLongClick: (() -> Unit)?
             if (selected) Box(Modifier.align(Alignment.TopStart).size(22.dp).background(Blue, CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Check, null, Modifier.size(14.dp), tint = Color.White) }
         }
-        Text(item.name, fontSize = 12.sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 15.sp, modifier = Modifier.widthIn(max = 100.dp))
+        Text(item.name, fontSize = (ThemeState.fileFontSize - 3).coerceAtLeast(10).sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, lineHeight = 15.sp, modifier = Modifier.widthIn(max = 100.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(item.shortDate, fontSize = 11.sp, color = TextSecondary)
             if (item.size > 0) Text(item.formattedSize, fontSize = 11.sp, color = TextSecondary)
@@ -188,7 +188,7 @@ fun FileListItem(item: FileItem, onClick: () -> Unit, onLongClick: (() -> Unit)?
         else if (item.type == FileType.IMAGE || item.type == FileType.VIDEO) FileThumbnail(item, 44.dp)
         else FileTypeIcon(item.type, item.extension, size = 44)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(item.name, style = MaterialTheme.typography.bodyLarge, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(item.name, fontSize = ThemeState.fileFontSize.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.shortDate, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
                 if (!item.isDirectory && item.size > 0) { Text("–", style = MaterialTheme.typography.bodySmall, color = TextSecondary); Text(item.formattedSize, style = MaterialTheme.typography.bodySmall, color = TextSecondary) }
