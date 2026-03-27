@@ -32,30 +32,39 @@ object SecurityManager {
 
     /**
      * Run all security checks.
-     * Call in onCreate BEFORE showing any content.
+     * Only BLOCKS the app if signature was previously stored and doesn't match (= APK was modified).
+     * Other checks are logged but don't block — prevents false positives.
      */
     fun performChecks(context: Context): SecurityResult {
         return try {
             val sigValid = verifySignature(context)
             val intValid = verifyIntegrity(context)
+
+            // These are informational — logged but don't block
             val debugger = isDebuggerAttached()
             val hooks = detectHooks()
-            val tampered = isAppTampered(context)
 
-            // Native checks
             var nativeThreats = 0
             try { nativeThreats = NativeSecurity.nativeSecurityCheck() } catch (_: Exception) {}
 
+            // Only block if signature was PREVIOUSLY stored and NOW doesn't match
+            // This means someone modified and re-signed the APK
+            val signatureTampered = !sigValid && wasSignaturePreviouslyStored(context)
+            val dexTampered = !intValid && wasDexPreviouslyStored(context)
+
             val result = SecurityResult(
-                signatureValid = sigValid,
-                integrityValid = intValid,
-                debuggerDetected = debugger || (nativeThreats and 0x01 != 0),
-                hookDetected = hooks || (nativeThreats and 0x02 != 0) || (nativeThreats and 0x04 != 0),
-                tampered = tampered
+                signatureValid = !signatureTampered,
+                integrityValid = !dexTampered,
+                debuggerDetected = false, // Don't block on debugger — too many false positives
+                hookDetected = false,     // Don't block on hooks — informational only
+                tampered = signatureTampered || dexTampered
             )
 
+            if (debugger || hooks || nativeThreats != 0) {
+                Log.w(TAG, "Security info: dbg=$debugger hook=$hooks native=$nativeThreats (not blocking)")
+            }
             if (!result.isSecure) {
-                Log.w(TAG, "Security: sig=$sigValid int=$intValid dbg=$debugger hook=$hooks tamper=$tampered native=$nativeThreats")
+                Log.w(TAG, "BLOCKED: sig=$sigValid(stored=${wasSignaturePreviouslyStored(context)}) int=$intValid(stored=${wasDexPreviouslyStored(context)})")
             }
 
             result
@@ -63,6 +72,14 @@ object SecurityManager {
             Log.e(TAG, "Security check error: ${e.message}")
             SecurityResult() // Default = secure (don't crash on check failure)
         }
+    }
+
+    private fun wasSignaturePreviouslyStored(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_SIG, null) != null
+    }
+
+    private fun wasDexPreviouslyStored(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_DEX, null) != null
     }
 
     // ═══════════════════════════════════

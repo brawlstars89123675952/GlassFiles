@@ -1,0 +1,20 @@
+{
+  "allFiles": [
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/security/SecurityManager.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 10555,
+          "line": 288
+        },
+        "start": {
+          "column": 0,
+          "index": 10555,
+          "line": 288
+        }
+      }
+    }
+  ],
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/security/SecurityManager.kt"
+}
