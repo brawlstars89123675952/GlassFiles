@@ -86,7 +86,7 @@ fun GlassBottomTabBar(
     val tabsBackdrop = rememberLayerBackdrop()
 
     Box(modifier.fillMaxWidth().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
-        BoxWithConstraints(Modifier.fillMaxWidth(0.76f), contentAlignment = Alignment.CenterStart) {
+        BoxWithConstraints(Modifier.fillMaxWidth(0.88f), contentAlignment = Alignment.CenterStart) {
             val density = LocalDensity.current
             val tabWidth = with(density) { (constraints.maxWidth.toFloat() - 8f.dp.toPx()) / tabs.size }
             val offsetAnimation = remember { Animatable(0f) }

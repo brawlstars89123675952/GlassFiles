@@ -76,6 +76,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
         if (screen == AppScreen.GITHUB) {
             githubWasOpened = true
             githubMiniMode = false
+            selectedTab = 2 // Reset to Browse so GitHub tab doesn't re-trigger
         }
         previousScreen = activeScreen
         activeScreen = screen
@@ -94,7 +95,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
         if (result.resultCode == Activity.RESULT_OK) GoogleSignIn.getSignedInAccountFromIntent(result.data).addOnSuccessListener { driveSignedIn = true }
     }
 
-    val tabs = listOf(TabItem(Icons.Outlined.Schedule, Strings.recents), TabItem(Icons.Outlined.People, Strings.shared), TabItem(Icons.Outlined.Folder, Strings.browse))
+    val tabs = listOf(TabItem(Icons.Outlined.Schedule, Strings.recents), TabItem(Icons.Outlined.People, Strings.shared), TabItem(Icons.Outlined.Folder, Strings.browse), TabItem(Icons.Outlined.Code, Strings.github))
 
     fun openFileExternal(path: String) {
         try {
@@ -326,6 +327,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                             onTheme = { navigateTo(AppScreen.THEME) },
                                             onGitHub = { navigateTo(AppScreen.GITHUB) },
                                             onTagClick = { tag -> selectedTagName = tag; navigateTo(AppScreen.TAGGED_FILES) })
+                                        3 -> { LaunchedEffect(Unit) { navigateTo(AppScreen.GITHUB) }; Box(Modifier.fillMaxSize().background(SurfaceLight)) }
                                     }
                                 }
                             }

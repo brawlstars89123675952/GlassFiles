@@ -5,13 +5,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 27396,
-          "line": 486
+          "index": 27679,
+          "line": 488
         },
         "start": {
           "column": 0,
-          "index": 27396,
-          "line": 486
+          "index": 27679,
+          "line": 488
         }
       }
     },
@@ -76,5 +76,5 @@
       }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/Localization.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/components/GlassComponents.kt"
 }
