@@ -61,7 +61,8 @@ fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, compact: Boole
 @Composable
 private fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Unit, onMinimize: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val compact = LocalGHCompact.current
-    Row(Modifier.fillMaxWidth().background(SurfaceWhite).padding(
+    val shape = if (compact) RoundedCornerShape(0.dp) else RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
+    Row(Modifier.fillMaxWidth().background(SurfaceWhite, shape).padding(
         top = if (compact) 4.dp else 48.dp, start = if (compact) 2.dp else 4.dp,
         end = if (compact) 4.dp else 8.dp, bottom = if (compact) 4.dp else 14.dp
     ), verticalAlignment = Alignment.CenterVertically) {

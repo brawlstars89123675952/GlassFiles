@@ -117,30 +117,6 @@ fun BrowseScreen(
                 val trashSizeText = remember(trashSize) { if (trashSize > 0) fmtTrashSize(trashSize) else null }
                 LRow(Icons.Rounded.DeleteOutline, Strings.trash, Red, subtitle = trashSizeText) { onTrash() }
             } } }
-        // GitHub card — prominent at top
-        item {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(16.dp))
-                .background(if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFFFFFFF))
-                .clickable { onGitHub() }.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    if (ghUser != null && ghUser.avatarUrl.isNotBlank()) {
-                        AsyncImage(ghUser.avatarUrl, ghUser.login, Modifier.size(52.dp).clip(CircleShape))
-                    } else {
-                        Box(Modifier.size(52.dp).clip(CircleShape).background(TextPrimary), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.Code, null, Modifier.size(26.dp), tint = SurfaceLight)
-                        }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text(if (ghUser != null) ghUser.name.ifBlank { "@${ghUser.login}" } else "GitHub",
-                            fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(if (ghUser != null) "${ghUser.publicRepos + ghUser.privateRepos} ${Strings.ghRepos.lowercase()}"
-                            else Strings.ghSignIn,
-                            fontSize = 13.sp, color = TextSecondary)
-                    }
-                    Icon(Icons.AutoMirrored.Rounded.ArrowForwardIos, null, Modifier.size(14.dp), tint = TextTertiary)
-                }
-            }
-        }
         // Tools
         item { CHeader(Strings.tools, toolsExpanded) { toolsExpanded = !toolsExpanded } }
         item { AnimatedVisibility(toolsExpanded, enter = expandVertically(tween(300)) + fadeIn(tween(200)), exit = shrinkVertically(tween(250)) + fadeOut(tween(150))) {

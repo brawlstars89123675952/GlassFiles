@@ -73,6 +73,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     // GitHub persistent state — like terminal, stays alive when minimized
     var githubWasOpened by remember { mutableStateOf(false) }
     var githubMiniMode by remember { mutableStateOf(false) } // true = floating mini window
+    var githubBubbleMode by remember { mutableStateOf(false) } // true = small floating bubble
     var githubUploadFile by remember { mutableStateOf<FileItem?>(null) } // file pending upload to GitHub
     var githubCommitFiles by remember { mutableStateOf<List<String>?>(null) } // files pending commit to GitHub
     val githubAvatarUrl = remember { com.glassfiles.data.github.GitHubManager.getCachedUser(context)?.avatarUrl }
@@ -345,10 +346,10 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                     AnimatedVisibility(folderStack.isEmpty(), enter = fadeIn(tween(300)) + scaleIn(tween(300)),
                         exit = fadeOut(tween(200)) + scaleOut(tween(200)), modifier = Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxSize()) {
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 168.dp).clickable { navigateTo(AppScreen.AI_CHAT) }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 148.dp).clickable { navigateTo(AppScreen.AI_CHAT) }) {
                                 GlassFab(backdrop, Icons.Rounded.AutoAwesome, iconTint = Color.White, tintColor = Color(0x66238636))
                             }
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 112.dp).clickable { terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 96.dp).clickable { terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }) {
                                 GlassFab(backdrop, Icons.Rounded.Terminal, iconTint = Color(0xFF00E676), tintColor = Color(0x441A1A2E))
                                 if (terminalWasOpened) Box(Modifier.align(Alignment.TopEnd).size(12.dp).background(Color(0xFF00E676), CircleShape))
                             }
@@ -362,7 +363,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
         }
 
         // GitHub floating resizable window — contains actual GitHubScreen
-        if (githubWasOpened && githubMiniMode) {
+        if (githubWasOpened && githubMiniMode && !githubBubbleMode) {
             GitHubFloatingWindow(
                 onExpand = {
                     githubMiniMode = false
@@ -371,8 +372,20 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                 },
                 onClose = {
                     githubMiniMode = false
+                    githubBubbleMode = false
                     githubWasOpened = false
+                },
+                onCollapse = {
+                    githubBubbleMode = true
                 }
+            )
+        }
+
+        // GitHub bubble — small draggable circle, tap to restore mini window
+        if (githubWasOpened && githubBubbleMode) {
+            GitHubBubble(
+                onExpand = { githubBubbleMode = false; githubMiniMode = true },
+                onClose = { githubBubbleMode = false; githubMiniMode = false; githubWasOpened = false }
             )
         }
 
@@ -417,7 +430,8 @@ private fun PermissionScreen(onRequest: () -> Unit) {
 @Composable
 private fun GitHubFloatingWindow(
     onExpand: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onCollapse: () -> Unit
 ) {
     val density = LocalDensity.current
 
@@ -430,11 +444,8 @@ private fun GitHubFloatingWindow(
         val maxW = screenW * 0.95f
         val maxH = screenH * 0.90f
 
-        // Window size
         var windowW by remember { mutableFloatStateOf(screenW * 0.60f) }
         var windowH by remember { mutableFloatStateOf(screenH * 0.55f) }
-
-        // Window position
         var offsetX by remember { mutableFloatStateOf(screenW * 0.35f) }
         var offsetY by remember { mutableFloatStateOf(screenH * 0.35f) }
 
@@ -444,129 +455,113 @@ private fun GitHubFloatingWindow(
             offsetY = offsetY.coerceIn(with(density) { 32.dp.toPx() }, screenH - windowH + m)
         }
 
-        val titleBarH = with(density) { 40.dp.toPx() }
+        // NO scrim — interface underneath is fully interactive
 
-        // Semi-transparent scrim
-        Box(
-            Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.15f))
-                .clickable(
-                    indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-                ) { /* block taps through */ }
-        )
-
-        // Floating window
         Box(
             Modifier
                 .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
-                .size(
-                    width = with(density) { windowW.toDp() },
-                    height = with(density) { windowH.toDp() }
-                )
+                .size(width = with(density) { windowW.toDp() }, height = with(density) { windowH.toDp() })
                 .shadow(16.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(SurfaceLight)
                 .border(0.5.dp, SeparatorColor, RoundedCornerShape(16.dp))
         ) {
             Column(Modifier.fillMaxSize()) {
-                // ─── Title bar — draggable ───
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .background(SurfaceWhite)
-                        .pointerInput(Unit) {
-                            detectDragGestures { _, dragAmount ->
-                                offsetX += dragAmount.x
-                                offsetY += dragAmount.y
-                                clamp()
-                            }
-                        }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    Modifier.fillMaxWidth().background(SurfaceWhite)
+                        .pointerInput(Unit) { detectDragGestures { _, d -> offsetX += d.x; offsetY += d.y; clamp() } }
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Drag handle
-                    Box(
-                        Modifier.width(32.dp).height(4.dp)
-                            .clip(RoundedCornerShape(2.dp)).background(TextTertiary)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Icon(Icons.Rounded.Code, null, Modifier.size(16.dp), tint = Blue)
+                    Box(Modifier.width(28.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary))
                     Spacer(Modifier.width(6.dp))
-                    Text("GitHub", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
-
-                    // Expand button
-                    Box(
-                        Modifier.size(28.dp).clip(CircleShape)
-                            .background(Blue.copy(0.1f)).clickable { onExpand() },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.OpenInFull, null, Modifier.size(14.dp), tint = Blue) }
-                    Spacer(Modifier.width(6.dp))
-
-                    // Close button
-                    Box(
-                        Modifier.size(28.dp).clip(CircleShape)
-                            .background(Color(0xFFFF3B30).copy(0.1f)).clickable { onClose() },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = Color(0xFFFF3B30)) }
+                    Icon(Icons.Rounded.Code, null, Modifier.size(14.dp), tint = Blue)
+                    Spacer(Modifier.width(4.dp))
+                    Text("GitHub", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+                    // Collapse to bubble
+                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF9500).copy(0.1f)).clickable { onCollapse() }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.RemoveCircleOutline, null, Modifier.size(13.dp), tint = Color(0xFFFF9500))
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    // Expand
+                    Box(Modifier.size(26.dp).clip(CircleShape).background(Blue.copy(0.1f)).clickable { onExpand() }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.OpenInFull, null, Modifier.size(13.dp), tint = Blue)
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    // Close
+                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF3B30).copy(0.1f)).clickable { onClose() }, contentAlignment = Alignment.Center) {
+                        Icon(Icons.Rounded.Close, null, Modifier.size(13.dp), tint = Color(0xFFFF3B30))
+                    }
                 }
-
                 Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
-
-                // ─── GitHub content — clipped, scrollable inside ───
                 Box(Modifier.fillMaxSize().weight(1f)) {
-                    GitHubScreen(
-                        onBack = { onClose() },
-                        onMinimize = { /* already mini */ },
-                        compact = true
-                    )
+                    GitHubScreen(onBack = { onCollapse() }, onMinimize = { onCollapse() }, compact = true)
                 }
             }
-
-            // ─── Resize handle — bottom-right corner ───
-            Box(
-                Modifier.align(Alignment.BottomEnd).size(28.dp)
-                    .pointerInput(Unit) {
-                        detectDragGestures { _, dragAmount ->
-                            windowW = (windowW + dragAmount.x).coerceIn(minW, maxW)
-                            windowH = (windowH + dragAmount.y).coerceIn(minH, maxH)
-                            clamp()
-                        }
-                    }.padding(4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.DragHandle, null,
-                    Modifier.size(14.dp).graphicsLayer { rotationZ = -45f }, tint = TextTertiary)
+            // Resize handles
+            Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }.padding(4.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.DragHandle, null, Modifier.size(14.dp).graphicsLayer { rotationZ = -45f }, tint = TextTertiary)
             }
-
-            // ─── Resize handle — bottom edge ───
-            Box(
-                Modifier.align(Alignment.BottomCenter)
-                    .fillMaxWidth(0.4f).height(12.dp)
-                    .pointerInput(Unit) {
-                        detectDragGestures { _, dragAmount ->
-                            windowH = (windowH + dragAmount.y).coerceIn(minH, maxH)
-                            clamp()
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.4f).height(12.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }, contentAlignment = Alignment.Center) {
                 Box(Modifier.width(40.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
             }
-
-            // ─── Resize handle — right edge ───
-            Box(
-                Modifier.align(Alignment.CenterEnd)
-                    .width(12.dp).fillMaxHeight(0.4f)
-                    .pointerInput(Unit) {
-                        detectDragGestures { _, dragAmount ->
-                            windowW = (windowW + dragAmount.x).coerceIn(minW, maxW)
-                            clamp()
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+            Box(Modifier.align(Alignment.CenterEnd).width(12.dp).fillMaxHeight(0.4f).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); clamp() } }, contentAlignment = Alignment.Center) {
                 Box(Modifier.width(3.dp).height(40.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════
+// ═══════════════════════════════════
+// GitHub Bubble — collapsed floating button
+// ═══════════════════════════════════
+
+@Composable
+private fun GitHubBubble(
+    onExpand: () -> Unit,
+    onClose: () -> Unit
+) {
+    val density = LocalDensity.current
+    val context = LocalContext.current
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    var initialized by remember { mutableStateOf(false) }
+    val avatarUrl = remember { com.glassfiles.data.github.GitHubManager.getCachedUser(context)?.avatarUrl }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val maxW = constraints.maxWidth.toFloat()
+        val maxH = constraints.maxHeight.toFloat()
+        val bubbleSize = with(density) { 52.dp.toPx() }
+
+        if (!initialized) {
+            offsetX = maxW - bubbleSize - with(density) { 16.dp.toPx() }
+            offsetY = maxH - bubbleSize - with(density) { 120.dp.toPx() }
+            initialized = true
+        }
+
+        Box(
+            Modifier
+                .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        offsetX = (offsetX + dragAmount.x).coerceIn(0f, maxW - bubbleSize)
+                        offsetY = (offsetY + dragAmount.y).coerceIn(0f, maxH - bubbleSize)
+                    }
+                }
+                .size(52.dp)
+                .shadow(8.dp, CircleShape)
+                .clip(CircleShape)
+                .background(SurfaceWhite)
+                .border(1.dp, Blue.copy(0.3f), CircleShape)
+                .clickable { onExpand() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (avatarUrl != null) {
+                coil.compose.AsyncImage(avatarUrl, "GitHub", Modifier.size(52.dp).clip(CircleShape))
+            } else {
+                Icon(Icons.Rounded.Code, null, Modifier.size(24.dp), tint = Blue)
             }
         }
     }

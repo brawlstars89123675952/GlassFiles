@@ -305,14 +305,24 @@ fun FolderDetailScreen(
                 }
             }
         }
-        // Search bar — dark in dark mode
-        val searchBg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFE9E9EB)
+        // Search bar
+        val searchBg = when { ThemeState.isAmoled -> Color(0xFF111111); ThemeState.isDark -> Color(0xFF2C2C2E); else -> Color(0xFFE9E9EB) }
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).height(36.dp)
             .clip(RoundedCornerShape(10.dp)).background(searchBg).padding(horizontal = 12.dp),
             contentAlignment = Alignment.CenterStart) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = TextSecondary)
-                Text(if (searchQuery.isEmpty()) Strings.search else searchQuery, fontSize = 15.sp, color = if (searchQuery.isEmpty()) TextSecondary else TextPrimary)
+                Box(Modifier.weight(1f)) {
+                    if (searchQuery.isEmpty()) Text(Strings.search, fontSize = 15.sp, color = TextSecondary)
+                    androidx.compose.foundation.text.BasicTextField(
+                        searchQuery, { searchQuery = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 15.sp),
+                        singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (searchQuery.isNotEmpty()) {
+                    Icon(Icons.Rounded.Close, null, Modifier.size(16.dp).clickable { searchQuery = "" }, tint = TextSecondary)
+                }
             }
         }
 

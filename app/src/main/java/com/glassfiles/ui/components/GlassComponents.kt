@@ -65,8 +65,8 @@ import kotlin.math.sign
 
 data class TabItem(val icon: ImageVector, val label: String, val imageUrl: String? = null)
 
-private val BarHeight = 76.dp
-private val CapsuleHeight = 66.dp
+private val BarHeight = 62.dp
+private val CapsuleHeight = 52.dp
 
 // \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
 // Glass Bottom Tab Bar (blur=2, \u0431\u043e\u043b\u044c\u0448\u0435 lens)
@@ -86,7 +86,7 @@ fun GlassBottomTabBar(
     val containerColor = if (isLightTheme) Color(0x22F8F8FA) else Color(0x22000000)
     val tabsBackdrop = rememberLayerBackdrop()
 
-    Box(modifier.fillMaxWidth().padding(bottom = 24.dp), contentAlignment = Alignment.BottomCenter) {
+    Box(modifier.fillMaxWidth().padding(bottom = 20.dp), contentAlignment = Alignment.BottomCenter) {
         BoxWithConstraints(Modifier.fillMaxWidth(0.88f), contentAlignment = Alignment.CenterStart) {
             val density = LocalDensity.current
             val tabWidth = with(density) { (constraints.maxWidth.toFloat() - 8f.dp.toPx()) / tabs.size }
@@ -212,15 +212,15 @@ private fun NavItemContent(item: TabItem, isSelected: Boolean) {
         if (item.imageUrl != null) {
             coil.compose.AsyncImage(
                 item.imageUrl, item.label,
-                modifier = Modifier.size(26.dp)
+                modifier = Modifier.size(28.dp)
                     .clip(CircleShape)
                     .border(if (isSelected) 1.5.dp else 0.dp, if (isSelected) Blue else Color.Transparent, CircleShape)
             )
         } else {
-            Icon(item.icon, null, Modifier.size(26.dp), tint = color)
+            Icon(item.icon, null, Modifier.size(28.dp), tint = color)
         }
-        Spacer(Modifier.height(2.dp))
-        Text(item.label, color = color, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal)
+        Spacer(Modifier.height(1.dp))
+        Text(item.label, color = color, fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal)
     }
 }
 
@@ -273,7 +273,7 @@ private val GlassHighBorder = Color(0x55FFFFFF)
 
 @Composable
 fun GlassSearchBar(query: String, onQueryChange: (String) -> Unit, placeholder: String = Strings.search, modifier: Modifier = Modifier) {
-    val bg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFE9E9EB)
+    val bg = when { ThemeState.isAmoled -> Color(0xFF111111); ThemeState.isDark -> Color(0xFF2C2C2E); else -> Color(0xFFE9E9EB) }
     Box(
         modifier.fillMaxWidth().height(36.dp)
             .background(bg, RoundedCornerShape(10.dp))
@@ -293,7 +293,7 @@ fun GlassCard(
     cornerRadius: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val bg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFFFFFFF)
+    val bg = when { ThemeState.isAmoled -> Color(0xFF0C0C0C); ThemeState.isDark -> Color(0xFF2C2C2E); else -> Color(0xFFFFFFFF) }
     Column(
         modifier.fillMaxWidth()
             .background(bg, RoundedCornerShape(cornerRadius))
@@ -305,10 +305,10 @@ fun GlassTopBar(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
-    val bg = if (ThemeState.isDark) Color(0xFF1C1C1E) else Color(0xFFF2F2F7)
+    val bg = when { ThemeState.isAmoled -> Color(0xFF050505); ThemeState.isDark -> Color(0xFF1C1C1E); else -> Color(0xFFF2F2F7) }
     Row(
         modifier.fillMaxWidth()
-            .background(bg)
+            .background(bg, RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
             .padding(top = 52.dp, start = 4.dp, end = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
@@ -320,7 +320,7 @@ fun GlassToolbar(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
-    val bg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFF2F2F7)
+    val bg = when { ThemeState.isAmoled -> Color(0xFF0C0C0C); ThemeState.isDark -> Color(0xFF2C2C2E); else -> Color(0xFFF2F2F7) }
     Row(
         modifier.fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 2.dp)
