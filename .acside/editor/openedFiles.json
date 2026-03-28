@@ -5,13 +5,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 40052,
-          "line": 744
+          "index": 40085,
+          "line": 745
         },
         "start": {
           "column": 0,
-          "index": 40052,
-          "line": 744
+          "index": 40085,
+          "line": 745
         }
       }
     },
@@ -104,7 +104,22 @@
           "line": 328
         }
       }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/RecentsScreen.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 12308,
+          "line": 216
+        },
+        "start": {
+          "column": 0,
+          "index": 12308,
+          "line": 216
+        }
+      }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/components/GlassComponents.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/RecentsScreen.kt"
 }
