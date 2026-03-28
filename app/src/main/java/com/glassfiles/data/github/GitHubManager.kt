@@ -266,6 +266,99 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/issues", "POST", json).success
     }
 
+    /** Get issue comments */
+    suspend fun getIssueComments(context: Context, owner: String, repo: String, number: Int): List<GHComment> {
+        val r = request(context, "/repos/$owner/$repo/issues/$number/comments?per_page=50")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHComment(j.optInt("id"), j.optString("body"), j.optJSONObject("user")?.optString("login") ?: "",
+                    j.optJSONObject("user")?.optString("avatar_url") ?: "", j.optString("created_at"))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    /** Add comment to issue */
+    suspend fun addIssueComment(context: Context, owner: String, repo: String, number: Int, body: String): Boolean {
+        val json = JSONObject().apply { put("body", body) }.toString()
+        return request(context, "/repos/$owner/$repo/issues/$number/comments", "POST", json).success
+    }
+
+    /** Close issue */
+    suspend fun closeIssue(context: Context, owner: String, repo: String, number: Int): Boolean {
+        val json = JSONObject().apply { put("state", "closed") }.toString()
+        return request(context, "/repos/$owner/$repo/issues/$number", "PATCH", json).success
+    }
+
+    /** Reopen issue */
+    suspend fun reopenIssue(context: Context, owner: String, repo: String, number: Int): Boolean {
+        val json = JSONObject().apply { put("state", "open") }.toString()
+        return request(context, "/repos/$owner/$repo/issues/$number", "PATCH", json).success
+    }
+
+    // ═══════════════════════════════════
+    // Pull Requests
+    // ═══════════════════════════════════
+
+    suspend fun getPullRequests(context: Context, owner: String, repo: String, state: String = "open"): List<GHPullRequest> {
+        val r = request(context, "/repos/$owner/$repo/pulls?state=$state&per_page=30")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHPullRequest(j.optInt("number"), j.optString("title"), j.optString("state"),
+                    j.optJSONObject("user")?.optString("login") ?: "", j.optString("created_at"),
+                    j.optJSONObject("head")?.optString("ref") ?: "", j.optJSONObject("base")?.optString("ref") ?: "",
+                    j.optBoolean("merged", false), j.optInt("comments", 0))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createPullRequest(context: Context, owner: String, repo: String, title: String, head: String, base: String, body: String = ""): Boolean {
+        val json = JSONObject().apply { put("title", title); put("head", head); put("base", base); put("body", body) }.toString()
+        return request(context, "/repos/$owner/$repo/pulls", "POST", json).success
+    }
+
+    // ═══════════════════════════════════
+    // Gists
+    // ═══════════════════════════════════
+
+    suspend fun getGists(context: Context): List<GHGist> {
+        val r = request(context, "/gists?per_page=30")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val files = j.optJSONObject("files")
+                val fileNames = files?.keys()?.asSequence()?.toList() ?: emptyList()
+                GHGist(j.optString("id"), j.optString("description"), fileNames,
+                    j.optBoolean("public", true), j.optString("created_at"),
+                    j.optString("html_url"))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createGist(context: Context, description: String, fileName: String, content: String, isPublic: Boolean): Boolean {
+        val files = JSONObject().apply { put(fileName, JSONObject().apply { put("content", content) }) }
+        val json = JSONObject().apply { put("description", description); put("public", isPublic); put("files", files) }.toString()
+        return request(context, "/gists", "POST", json).success
+    }
+
+    suspend fun getGistContent(context: Context, gistId: String): Map<String, String> {
+        val r = request(context, "/gists/$gistId")
+        if (!r.success) return emptyMap()
+        return try {
+            val files = JSONObject(r.body).optJSONObject("files") ?: return emptyMap()
+            val result = mutableMapOf<String, String>()
+            files.keys().forEach { key -> result[key] = files.getJSONObject(key).optString("content", "") }
+            result
+        } catch (e: Exception) { emptyMap() }
+    }
+
     // ═══════════════════════════════════
     // Branches
     // ═══════════════════════════════════
@@ -370,3 +463,11 @@ data class GHIssue(val number: Int, val title: String, val state: String, val au
 
 data class GHContent(val name: String, val path: String, val type: String, val size: Long,
     val downloadUrl: String, val sha: String)
+
+data class GHComment(val id: Int, val body: String, val author: String, val avatarUrl: String, val createdAt: String)
+
+data class GHPullRequest(val number: Int, val title: String, val state: String, val author: String,
+    val createdAt: String, val headBranch: String, val baseBranch: String, val merged: Boolean, val comments: Int)
+
+data class GHGist(val id: String, val description: String, val files: List<String>,
+    val isPublic: Boolean, val createdAt: String, val htmlUrl: String)

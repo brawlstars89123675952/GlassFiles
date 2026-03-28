@@ -32,12 +32,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.glassfiles.data.*
 import com.glassfiles.data.drive.GoogleDriveManager
-import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.components.*
 import com.glassfiles.ui.screens.*
 import com.glassfiles.ui.theme.*
-import coil.compose.AsyncImage
-import androidx.compose.ui.draw.clip
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -62,7 +59,6 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     var aiInitialPrompt by remember { mutableStateOf<String?>(null) }
     var aiInitialImage by remember { mutableStateOf<String?>(null) }
     var selectedTagName by remember { mutableStateOf("") }
-    val ghUser = remember { GitHubManager.getCachedUser(context) }
 
     fun navigateTo(screen: AppScreen) {
         previousScreen = activeScreen
@@ -82,7 +78,12 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
         if (result.resultCode == Activity.RESULT_OK) GoogleSignIn.getSignedInAccountFromIntent(result.data).addOnSuccessListener { driveSignedIn = true }
     }
 
-    val tabs = listOf(TabItem(Icons.Outlined.Schedule, Strings.recents), TabItem(Icons.Outlined.People, Strings.shared), TabItem(Icons.Outlined.Folder, Strings.browse))
+    val tabs = listOf(
+        TabItem(Icons.Outlined.Schedule, Strings.recents),
+        TabItem(Icons.Outlined.People, Strings.shared),
+        TabItem(Icons.Outlined.Folder, Strings.browse),
+        TabItem(Icons.Rounded.Code, "GitHub")
+    )
 
     fun openFileExternal(path: String) {
         try {
@@ -277,7 +278,9 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                             onDualPane = { navigateTo(AppScreen.DUAL_PANE) },
                                             onTheme = { navigateTo(AppScreen.THEME) },
                                             onGitHub = { navigateTo(AppScreen.GITHUB) },
+                                            onSettings = { navigateTo(AppScreen.SETTINGS) },
                                             onTagClick = { tag -> selectedTagName = tag; navigateTo(AppScreen.TAGGED_FILES) })
+                                        3 -> GitHubScreen(onBack = { selectedTab = 2 })
                                     }
                                 }
                             }
@@ -288,32 +291,15 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                     AnimatedVisibility(folderStack.isEmpty(), enter = fadeIn(tween(300)) + scaleIn(tween(300)),
                         exit = fadeOut(tween(200)) + scaleOut(tween(200)), modifier = Modifier.fillMaxSize()) {
                         Box(Modifier.fillMaxSize()) {
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 152.dp).clickable { navigateTo(AppScreen.AI_CHAT) }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 168.dp).clickable { navigateTo(AppScreen.AI_CHAT) }) {
                                 GlassFab(backdrop, Icons.Rounded.AutoAwesome, iconTint = Color.White, tintColor = Color(0x66238636))
                             }
-                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 96.dp).clickable { terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }) {
+                            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 110.dp).clickable { terminalWasOpened = true; navigateTo(AppScreen.TERMINAL) }) {
                                 GlassFab(backdrop, Icons.Rounded.Terminal, iconTint = Color(0xFF00E676), tintColor = Color(0x441A1A2E))
                                 if (terminalWasOpened) Box(Modifier.align(Alignment.TopEnd).size(12.dp).background(Color(0xFF00E676), CircleShape))
                             }
-                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    // Left — tab bar (constrained width)
-                                    Box(Modifier.weight(1f, fill = false)) {
-                                        GlassBottomTabBar(backdrop, selectedTab, { selectedTab = it }, tabs)
-                                    }
-                                    Spacer(Modifier.width(8.dp))
-                                    // Right — GitHub avatar circle (same height as tab bar)
-                                    Box(Modifier.size(48.dp).clip(CircleShape)
-                                        .background(CardBackground.copy(0.85f))
-                                        .clickable { navigateTo(AppScreen.GITHUB) },
-                                        contentAlignment = Alignment.Center) {
-                                        if (ghUser != null && ghUser.avatarUrl.isNotBlank()) {
-                                            AsyncImage(ghUser.avatarUrl, ghUser.login, Modifier.size(48.dp).clip(CircleShape))
-                                        } else {
-                                            Icon(Icons.Rounded.Code, null, Modifier.size(24.dp), tint = TextSecondary)
-                                        }
-                                    }
-                                }
+                            Box(Modifier.align(Alignment.BottomCenter)) {
+                                GlassBottomTabBar(backdrop, selectedTab, { selectedTab = it }, tabs)
                             }
                         }
                     }

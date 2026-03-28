@@ -25,6 +25,7 @@ object Strings {
     val create get() = s("Создать", "Create")
     val search get() = s("Поиск", "Search")
     val settings get() = s("Настройки", "Settings")
+    val settingsSub get() = s("Язык, AI, файловый менеджер", "Language, AI, file manager")
     val done get() = s("Готово", "Done")
     val error get() = s("Ошибка", "Error")
     val close get() = s("Закрыть", "Close")

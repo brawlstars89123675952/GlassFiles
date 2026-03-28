@@ -52,6 +52,7 @@ fun BrowseScreen(
     onDualPane: () -> Unit = {},
     onTheme: () -> Unit = {},
     onGitHub: () -> Unit = {},
+    onSettings: () -> Unit = {},
     onTagClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -128,6 +129,7 @@ fun BrowseScreen(
                 Dv(); LRow(Icons.Rounded.Cloud, Strings.ftpClient, Color(0xFF00BCD4), subtitle = Strings.ftpClientSub) { onFtp() }
                 Dv(); LRow(Icons.Rounded.ViewColumn, Strings.dualPane, Color(0xFF607D8B), subtitle = Strings.dualPaneSub) { onDualPane() }
                 Dv(); LRow(Icons.Rounded.Palette, Strings.themeCustomize, Color(0xFFE91E63), subtitle = Strings.themeCustomizeSub) { onTheme() }
+                Dv(); LRow(Icons.Rounded.Settings, Strings.settings, Color(0xFF8E8E93), subtitle = Strings.settingsSub) { onSettings() }
             } } }
         // Tags
         item { CHeader(Strings.tags, tagsExpanded) { tagsExpanded = !tagsExpanded } }
