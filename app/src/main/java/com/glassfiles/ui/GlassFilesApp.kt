@@ -503,7 +503,8 @@ private fun GitHubFloatingWindow(
                 Box(Modifier.fillMaxSize().weight(1f)) {
                     GitHubScreen(
                         onBack = { onClose() },
-                        onMinimize = { /* already mini */ }
+                        onMinimize = { /* already mini */ },
+                        compact = true
                     )
                 }
             }
