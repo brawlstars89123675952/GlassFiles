@@ -25,30 +25,12 @@ enum class AccentColor(val color: androidx.compose.ui.graphics.Color, val label:
     PINK(androidx.compose.ui.graphics.Color(0xFFFF2D55), "Pink"),
     INDIGO(androidx.compose.ui.graphics.Color(0xFF5856D6), "Indigo"),
     MINT(androidx.compose.ui.graphics.Color(0xFF00C7BE), "Mint"),
-    YELLOW(androidx.compose.ui.graphics.Color(0xFFFFCC00), "Yellow"),
-    // New shades
-    DEEP_BLUE(androidx.compose.ui.graphics.Color(0xFF0055CC), "Deep Blue"),
-    SKY(androidx.compose.ui.graphics.Color(0xFF64B5F6), "Sky"),
-    LIME(androidx.compose.ui.graphics.Color(0xFF8BC34A), "Lime"),
-    EMERALD(androidx.compose.ui.graphics.Color(0xFF009688), "Emerald"),
-    CORAL(androidx.compose.ui.graphics.Color(0xFFFF6F61), "Coral"),
-    SALMON(androidx.compose.ui.graphics.Color(0xFFFA8072), "Salmon"),
-    LAVENDER(androidx.compose.ui.graphics.Color(0xFF9C89B8), "Lavender"),
-    MAGENTA(androidx.compose.ui.graphics.Color(0xFFE91E63), "Magenta"),
-    GOLD(androidx.compose.ui.graphics.Color(0xFFFFB300), "Gold"),
-    BRONZE(androidx.compose.ui.graphics.Color(0xFFCD7F32), "Bronze"),
-    CYAN(androidx.compose.ui.graphics.Color(0xFF00BCD4), "Cyan"),
-    ROSE(androidx.compose.ui.graphics.Color(0xFFE8A0BF), "Rose"),
-    PEACH(androidx.compose.ui.graphics.Color(0xFFFFAB91), "Peach"),
-    GRAPHITE(androidx.compose.ui.graphics.Color(0xFF616161), "Graphite")
+    YELLOW(androidx.compose.ui.graphics.Color(0xFFFFCC00), "Yellow")
 }
 
 enum class FolderIconStyle {
-    DEFAULT, ROUNDED, SHARP, MINIMAL, CIRCLE, GRADIENT, OUTLINED, FILLED
-    ; val label: String get() = when (this) {
-        DEFAULT -> "Default"; ROUNDED -> "Rounded"; SHARP -> "Sharp"; MINIMAL -> "Minimal"
-        CIRCLE -> "Circle"; GRADIENT -> "Gradient"; OUTLINED -> "Outlined"; FILLED -> "Filled"
-    }
+    DEFAULT, ROUNDED, SHARP, MINIMAL
+    ; val label: String get() = when (this) { DEFAULT -> "Default"; ROUNDED -> "Rounded"; SHARP -> "Sharp"; MINIMAL -> "Minimal" }
 }
 
 enum class DefaultView {
@@ -94,7 +76,6 @@ class AppSettings(context: Context) {
 
     fun changeAccentColor(color: AccentColor) {
         accentColor = color
-        com.glassfiles.ui.theme.ThemeState.accent = color.color
         prefs.edit().putString("accent_color", color.name).apply()
     }
 
@@ -107,7 +88,6 @@ class AppSettings(context: Context) {
 
     fun changeFolderIconStyle(style: FolderIconStyle) {
         folderIconStyle = style
-        com.glassfiles.ui.theme.ThemeState.folderStyle = style
         prefs.edit().putString("folder_icon_style", style.name).apply()
     }
 
@@ -139,12 +119,19 @@ class AppSettings(context: Context) {
     var fileFontSize by mutableIntStateOf(prefs.getInt("file_font_size", 15))
         private set
 
+    var folderStyle by mutableStateOf(
+        try { FolderIconStyle.valueOf(prefs.getString("folder_style", "DEFAULT") ?: "DEFAULT") }
+        catch (_: Exception) { FolderIconStyle.DEFAULT }
+    )
+        private set
+
     fun changeShowHidden(v: Boolean) { showHiddenFiles = v; prefs.edit().putBoolean("show_hidden", v).apply() }
     fun changeDefaultView(v: DefaultView) { defaultView = v; prefs.edit().putString("default_view", v.name).apply() }
     fun changeDefaultSort(v: DefaultSort) { defaultSort = v; prefs.edit().putString("default_sort", v.name).apply() }
     fun changeConfirmDelete(v: Boolean) { confirmDelete = v; prefs.edit().putBoolean("confirm_delete", v).apply() }
     fun changeStartFolder(v: StartFolder) { startFolder = v; prefs.edit().putString("start_folder", v.name).apply() }
-    fun changeFileFontSize(v: Int) { fileFontSize = v.coerceIn(12, 20); com.glassfiles.ui.theme.ThemeState.fileFontSize = fileFontSize; prefs.edit().putInt("file_font_size", fileFontSize).apply() }
+    fun changeFileFontSize(v: Int) { fileFontSize = v.coerceIn(12, 20); prefs.edit().putInt("file_font_size", fileFontSize).apply() }
+    fun changeFolderStyle(v: FolderIconStyle) { folderStyle = v; prefs.edit().putString("folder_style", v.name).apply() }
 
     // ═══ AI ═══
     var aiDefaultModel by mutableStateOf(prefs.getString("ai_default_model", "GEMINI_FLASH") ?: "GEMINI_FLASH")
@@ -186,11 +173,6 @@ class AppSettings(context: Context) {
     init {
         // Sync language on startup
         Strings.lang = appLanguage
-        // Sync accent color
-        com.glassfiles.ui.theme.ThemeState.accent = accentColor.color
-        // Sync font size and folder style
-        com.glassfiles.ui.theme.ThemeState.fileFontSize = fileFontSize
-        com.glassfiles.ui.theme.ThemeState.folderStyle = folderIconStyle
     }
 
     // ═══ Сброс ═══
@@ -203,6 +185,7 @@ class AppSettings(context: Context) {
         confirmDelete = true
         startFolder = StartFolder.DOWNLOADS
         fileFontSize = 15
+        folderStyle = FolderIconStyle.DEFAULT
         aiDefaultModel = "GEMINI_FLASH"
         aiSystemPrompt = ""
         aiLanguage = "Русский"
