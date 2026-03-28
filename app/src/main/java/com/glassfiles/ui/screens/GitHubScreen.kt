@@ -973,8 +973,11 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
     var jobs by remember { mutableStateOf<List<GHJob>>(emptyList()) }
     var artifacts by remember { mutableStateOf<List<GHArtifact>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    var logsText by remember { mutableStateOf<String?>(null) }
-    var downloading by remember { mutableStateOf<Long?>(null) } // artifact id being downloaded
+    var downloading by remember { mutableStateOf<Long?>(null) }
+    // Logs: jobId -> log text
+    var jobLogs by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+    var loadingJobId by remember { mutableStateOf<Long?>(null) }
+    var expandedJobId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(runId) {
         jobs = GitHubManager.getWorkflowRunJobs(context, repo.owner, repo.name, runId)
@@ -986,57 +989,89 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
         GHTopBar("Run #$runId", onBack = onBack) {
             IconButton(onClick = {
                 scope.launch {
-                    logsText = GitHubManager.getWorkflowRunLogs(context, repo.owner, repo.name, runId)
-                }
-            }) { Icon(Icons.Rounded.Article, null, Modifier.size(20.dp), tint = Blue) }
-            IconButton(onClick = {
-                scope.launch {
                     val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                 }
             }) { Icon(Icons.Rounded.Refresh, null, Modifier.size(20.dp), tint = Blue) }
         }
 
-        // Logs overlay
-        if (logsText != null) {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF1E1E22)).clickable { logsText = null }.padding(10.dp)) {
-                Text(logsText!!, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4), maxLines = 5)
-            }
-        }
-
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp) }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
                 items(jobs) { job ->
-                    // Job header
-                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp)) {
+                        // Job header
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             val jColor = when (job.conclusion) { "success" -> Color(0xFF34C759); "failure" -> Color(0xFFFF3B30); else -> Color(0xFFFF9500) }
                             Icon(when (job.conclusion) { "success" -> Icons.Rounded.CheckCircle; "failure" -> Icons.Rounded.Cancel; else -> Icons.Rounded.Refresh }, null, Modifier.size(18.dp), tint = jColor)
-                            Text(job.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-                        }
-                        // Duration
-                        if (job.startedAt.isNotBlank() && job.completedAt.isNotBlank()) {
-                            Text("${job.startedAt.take(19)} → ${job.completedAt.take(19)}", fontSize = 10.sp, color = TextTertiary, modifier = Modifier.padding(start = 26.dp))
+                            Text(job.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+                            // Duration
+                            val dur = calcDuration(job.startedAt, job.completedAt)
+                            if (dur.isNotEmpty()) Text(dur, fontSize = 10.sp, color = TextTertiary)
                         }
 
-                        // Steps
+                        // Steps with expand
                         Spacer(Modifier.height(6.dp))
                         job.steps.forEach { step ->
-                            Row(Modifier.fillMaxWidth().padding(start = 26.dp, top = 3.dp, bottom = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val sColor = when (step.conclusion) { "success" -> Color(0xFF34C759); "failure" -> Color(0xFFFF3B30); "skipped" -> Color(0xFF8E8E93); else -> Color(0xFFFF9500) }
-                                val sIcon = when (step.conclusion) { "success" -> Icons.Rounded.Check; "failure" -> Icons.Rounded.Close; "skipped" -> Icons.Rounded.Remove; else -> Icons.Rounded.Refresh }
+                            val sColor = when (step.conclusion) { "success" -> Color(0xFF34C759); "failure" -> Color(0xFFFF3B30); "skipped" -> Color(0xFF8E8E93); else -> Color(0xFFFF9500) }
+                            val sIcon = when (step.conclusion) { "success" -> Icons.Rounded.Check; "failure" -> Icons.Rounded.Close; "skipped" -> Icons.Rounded.Remove; else -> Icons.Rounded.Refresh }
+                            Row(Modifier.fillMaxWidth().padding(start = 10.dp, top = 3.dp, bottom = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Icon(sIcon, null, Modifier.size(14.dp), tint = sColor)
                                 Text(step.name, fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                if (step.conclusion == "failure") Icon(Icons.Rounded.Warning, null, Modifier.size(12.dp), tint = Color(0xFFFF3B30))
                             }
                         }
 
+                        // Log button
                         Spacer(Modifier.height(8.dp))
                         Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(6.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // View logs button
+                            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Blue.copy(0.08f))
+                                .clickable {
+                                    if (expandedJobId == job.id) { expandedJobId = null; return@clickable }
+                                    expandedJobId = job.id
+                                    if (jobLogs[job.id] == null) {
+                                        loadingJobId = job.id
+                                        scope.launch {
+                                            val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
+                                            jobLogs = jobLogs + (job.id to log)
+                                            loadingJobId = null
+                                        }
+                                    }
+                                }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (loadingJobId == job.id) CircularProgressIndicator(Modifier.size(12.dp), color = Blue, strokeWidth = 1.5.dp)
+                                    else Icon(if (expandedJobId == job.id) Icons.Rounded.ExpandLess else Icons.Rounded.Article, null, Modifier.size(14.dp), tint = Blue)
+                                    Text(if (expandedJobId == job.id) "Hide logs" else "View logs", fontSize = 11.sp, color = Blue)
+                                }
+                            }
+
+                            // Timestamps
+                            if (job.startedAt.isNotBlank()) {
+                                Text(job.startedAt.replace("T", " ").take(19), fontSize = 9.sp, color = TextTertiary, modifier = Modifier.align(Alignment.CenterVertically))
+                            }
+                        }
+
+                        // Expanded logs
+                        if (expandedJobId == job.id && jobLogs[job.id] != null) {
+                            Spacer(Modifier.height(8.dp))
+                            androidx.compose.foundation.text.selection.SelectionContainer {
+                                Box(Modifier.fillMaxWidth().heightIn(max = 400.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF0D1117)).verticalScroll(rememberScrollState())
+                                    .horizontalScroll(rememberScrollState()).padding(10.dp)) {
+                                    Text(
+                                        jobLogs[job.id]!!,
+                                        fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFC9D1D9), lineHeight = 14.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1066,27 +1101,18 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Icon(
-                                Icons.Rounded.Archive, null, Modifier.size(24.dp),
-                                tint = if (artifact.expired) TextTertiary else Blue
-                            )
+                            Icon(Icons.Rounded.Archive, null, Modifier.size(24.dp), tint = if (artifact.expired) TextTertiary else Blue)
                             Column(Modifier.weight(1f)) {
                                 Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary,
                                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Text(fmtSize(artifact.sizeInBytes), fontSize = 11.sp, color = TextSecondary)
-                                    if (artifact.expired) {
-                                        Text(Strings.ghExpired, fontSize = 11.sp, color = Color(0xFFFF3B30))
-                                    } else {
-                                        Text(artifact.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
-                                    }
+                                    if (artifact.expired) Text(Strings.ghExpired, fontSize = 11.sp, color = Color(0xFFFF3B30))
+                                    else Text(artifact.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
                                 }
                             }
-                            if (downloading == artifact.id) {
-                                CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
-                            } else if (!artifact.expired) {
-                                Icon(Icons.Rounded.Download, null, Modifier.size(18.dp), tint = Blue)
-                            }
+                            if (downloading == artifact.id) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
+                            else if (!artifact.expired) Icon(Icons.Rounded.Download, null, Modifier.size(18.dp), tint = Blue)
                         }
                         Spacer(Modifier.height(6.dp))
                     }
@@ -1094,6 +1120,17 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
             }
         }
     }
+}
+
+private fun calcDuration(start: String, end: String): String {
+    if (start.isBlank() || end.isBlank()) return ""
+    return try {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        fmt.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val s = fmt.parse(start)!!; val e = fmt.parse(end)!!
+        val diff = (e.time - s.time) / 1000
+        when { diff < 60 -> "${diff}s"; diff < 3600 -> "${diff / 60}m ${diff % 60}s"; else -> "${diff / 3600}h ${(diff % 3600) / 60}m" }
+    } catch (_: Exception) { "" }
 }
 
 // ═══════════════════════════════════

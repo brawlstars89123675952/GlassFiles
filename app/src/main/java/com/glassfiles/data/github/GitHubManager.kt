@@ -742,7 +742,6 @@ object GitHubManager {
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
                     instanceFollowRedirects = false; connectTimeout = 15000; readTimeout = 15000
                 }
-                // GitHub returns 302 redirect to the zip URL
                 val code = conn.responseCode
                 if (code == 302) {
                     val location = conn.getHeaderField("Location")
@@ -751,6 +750,29 @@ object GitHubManager {
                 } else {
                     conn.disconnect()
                     "Logs: HTTP $code"
+                }
+            } catch (e: Exception) { "Error: ${e.message}" }
+        }
+
+    /** Get actual log text for a specific job */
+    suspend fun getJobLogs(context: Context, owner: String, repo: String, jobId: Long): String =
+        withContext(Dispatchers.IO) {
+            try {
+                val token = getToken(context)
+                val url = "$API/repos/$owner/$repo/actions/jobs/$jobId/logs"
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    instanceFollowRedirects = true; connectTimeout = 15000; readTimeout = 30000
+                }
+                val code = conn.responseCode
+                if (code == 200) {
+                    val text = conn.inputStream.bufferedReader().use { it.readText() }
+                    conn.disconnect()
+                    text
+                } else {
+                    conn.disconnect()
+                    "Error: HTTP $code"
                 }
             } catch (e: Exception) { "Error: ${e.message}" }
         }

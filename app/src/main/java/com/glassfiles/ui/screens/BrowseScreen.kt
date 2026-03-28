@@ -58,6 +58,7 @@ fun BrowseScreen(
     onGitHub: () -> Unit = {},
     onSettings: () -> Unit = {},
     onTagClick: (String) -> Unit = {},
+    scrollState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -69,7 +70,7 @@ fun BrowseScreen(
     val locations = remember { FileManager.getStorageLocations() }
     val ghUser = remember { GitHubManager.getCachedUser(context) }
 
-    LazyColumn(modifier.fillMaxSize().background(SurfaceLight), contentPadding = PaddingValues(bottom = 100.dp)) {
+    LazyColumn(modifier.fillMaxSize().background(SurfaceLight), state = scrollState, contentPadding = PaddingValues(bottom = 100.dp)) {
         item { Text(Strings.browse, style = MaterialTheme.typography.displayLarge, fontWeight = FontWeight.Bold, color = TextPrimary,
             modifier = Modifier.padding(top = 60.dp, start = 16.dp, end = 16.dp, bottom = 4.dp)) }
         // Storage warning

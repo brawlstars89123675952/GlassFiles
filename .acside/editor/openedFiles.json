@@ -5,13 +5,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 53910,
-          "line": 986
+          "index": 54966,
+          "line": 1003
         },
         "start": {
           "column": 0,
-          "index": 53910,
-          "line": 986
+          "index": 54966,
+          "line": 1003
         }
       }
     },
@@ -20,12 +20,12 @@
       "selection": {
         "end": {
           "column": 1,
-          "index": 18394,
+          "index": 18275,
           "line": 338
         },
         "start": {
           "column": 1,
-          "index": 18394,
+          "index": 18275,
           "line": 338
         }
       }
@@ -35,28 +35,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 12778,
-          "line": 181
+          "index": 12923,
+          "line": 182
         },
         "start": {
           "column": 0,
-          "index": 12778,
-          "line": 181
-        }
-      }
-    },
-    {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/screens/SharedAndFolderScreens.kt",
-      "selection": {
-        "end": {
-          "column": 0,
-          "index": 32538,
-          "line": 495
-        },
-        "start": {
-          "column": 0,
-          "index": 32538,
-          "line": 495
+          "index": 12923,
+          "line": 182
         }
       }
     },
@@ -65,13 +50,43 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 115709,
-          "line": 1324
+          "index": 118635,
+          "line": 1361
         },
         "start": {
           "column": 0,
-          "index": 115709,
-          "line": 1324
+          "index": 118635,
+          "line": 1361
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/github/GitHubManager.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 56380,
+          "line": 1174
+        },
+        "start": {
+          "column": 0,
+          "index": 56380,
+          "line": 1174
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/AppSettings.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 9052,
+          "line": 215
+        },
+        "start": {
+          "column": 0,
+          "index": 9052,
+          "line": 215
         }
       }
     },
@@ -89,22 +104,7 @@
           "line": 74
         }
       }
-    },
-    {
-      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/data/AppSettings.kt",
-      "selection": {
-        "end": {
-          "column": 0,
-          "index": 7494,
-          "line": 193
-        },
-        "start": {
-          "column": 0,
-          "index": 7494,
-          "line": 193
-        }
-      }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/GlassFilesApp.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/theme/Color.kt"
 }

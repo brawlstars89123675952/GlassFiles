@@ -150,7 +150,7 @@ fun GlassBottomTabBar(
                         shadow = { Shadow(radius = 10.dp, color = Color.Black.copy(alpha = 0.25f)) },
                         innerShadow = { InnerShadow(radius = 6.dp, alpha = 0.35f) },
                         layerBlock = { val p = dampedDragAnimation.pressProgress; val s = lerp(1f, 1f + 16f.dp.toPx() / size.width, p); scaleX = s; scaleY = s },
-                        onDrawSurface = { drawRect(containerColor); drawRect(Color.White.copy(alpha = 0.20f), style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())) }
+                        onDrawSurface = { drawRect(containerColor) }
                     ).then(interactiveHighlight.modifier).height(BarHeight).fillMaxWidth().padding(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) { tabs.forEachIndexed { i, tab -> LiquidBottomTab { NavItemContent(tab, i == selectedTab) } } }

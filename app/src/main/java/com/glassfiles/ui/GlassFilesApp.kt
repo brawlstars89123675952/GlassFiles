@@ -13,6 +13,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -60,12 +61,13 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     val settings = appSettings ?: remember { com.glassfiles.data.AppSettings(context) }
 
     // Sync AppSettings → ThemeState for FileItems
-    com.glassfiles.ui.theme.ThemeState.folderStyle = settings.folderStyle
+    com.glassfiles.ui.theme.ThemeState.folderStyle = settings.folderIconStyle
     com.glassfiles.ui.theme.ThemeState.fileFontSize = settings.fileFontSize
 
     var selectedTab by remember { mutableIntStateOf(2) }
     var folderStack by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var driveSignedIn by remember { mutableStateOf(false) }
+    val browseScrollState = rememberLazyListState()
     var activeScreen by remember { mutableStateOf(AppScreen.MAIN) }
     var previousScreen by remember { mutableStateOf(AppScreen.MAIN) }
     var terminalDir by remember { mutableStateOf<String?>(null) }
@@ -78,6 +80,11 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     var githubWasOpened by remember { mutableStateOf(false) }
     var githubMiniMode by remember { mutableStateOf(false) } // true = floating mini window
     var githubBubbleMode by remember { mutableStateOf(false) } // true = small floating bubble
+    // Persistent window geometry — survives bubble collapse/expand
+    var ghWinW by remember { mutableFloatStateOf(-1f) }
+    var ghWinH by remember { mutableFloatStateOf(-1f) }
+    var ghWinX by remember { mutableFloatStateOf(-1f) }
+    var ghWinY by remember { mutableFloatStateOf(-1f) }
     var githubUploadFile by remember { mutableStateOf<FileItem?>(null) } // file pending upload to GitHub
     var githubCommitFiles by remember { mutableStateOf<List<String>?>(null) } // files pending commit to GitHub
     val githubAvatarUrl = remember { com.glassfiles.data.github.GitHubManager.getCachedUser(context)?.avatarUrl }
@@ -338,7 +345,8 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                             onTheme = { navigateTo(AppScreen.THEME) },
                                             onGitHub = { navigateTo(AppScreen.GITHUB) },
                                             onSettings = { navigateTo(AppScreen.SETTINGS) },
-                                            onTagClick = { tag -> selectedTagName = tag; navigateTo(AppScreen.TAGGED_FILES) })
+                                            onTagClick = { tag -> selectedTagName = tag; navigateTo(AppScreen.TAGGED_FILES) },
+                                            scrollState = browseScrollState)
                                         3 -> { LaunchedEffect(Unit) { navigateTo(AppScreen.GITHUB) }; Box(Modifier.fillMaxSize().background(SurfaceLight)) }
                                     }
                                 }
@@ -381,7 +389,9 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                 },
                 onCollapse = {
                     githubBubbleMode = true
-                }
+                },
+                winW = ghWinW, winH = ghWinH, winX = ghWinX, winY = ghWinY,
+                onGeometryChange = { w, h, x, y -> ghWinW = w; ghWinH = h; ghWinX = x; ghWinY = y }
             )
         }
 
@@ -435,7 +445,9 @@ private fun PermissionScreen(onRequest: () -> Unit) {
 private fun GitHubFloatingWindow(
     onExpand: () -> Unit,
     onClose: () -> Unit,
-    onCollapse: () -> Unit
+    onCollapse: () -> Unit,
+    winW: Float, winH: Float, winX: Float, winY: Float,
+    onGeometryChange: (Float, Float, Float, Float) -> Unit
 ) {
     val density = LocalDensity.current
 
@@ -448,15 +460,20 @@ private fun GitHubFloatingWindow(
         val maxW = screenW * 0.95f
         val maxH = screenH * 0.90f
 
-        var windowW by remember { mutableFloatStateOf(screenW * 0.60f) }
-        var windowH by remember { mutableFloatStateOf(screenH * 0.55f) }
-        var offsetX by remember { mutableFloatStateOf(screenW * 0.35f) }
-        var offsetY by remember { mutableFloatStateOf(screenH * 0.35f) }
+        var windowW by remember { mutableFloatStateOf(if (winW > 0) winW else screenW * 0.60f) }
+        var windowH by remember { mutableFloatStateOf(if (winH > 0) winH else screenH * 0.55f) }
+        var offsetX by remember { mutableFloatStateOf(if (winX >= 0) winX else screenW * 0.35f) }
+        var offsetY by remember { mutableFloatStateOf(if (winY >= 0) winY else screenH * 0.35f) }
 
         fun clamp() {
             val m = with(density) { 8.dp.toPx() }
             offsetX = offsetX.coerceIn(-m, screenW - windowW + m)
             offsetY = offsetY.coerceIn(with(density) { 32.dp.toPx() }, screenH - windowH + m)
+        }
+
+        // Save geometry on every change
+        LaunchedEffect(windowW, windowH, offsetX, offsetY) {
+            onGeometryChange(windowW, windowH, offsetX, offsetY)
         }
 
         // NO scrim — interface underneath is fully interactive
