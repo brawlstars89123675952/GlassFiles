@@ -1,6 +1,7 @@
 package com.glassfiles.ui.theme
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
@@ -9,6 +10,8 @@ import com.glassfiles.data.AppThemeMode
 object ThemeState {
     var mode by mutableStateOf(AppThemeMode.LIGHT)
     var accent by mutableStateOf(Color(0xFF007AFF))
+    var folderStyle by mutableStateOf(com.glassfiles.data.FolderIconStyle.DEFAULT)
+    var fileFontSize by mutableIntStateOf(15)
     val isDark: Boolean get() = mode == AppThemeMode.DARK || mode == AppThemeMode.AMOLED
     val isAmoled: Boolean get() = mode == AppThemeMode.AMOLED
 }

@@ -59,6 +59,10 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
     val context = LocalContext.current
     val settings = appSettings ?: remember { com.glassfiles.data.AppSettings(context) }
 
+    // Sync AppSettings → ThemeState for FileItems
+    com.glassfiles.ui.theme.ThemeState.folderStyle = settings.folderStyle
+    com.glassfiles.ui.theme.ThemeState.fileFontSize = settings.fileFontSize
+
     var selectedTab by remember { mutableIntStateOf(2) }
     var folderStack by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var driveSignedIn by remember { mutableStateOf(false) }
