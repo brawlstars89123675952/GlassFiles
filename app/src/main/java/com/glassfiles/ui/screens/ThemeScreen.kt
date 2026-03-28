@@ -109,32 +109,30 @@ fun ThemeScreen(settings: AppSettings, onBack: () -> Unit) {
 
         // ── Folder icon style ──
         SectionTitle(Strings.folderStyle)
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FolderIconStyle.entries.forEach { style ->
+        LazyRow(Modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(FolderIconStyle.entries.toList()) { style ->
                 val sel = settings.folderIconStyle == style
                 val icon = when (style) {
                     FolderIconStyle.DEFAULT -> Icons.Rounded.Folder
                     FolderIconStyle.ROUNDED -> Icons.Rounded.FolderOpen
                     FolderIconStyle.SHARP -> Icons.Rounded.FolderCopy
                     FolderIconStyle.MINIMAL -> Icons.Rounded.FolderSpecial
+                    FolderIconStyle.CIRCLE -> Icons.Rounded.Circle
+                    FolderIconStyle.GRADIENT -> Icons.Rounded.Gradient
+                    FolderIconStyle.OUTLINED -> Icons.Rounded.FolderOpen
+                    FolderIconStyle.FILLED -> Icons.Rounded.Folder
                 }
-                val shape = when (style) {
-                    FolderIconStyle.DEFAULT -> RoundedCornerShape(10.dp)
-                    FolderIconStyle.ROUNDED -> RoundedCornerShape(16.dp)
-                    FolderIconStyle.SHARP -> RoundedCornerShape(4.dp)
-                    FolderIconStyle.MINIMAL -> RoundedCornerShape(10.dp)
-                }
-                Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                Column(Modifier.width(72.dp).clip(RoundedCornerShape(12.dp))
                     .background(if (sel) Blue.copy(0.1f) else SurfaceWhite)
                     .border(1.5.dp, if (sel) Blue else SeparatorColor, RoundedCornerShape(12.dp))
                     .clickable { settings.changeFolderIconStyle(style) }
-                    .padding(vertical = 14.dp),
+                    .padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(Modifier.size(36.dp).background(Blue.copy(0.1f), shape), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(36.dp).background(Blue.copy(0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                         Icon(icon, null, Modifier.size(22.dp), tint = Blue)
                     }
-                    Text(style.label, fontSize = 11.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (sel) Blue else TextSecondary)
+                    Text(style.label, fontSize = 10.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (sel) Blue else TextSecondary, maxLines = 1)
                 }
             }
         }

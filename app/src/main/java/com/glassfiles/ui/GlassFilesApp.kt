@@ -295,7 +295,7 @@ fun GlassFilesApp(hasPermission: Boolean = false, onRequestPermission: () -> Uni
                                 GlassFab(backdrop, Icons.Rounded.Terminal, iconTint = Color(0xFF00E676), tintColor = Color(0x441A1A2E))
                                 if (terminalWasOpened) Box(Modifier.align(Alignment.TopEnd).size(12.dp).background(Color(0xFF00E676), CircleShape))
                             }
-                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(horizontal = 8.dp, bottom = 4.dp)) {
+                            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 4.dp)) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     // Left — tab bar (constrained width)
                                     Box(Modifier.weight(1f, fill = false)) {
@@ -335,4 +335,3 @@ private fun PermissionScreen(onRequest: () -> Unit) {
         }
     }
 }
-

@@ -3,6 +3,7 @@ package com.glassfiles.ui.components
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -43,29 +44,81 @@ fun FolderIcon(
     color: Color = Color(0xFF5AC3F8), modifier: Modifier = Modifier,
     size: Dp = 72.dp, overlayIcon: ImageVector? = null, overlayTint: Color = Color.White
 ) {
-    val topColor = color.copy(red = (color.red + 0.08f).coerceAtMost(1f), green = (color.green + 0.06f).coerceAtMost(1f), blue = (color.blue + 0.04f).coerceAtMost(1f))
-    val bottomColor = color.copy(red = (color.red - 0.06f).coerceAtLeast(0f), green = (color.green - 0.04f).coerceAtLeast(0f))
-    val shadowColor = color.copy(alpha = 0.3f)
-    val lightColor = color.copy(alpha = 0.9f)
-    Box(modifier.size(size, size * 0.78f), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val w = this.size.width; val h = this.size.height
-            val earWidth = w * 0.40f; val earHeight = h * 0.18f; val earRadius = earHeight * 0.55f
-            val bodyTop = earHeight * 0.72f; val bodyRadius = w * 0.08f; val earTabRadius = earHeight * 0.4f
-            drawRoundRect(shadowColor, Offset(2f, h * 0.06f), Size(w - 4f, h - bodyTop + bodyTop * 0.15f), CornerRadius(bodyRadius))
-            val earPath = Path().apply {
-                moveTo(bodyRadius, bodyTop); lineTo(bodyRadius, earTabRadius)
-                quadraticTo(bodyRadius, 0f, bodyRadius + earTabRadius, 0f); lineTo(earWidth - earRadius, 0f)
-                quadraticTo(earWidth, 0f, earWidth + earRadius * 0.5f, earHeight * 0.5f)
-                quadraticTo(earWidth + earRadius, earHeight, earWidth + earRadius * 1.5f, bodyTop); close()
+    val style = ThemeState.folderStyle
+    when (style) {
+        com.glassfiles.data.FolderIconStyle.ROUNDED -> {
+            // Rounded soft folder — simple rounded rect with icon
+            Box(modifier.size(size).background(color.copy(alpha = 0.15f), RoundedCornerShape(size * 0.3f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Folder, null, Modifier.size(size * 0.55f), tint = color)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.3f).offset(y = size * 0.04f), tint = overlayTint.copy(alpha = 0.85f))
             }
-            drawPath(earPath, Brush.verticalGradient(listOf(topColor, lightColor), 0f, bodyTop))
-            val bodyPath = Path().apply { addRoundRect(RoundRect(Rect(0f, bodyTop, w, h), CornerRadius(bodyRadius))) }
-            drawPath(bodyPath, Brush.verticalGradient(listOf(topColor, bottomColor), bodyTop, h))
-            drawRoundRect(Color.White.copy(alpha = 0.30f), Offset(w * 0.06f, bodyTop + h * 0.02f), Size(w * 0.88f, 1.5f), CornerRadius(1f))
-            drawRoundRect(Color.White.copy(alpha = 0.08f), Offset(w * 0.04f, h * 0.7f), Size(w * 0.92f, h * 0.25f), CornerRadius(bodyRadius * 0.8f))
         }
-        if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.38f).offset(y = size * 0.06f), tint = overlayTint.copy(alpha = 0.85f))
+        com.glassfiles.data.FolderIconStyle.SHARP -> {
+            // Sharp angular folder — square corners
+            Box(modifier.size(size).background(color.copy(alpha = 0.12f), RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.FolderCopy, null, Modifier.size(size * 0.55f), tint = color)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.3f).offset(y = size * 0.04f), tint = overlayTint.copy(alpha = 0.85f))
+            }
+        }
+        com.glassfiles.data.FolderIconStyle.MINIMAL -> {
+            // Minimal — just icon, no background
+            Box(modifier.size(size), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.FolderOpen, null, Modifier.size(size * 0.65f), tint = color)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.28f).offset(y = size * 0.06f), tint = color.copy(alpha = 0.7f))
+            }
+        }
+        com.glassfiles.data.FolderIconStyle.CIRCLE -> {
+            Box(modifier.size(size).background(color.copy(alpha = 0.15f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Folder, null, Modifier.size(size * 0.5f), tint = color)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.25f).offset(y = size * 0.03f), tint = Color.White.copy(alpha = 0.85f))
+            }
+        }
+        com.glassfiles.data.FolderIconStyle.GRADIENT -> {
+            val gradBrush = Brush.linearGradient(listOf(color, color.copy(alpha = 0.4f)))
+            Box(modifier.size(size).background(gradBrush, RoundedCornerShape(size * 0.2f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Folder, null, Modifier.size(size * 0.5f), tint = Color.White)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.25f).offset(y = size * 0.03f), tint = Color.White.copy(alpha = 0.85f))
+            }
+        }
+        com.glassfiles.data.FolderIconStyle.OUTLINED -> {
+            Box(modifier.size(size).border(2.dp, color, RoundedCornerShape(size * 0.2f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Folder, null, Modifier.size(size * 0.5f), tint = color)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.25f).offset(y = size * 0.03f), tint = color.copy(alpha = 0.7f))
+            }
+        }
+        com.glassfiles.data.FolderIconStyle.FILLED -> {
+            Box(modifier.size(size).background(color, RoundedCornerShape(size * 0.2f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.Folder, null, Modifier.size(size * 0.5f), tint = Color.White)
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.25f).offset(y = size * 0.03f), tint = Color.White.copy(alpha = 0.85f))
+            }
+        }
+        else -> {
+            // DEFAULT — original custom Canvas folder
+            val topColor = color.copy(red = (color.red + 0.08f).coerceAtMost(1f), green = (color.green + 0.06f).coerceAtMost(1f), blue = (color.blue + 0.04f).coerceAtMost(1f))
+            val bottomColor = color.copy(red = (color.red - 0.06f).coerceAtLeast(0f), green = (color.green - 0.04f).coerceAtLeast(0f))
+            val shadowColor = color.copy(alpha = 0.3f)
+            val lightColor = color.copy(alpha = 0.9f)
+            Box(modifier.size(size, size * 0.78f), contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val w = this.size.width; val h = this.size.height
+                    val earWidth = w * 0.40f; val earHeight = h * 0.18f; val earRadius = earHeight * 0.55f
+                    val bodyTop = earHeight * 0.72f; val bodyRadius = w * 0.08f; val earTabRadius = earHeight * 0.4f
+                    drawRoundRect(shadowColor, Offset(2f, h * 0.06f), Size(w - 4f, h - bodyTop + bodyTop * 0.15f), CornerRadius(bodyRadius))
+                    val earPath = Path().apply {
+                        moveTo(bodyRadius, bodyTop); lineTo(bodyRadius, earTabRadius)
+                        quadraticTo(bodyRadius, 0f, bodyRadius + earTabRadius, 0f); lineTo(earWidth - earRadius, 0f)
+                        quadraticTo(earWidth, 0f, earWidth + earRadius * 0.5f, earHeight * 0.5f)
+                        quadraticTo(earWidth + earRadius, earHeight, earWidth + earRadius * 1.5f, bodyTop); close()
+                    }
+                    drawPath(earPath, Brush.verticalGradient(listOf(topColor, lightColor), 0f, bodyTop))
+                    val bodyPath = Path().apply { addRoundRect(RoundRect(Rect(0f, bodyTop, w, h), CornerRadius(bodyRadius))) }
+                    drawPath(bodyPath, Brush.verticalGradient(listOf(topColor, bottomColor), bodyTop, h))
+                    drawRoundRect(Color.White.copy(alpha = 0.30f), Offset(w * 0.06f, bodyTop + h * 0.02f), Size(w * 0.88f, 1.5f), CornerRadius(1f))
+                    drawRoundRect(Color.White.copy(alpha = 0.08f), Offset(w * 0.04f, h * 0.7f), Size(w * 0.92f, h * 0.25f), CornerRadius(bodyRadius * 0.8f))
+                }
+                if (overlayIcon != null) Icon(overlayIcon, null, Modifier.size(size * 0.38f).offset(y = size * 0.06f), tint = overlayTint.copy(alpha = 0.85f))
+            }
+        }
     }
 }
 

@@ -25,12 +25,30 @@ enum class AccentColor(val color: androidx.compose.ui.graphics.Color, val label:
     PINK(androidx.compose.ui.graphics.Color(0xFFFF2D55), "Pink"),
     INDIGO(androidx.compose.ui.graphics.Color(0xFF5856D6), "Indigo"),
     MINT(androidx.compose.ui.graphics.Color(0xFF00C7BE), "Mint"),
-    YELLOW(androidx.compose.ui.graphics.Color(0xFFFFCC00), "Yellow")
+    YELLOW(androidx.compose.ui.graphics.Color(0xFFFFCC00), "Yellow"),
+    // New shades
+    DEEP_BLUE(androidx.compose.ui.graphics.Color(0xFF0055CC), "Deep Blue"),
+    SKY(androidx.compose.ui.graphics.Color(0xFF64B5F6), "Sky"),
+    LIME(androidx.compose.ui.graphics.Color(0xFF8BC34A), "Lime"),
+    EMERALD(androidx.compose.ui.graphics.Color(0xFF009688), "Emerald"),
+    CORAL(androidx.compose.ui.graphics.Color(0xFFFF6F61), "Coral"),
+    SALMON(androidx.compose.ui.graphics.Color(0xFFFA8072), "Salmon"),
+    LAVENDER(androidx.compose.ui.graphics.Color(0xFF9C89B8), "Lavender"),
+    MAGENTA(androidx.compose.ui.graphics.Color(0xFFE91E63), "Magenta"),
+    GOLD(androidx.compose.ui.graphics.Color(0xFFFFB300), "Gold"),
+    BRONZE(androidx.compose.ui.graphics.Color(0xFFCD7F32), "Bronze"),
+    CYAN(androidx.compose.ui.graphics.Color(0xFF00BCD4), "Cyan"),
+    ROSE(androidx.compose.ui.graphics.Color(0xFFE8A0BF), "Rose"),
+    PEACH(androidx.compose.ui.graphics.Color(0xFFFFAB91), "Peach"),
+    GRAPHITE(androidx.compose.ui.graphics.Color(0xFF616161), "Graphite")
 }
 
 enum class FolderIconStyle {
-    DEFAULT, ROUNDED, SHARP, MINIMAL
-    ; val label: String get() = when (this) { DEFAULT -> "Default"; ROUNDED -> "Rounded"; SHARP -> "Sharp"; MINIMAL -> "Minimal" }
+    DEFAULT, ROUNDED, SHARP, MINIMAL, CIRCLE, GRADIENT, OUTLINED, FILLED
+    ; val label: String get() = when (this) {
+        DEFAULT -> "Default"; ROUNDED -> "Rounded"; SHARP -> "Sharp"; MINIMAL -> "Minimal"
+        CIRCLE -> "Circle"; GRADIENT -> "Gradient"; OUTLINED -> "Outlined"; FILLED -> "Filled"
+    }
 }
 
 enum class DefaultView {

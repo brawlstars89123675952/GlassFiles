@@ -5,13 +5,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 7282,
-          "line": 185
+          "index": 8592,
+          "line": 210
         },
         "start": {
           "column": 0,
-          "index": 7282,
-          "line": 185
+          "index": 8592,
+          "line": 210
         }
       }
     },
@@ -20,13 +20,13 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 10332,
-          "line": 187
+          "index": 10331,
+          "line": 185
         },
         "start": {
           "column": 0,
-          "index": 10332,
-          "line": 187
+          "index": 10331,
+          "line": 185
         }
       }
     },
@@ -65,16 +65,31 @@
       "selection": {
         "end": {
           "column": 0,
-          "index": 22241,
+          "index": 22248,
           "line": 337
         },
         "start": {
           "column": 0,
-          "index": 22241,
+          "index": 22248,
           "line": 337
+        }
+      }
+    },
+    {
+      "file": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/components/FileItems.kt",
+      "selection": {
+        "end": {
+          "column": 0,
+          "index": 16045,
+          "line": 252
+        },
+        "start": {
+          "column": 0,
+          "index": 16045,
+          "line": 252
         }
       }
     }
   ],
-  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/GlassFilesApp.kt"
+  "selectedFile": "/storage/emulated/0/Download/GlassFiles/GlassFiles/app/src/main/java/com/glassfiles/ui/components/FileItems.kt"
 }
