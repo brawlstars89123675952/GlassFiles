@@ -107,6 +107,7 @@ fun FolderDetailScreen(
     // Multi-select
     var selectMode by remember { mutableStateOf(false) }
     var selectedPaths by remember { mutableStateOf(setOf<String>()) }
+    var showBatchMenu by remember { mutableStateOf(false) }
     var convertFile by remember { mutableStateOf<FileItem?>(null) }
     var tagFile by remember { mutableStateOf<FileItem?>(null) }
     val tagManager = remember { TagManager(context) }
@@ -214,6 +215,7 @@ fun FolderDetailScreen(
             FileAction.ENCRYPT -> encryptFile = file
             FileAction.BATCH_RENAME -> { /* triggered from multi-select bar */ }
             FileAction.UPLOAD_GITHUB -> onGitHubUpload?.invoke(file)
+            FileAction.SELECT -> { selectMode = true; selectedPaths = selectedPaths + file.path }
             FileAction.AI_SUMMARIZE -> {
                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
                     val content = com.glassfiles.data.ai.AiManager.readFileForAi(File(file.path))
@@ -328,29 +330,7 @@ fun FolderDetailScreen(
 
         if (showProgress) LinearProgressIndicator(progress = { progressVal }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), color = Blue)
 
-        // Multi-select toolbar
-        if (selectMode && selectedPaths.isNotEmpty()) {
-            val selBg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color(0xFFF2F2F7)
-            Row(Modifier.fillMaxWidth().background(selBg).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${selectedPaths.size} выбрано", color = TextPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                IconButton(onClick = { selectedPaths.forEach { p -> scope.launch { trashMgr.moveToTrash(File(p)) } }; selectedPaths = emptySet(); selectMode = false; refreshKey++ }) {
-                    Icon(Icons.Rounded.Delete, null, tint = Red) }
-                IconButton(onClick = { /* copy first selected */ selectedPaths.firstOrNull()?.let { p -> clipFile = files.find { it.path == p }?.let { it to true } }; selectedPaths = emptySet(); selectMode = false }) {
-                    Icon(Icons.Rounded.ContentCopy, null, tint = Blue) }
-                IconButton(onClick = { selectedPaths.firstOrNull()?.let { p -> clipFile = files.find { it.path == p }?.let { it to false } }; selectedPaths = emptySet(); selectMode = false }) {
-                    Icon(Icons.Rounded.DriveFileMove, null, tint = Blue) }
-                IconButton(onClick = { showBatchRename = true }) {
-                    Icon(Icons.Rounded.DriveFileRenameOutline, null, tint = Blue) }
-                if (com.glassfiles.data.github.GitHubManager.isLoggedIn(context)) {
-                    IconButton(onClick = { onGitHubCommit?.invoke(selectedPaths.toList()); selectedPaths = emptySet(); selectMode = false }) {
-                        Icon(Icons.Rounded.Cloud, null, tint = Color(0xFF238636)) }
-                }
-                IconButton(onClick = { selectedPaths = emptySet(); selectMode = false }) {
-                    Icon(Icons.Rounded.Close, null, tint = TextSecondary) }
-            }
-        }
-
+        Box(Modifier.fillMaxSize()) {
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Blue, modifier = Modifier.size(36.dp), strokeWidth = 3.dp) }
         else if (sorted.isEmpty()) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -368,10 +348,10 @@ fun FolderDetailScreen(
                             val isSel = file.path in selectedPaths
                             if (file.isDirectory) FolderGridItem(file, selected = isSel,
                                 onClick = { if (selectMode) toggleSelect(file) else act(FileAction.OPEN, file) },
-                                onLongClick = { if (selectMode) toggleSelect(file) else contextFile = file })
+                                onLongClick = { if (selectMode && isSel) { showBatchMenu = true } else if (selectMode) toggleSelect(file) else contextFile = file })
                             else FileGridItem(file, selected = isSel,
                                 onClick = { if (selectMode) toggleSelect(file) else act(FileAction.OPEN, file) },
-                                onLongClick = { if (selectMode) toggleSelect(file) else contextFile = file })
+                                onLongClick = { if (selectMode && isSel) { showBatchMenu = true } else if (selectMode) toggleSelect(file) else contextFile = file })
                         }
                     }
                 }
@@ -381,18 +361,110 @@ fun FolderDetailScreen(
                         Column(Modifier.animateItem(fadeInSpec = tween(300), fadeOutSpec = tween(200))) {
                             FileListItem(file, selected = isSel,
                                 onClick = { if (selectMode) toggleSelect(file) else act(FileAction.OPEN, file) },
-                                onLongClick = { if (selectMode) toggleSelect(file) else contextFile = file })
+                                onLongClick = { if (selectMode && isSel) { showBatchMenu = true } else if (selectMode) toggleSelect(file) else contextFile = file })
                             IosStyleDivider()
                         }
                     }
                 }
             }
         }
+
+        // Floating select pill — bottom center
+        if (selectMode) {
+            val pillBg = if (ThemeState.isDark) Color(0xFF1C1C1E) else Color(0xFFFFFFFF)
+            Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+                .clip(RoundedCornerShape(24.dp)).background(pillBg)
+                .border(1.dp, if (ThemeState.isDark) Color(0xFF3A3A3C) else Color(0xFFE0E0E0), RoundedCornerShape(24.dp))
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("${selectedPaths.size} / ${sorted.size}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextPrimary)
+                Box(Modifier.width(1.dp).height(20.dp).background(if (ThemeState.isDark) Color(0xFF3A3A3C) else Color(0xFFE0E0E0)))
+                Text(
+                    if (selectedPaths.size == sorted.size) Strings.cancelSelect else Strings.selectAll,
+                    color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable {
+                        if (selectedPaths.size == sorted.size) selectedPaths = emptySet()
+                        else selectedPaths = sorted.map { it.path }.toSet()
+                    })
+                Box(Modifier.width(1.dp).height(20.dp).background(if (ThemeState.isDark) Color(0xFF3A3A3C) else Color(0xFFE0E0E0)))
+                Text(Strings.cancel, color = Red, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                    modifier = Modifier.clickable { selectedPaths = emptySet(); selectMode = false })
+            }
+        }
+        }
     }
 
     // Context menu
     FileContextMenu(file = contextFile, context = context, scope = scope, trashManager = trashMgr, favoritesManager = favMgr,
         onDismiss = { contextFile = null }, onAction = { a, f -> act(a, f) })
+
+    // Batch context menu — for multiple selected files
+    if (showBatchMenu && selectedPaths.isNotEmpty()) {
+        val count = selectedPaths.size
+        val menuBg = if (ThemeState.isDark) Color(0xFF2C2C2E) else Color.White
+        val divColor = if (ThemeState.isDark) Color(0xFF3A3A3C) else Color(0xFFE5E5EA)
+        AlertDialog(
+            onDismissRequest = { showBatchMenu = false },
+            containerColor = menuBg,
+            title = { Text("${count} ${Strings.selected}", fontWeight = FontWeight.SemiBold) },
+            text = {
+                Column {
+                    // Delete
+                    Row(Modifier.fillMaxWidth().clickable {
+                        selectedPaths.forEach { p -> scope.launch { trashMgr.moveToTrash(File(p)) } }
+                        selectedPaths = emptySet(); selectMode = false; showBatchMenu = false; refreshKey++
+                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Rounded.Delete, null, Modifier.size(20.dp), tint = Red)
+                        Text(Strings.delete, fontSize = 15.sp, color = Red)
+                    }
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(divColor))
+                    // Copy
+                    Row(Modifier.fillMaxWidth().clickable {
+                        files.filter { it.path in selectedPaths }.firstOrNull()?.let { clipFile = it to true }
+                        selectedPaths = emptySet(); selectMode = false; showBatchMenu = false
+                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Rounded.ContentCopy, null, Modifier.size(20.dp), tint = Blue)
+                        Text(Strings.copy, fontSize = 15.sp, color = TextPrimary)
+                    }
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(divColor))
+                    // Move
+                    Row(Modifier.fillMaxWidth().clickable {
+                        files.filter { it.path in selectedPaths }.firstOrNull()?.let { clipFile = it to false }
+                        selectedPaths = emptySet(); selectMode = false; showBatchMenu = false
+                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Rounded.DriveFileMove, null, Modifier.size(20.dp), tint = Blue)
+                        Text(Strings.move, fontSize = 15.sp, color = TextPrimary)
+                    }
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(divColor))
+                    // Share
+                    Row(Modifier.fillMaxWidth().clickable {
+                        val uris = selectedPaths.mapNotNull { p -> try { androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.provider", File(p)) } catch (_: Exception) { null } }
+                        if (uris.isNotEmpty()) {
+                            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply { type = "*/*"; putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris)); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                            context.startActivity(Intent.createChooser(intent, Strings.share))
+                        }
+                        selectedPaths = emptySet(); selectMode = false; showBatchMenu = false
+                    }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Rounded.Share, null, Modifier.size(20.dp), tint = Blue)
+                        Text(Strings.share, fontSize = 15.sp, color = TextPrimary)
+                    }
+                    // GitHub upload
+                    if (com.glassfiles.data.github.GitHubManager.isLoggedIn(context)) {
+                        Box(Modifier.fillMaxWidth().height(0.5.dp).background(divColor))
+                        Row(Modifier.fillMaxWidth().clickable {
+                            onGitHubCommit?.invoke(selectedPaths.toList())
+                            selectedPaths = emptySet(); selectMode = false; showBatchMenu = false
+                        }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Icon(Icons.Rounded.Cloud, null, Modifier.size(20.dp), tint = Color(0xFF238636))
+                            Text(Strings.ghUploadToGitHub, fontSize = 15.sp, color = TextPrimary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showBatchMenu = false }) { Text(Strings.cancel) } }
+        )
+    }
     // Convert image dialog
     if (convertFile != null) {
         val cf = convertFile!!
