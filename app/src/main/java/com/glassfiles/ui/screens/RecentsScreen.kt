@@ -144,6 +144,7 @@ fun RecentsScreen(
             FileAction.ENCRYPT -> { /* handled in FolderDetailScreen */ }
             FileAction.BATCH_RENAME -> { /* handled in FolderDetailScreen */ }
             FileAction.UPLOAD_GITHUB -> { /* handled in FolderDetailScreen */ }
+            FileAction.SELECT -> { /* handled in FolderDetailScreen */ }
         }
     }
 
