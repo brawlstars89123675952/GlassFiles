@@ -36,7 +36,7 @@ object LicenseManager {
     private const val TAG = "LM"
 
     // ═══ CONFIGURE ═══
-    private const val SERVER_URL = "https://glassfiles-license.brawlstars89123675952.workers.dev"
+    private const val SERVER_URL = "https://api.glassfiles.ru"
     // ═══════════════════
 
     private const val PREFS_NAME = "lp"
