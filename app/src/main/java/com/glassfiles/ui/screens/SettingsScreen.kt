@@ -112,17 +112,11 @@ fun SettingsScreen(settings: AppSettings, onBack: () -> Unit) {
             // ═══════════════════════════════════
             SettingsSection("AI Чат", Icons.Rounded.AutoAwesome) {
                 var geminiKey by remember { mutableStateOf(GeminiKeyStore.getKey(context)) }
-                var orKey by remember { mutableStateOf(GeminiKeyStore.getOpenRouterKey(context)) }
                 var proxyUrl by remember { mutableStateOf(GeminiKeyStore.getProxy(context)) }
 
                 SettingsLabel("Gemini API Key")
                 SettingsTextField(geminiKey, "AIzaSy...") {
                     geminiKey = it; GeminiKeyStore.saveKey(context, it)
-                }
-
-                SettingsLabel("OpenRouter API Key")
-                SettingsTextField(orKey, "sk-or-v1-...") {
-                    orKey = it; GeminiKeyStore.saveOpenRouterKey(context, it)
                 }
 
                 SettingsLabel("Proxy URL (Gemini)")
