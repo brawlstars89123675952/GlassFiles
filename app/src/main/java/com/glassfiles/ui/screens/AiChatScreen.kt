@@ -421,18 +421,14 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
         AlertDialog(onDismissRequest = { showModelPicker = false }, containerColor = Card,
             title = { Text("Select Model", fontWeight = FontWeight.Bold, color = T1, fontSize = 18.sp) },
             text = {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // Gemini section
-                    if (hasGemini) {
-                        item { Text("Gemini", fontSize = 12.sp, color = Accent, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp)) }
-                        items(AiProvider.entries.filter { it.isGemini }) { p -> ModelCard(p, provider == p, Accent) { provider = p; showModelPicker = false } }
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.heightIn(max = 500.dp)) {
+                    val available = AiProvider.entries.filter { (it.isGemini && hasGemini) || (it.isQwen && hasQwen) }
+                    val categories = available.groupBy { it.category }.toList()
+                    categories.forEach { (cat, models) ->
+                        val catColor = if (models.first().isQwen) QwenColor else Accent
+                        item { Text(cat, fontSize = 12.sp, color = catColor, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) }
+                        items(models) { p -> ModelCard(p, provider == p, catColor) { provider = p; showModelPicker = false } }
                     }
-                    // Qwen section
-                    if (hasQwen) {
-                        item { Spacer(Modifier.height(8.dp)); Text("Qwen (Alibaba)", fontSize = 12.sp, color = QwenColor, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 4.dp)) }
-                        items(AiProvider.entries.filter { it.isQwen }) { p -> ModelCard(p, provider == p, QwenColor) { provider = p; showModelPicker = false } }
-                    }
-                    // No key hints
                     if (!hasGemini) { item { Text("Add Gemini key in Settings to unlock Gemini models", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) } }
                     if (!hasQwen) { item { Text("Add Qwen key in Settings to unlock Qwen models", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) } }
                 }
