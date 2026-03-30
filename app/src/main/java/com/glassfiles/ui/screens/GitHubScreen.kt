@@ -253,36 +253,32 @@ private fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () ->
                 Text("${fileContent!!.length} chars", fontSize = 11.sp, color = Color(0xFF8B949E))
                 Text(ext.uppercase(), fontSize = 11.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.SemiBold)
             }
-            // Content — selectable
-            androidx.compose.foundation.text.selection.SelectionContainer {
-                if (isImage) {
-                    // Image preview — show URL
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("Image preview not available\nUse Download to save", fontSize = 14.sp, color = Color(0xFF8B949E), textAlign = TextAlign.Center)
+            // Content
+            if (isImage) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Image preview not available\nUse Download to save", fontSize = 14.sp, color = Color(0xFF8B949E), textAlign = TextAlign.Center)
+                }
+            } else if (isMd) {
+                LazyColumn(Modifier.fillMaxSize().padding(12.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+                    items(fileContent!!.lines()) { line ->
+                        MarkdownLine(line)
                     }
-                } else if (isMd) {
-                    // Markdown — basic rendering
-                    LazyColumn(Modifier.fillMaxSize().padding(12.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-                        items(fileContent!!.lines()) { line ->
-                            MarkdownLine(line)
-                        }
-                    }
-                } else {
-                    // Code with syntax highlighting — use LazyColumn for performance
-                    val lines = remember(fileContent) { fileContent!!.lines() }
-                    LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-                        items(lines.size) { idx ->
-                            Row(Modifier.fillMaxWidth()) {
-                                Text(
-                                    "${idx + 1}".padStart(4),
-                                    fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                                    color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)
-                                )
-                                Text(
-                                    highlightLine(lines[idx], ext),
-                                    fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp
-                                )
-                            }
+                }
+            } else {
+                // Code with syntax highlighting — LazyColumn for performance
+                val lines = remember(fileContent) { fileContent!!.lines() }
+                LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
+                    items(lines.size) { idx ->
+                        Row(Modifier.fillMaxWidth()) {
+                            Text(
+                                "${idx + 1}".padStart(4),
+                                fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)
+                            )
+                            Text(
+                                highlightLine(lines[idx], ext),
+                                fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp
+                            )
                         }
                     }
                 }
