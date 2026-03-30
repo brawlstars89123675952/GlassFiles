@@ -34,9 +34,9 @@ enum class AiProvider(
 
     // ── Qwen Commercial ──
     QWEN3_MAX("Qwen3 Max", "qwen3-max", false, "Best Qwen3, complex tasks", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
-    QWEN35_PLUS("Qwen3.5 Plus", "qwen3.5-plus", true, "Text + Vision, balanced", isQwen = true, supportsVision = true, supportsFiles = true, category = "Qwen Commercial"),
+    QWEN35_PLUS("Qwen3.5 Plus", "qwen3.5-plus", true, "Text + Vision, balanced", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
     QWEN_PLUS("Qwen Plus", "qwen-plus", false, "Smart, balanced", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
-    QWEN35_FLASH("Qwen3.5 Flash", "qwen3.5-flash", true, "Fast, multimodal", isQwen = true, supportsVision = true, supportsFiles = true, category = "Qwen Commercial"),
+    QWEN35_FLASH("Qwen3.5 Flash", "qwen3.5-flash", true, "Fast, multimodal", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
     QWEN_FLASH("Qwen Flash", "qwen-flash", false, "Fastest, cheapest", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
     QWEN_TURBO("Qwen Turbo", "qwen-turbo", false, "Fast, cost-effective", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
     QWEN_LONG("Qwen Long", "qwen-long", false, "10M context window", isQwen = true, supportsFiles = true, category = "Qwen Commercial"),
