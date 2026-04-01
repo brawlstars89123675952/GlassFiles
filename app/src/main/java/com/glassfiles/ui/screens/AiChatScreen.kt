@@ -521,6 +521,120 @@ private fun Badge(text: String, color: Color) {
 }
 
 // ═══════════════════════════════════
+// Syntax Highlighting Colors (Android Studio Darcula)
+// ═══════════════════════════════════
+
+private val CodeBg = Color(0xFF0D1117)
+private val CodeBorder = Color(0xFF30363D)
+private val CodeKeyword = Color(0xFFFF7B72)    // red — if, fun, val, class, return
+private val CodeString = Color(0xFFA5D6A7)     // green — "strings"
+private val CodeComment = Color(0xFF8B949E)    // gray — // comments
+private val CodeNumber = Color(0xFF79C0FF)     // blue — numbers
+private val CodeType = Color(0xFFFFA657)       // orange — types, annotations
+private val CodeFunc = Color(0xFFD2A8FF)       // purple — function names
+private val CodeDefault = Color(0xFFE6EDF3)    // white — default text
+private val CodeLangBg = Color(0xFF1C2128)
+
+private val keywords = setOf(
+    "fun", "val", "var", "class", "object", "interface", "enum", "when", "if", "else", "for",
+    "while", "return", "import", "package", "private", "public", "protected", "internal",
+    "override", "suspend", "data", "sealed", "abstract", "open", "companion", "init", "try",
+    "catch", "throw", "finally", "is", "as", "in", "by", "get", "set", "null", "true", "false",
+    "this", "super", "it", "break", "continue", "do", "typealias", "const", "lateinit", "lazy",
+    // Java/JS/Python/Go/Rust common
+    "function", "const", "let", "var", "def", "class", "self", "None", "True", "False",
+    "async", "await", "yield", "from", "with", "lambda", "elif", "except", "raise",
+    "static", "final", "void", "int", "String", "boolean", "float", "double", "long",
+    "new", "delete", "typeof", "instanceof", "export", "default", "switch", "case",
+    "struct", "impl", "fn", "pub", "mut", "use", "mod", "crate", "match", "loop",
+    "func", "go", "chan", "select", "defer", "range", "type", "map", "make",
+    "println", "print", "printf"
+)
+
+@Composable
+private fun HighlightedCodeBlock(code: String, lang: String, onCopy: () -> Unit) {
+    val lines = code.lines()
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, CodeBorder, RoundedCornerShape(8.dp))) {
+        // Language header + copy
+        Row(Modifier.fillMaxWidth().background(CodeLangBg).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(lang.ifBlank { "code" }, fontSize = 11.sp, color = CodeComment, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF30363D)).clickable { onCopy() }.padding(horizontal = 8.dp, vertical = 3.dp)) {
+                Text("Copy", fontSize = 10.sp, color = CodeDefault, fontWeight = FontWeight.Medium)
+            }
+        }
+        // Code lines with numbers
+        Column(Modifier.background(CodeBg).horizontalScroll(rememberScrollState()).padding(8.dp)) {
+            lines.forEachIndexed { idx, line ->
+                Row {
+                    Text("${idx + 1}".padStart(3), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                        color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp))
+                    Text(buildHighlightedLine(line, lang), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun buildHighlightedLine(line: String, lang: String): androidx.compose.ui.text.AnnotatedString {
+    return androidx.compose.ui.text.buildAnnotatedString {
+        val trimmed = line
+        var i = 0
+        while (i < trimmed.length) {
+            when {
+                // Comment
+                i < trimmed.length - 1 && trimmed[i] == '/' && trimmed[i + 1] == '/' -> {
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeComment)) { append(trimmed.substring(i)) }
+                    i = trimmed.length
+                }
+                trimmed[i] == '#' && (lang in listOf("python", "py", "bash", "sh", "yaml", "yml", "toml", "rb")) -> {
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeComment)) { append(trimmed.substring(i)) }
+                    i = trimmed.length
+                }
+                // String double
+                trimmed[i] == '"' -> {
+                    val end = trimmed.indexOf('"', i + 1).let { if (it < 0) trimmed.length - 1 else it }
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeString)) { append(trimmed.substring(i, end + 1)) }
+                    i = end + 1
+                }
+                // String single
+                trimmed[i] == '\'' -> {
+                    val end = trimmed.indexOf('\'', i + 1).let { if (it < 0) trimmed.length - 1 else it }
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeString)) { append(trimmed.substring(i, end + 1)) }
+                    i = end + 1
+                }
+                // Annotation / decorator
+                trimmed[i] == '@' -> {
+                    var j = i + 1; while (j < trimmed.length && (trimmed[j].isLetterOrDigit() || trimmed[j] == '.')) j++
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeType)) { append(trimmed.substring(i, j)) }
+                    i = j
+                }
+                // Number
+                trimmed[i].isDigit() && (i == 0 || !trimmed[i - 1].isLetterOrDigit()) -> {
+                    var j = i; while (j < trimmed.length && (trimmed[j].isDigit() || trimmed[j] == '.' || trimmed[j] == 'f' || trimmed[j] == 'L')) j++
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = CodeNumber)) { append(trimmed.substring(i, j)) }
+                    i = j
+                }
+                // Word (keyword or identifier)
+                trimmed[i].isLetter() || trimmed[i] == '_' -> {
+                    var j = i; while (j < trimmed.length && (trimmed[j].isLetterOrDigit() || trimmed[j] == '_')) j++
+                    val word = trimmed.substring(i, j)
+                    val color = when {
+                        word in keywords -> CodeKeyword
+                        word.first().isUpperCase() -> CodeType
+                        j < trimmed.length && trimmed[j] == '(' -> CodeFunc
+                        else -> CodeDefault
+                    }
+                    withStyle(androidx.compose.ui.text.SpanStyle(color = color)) { append(word) }
+                    i = j
+                }
+                else -> { withStyle(androidx.compose.ui.text.SpanStyle(color = CodeDefault)) { append(trimmed[i].toString()) }; i++ }
+            }
+        }
+    }
+}
+
+// ═══════════════════════════════════
 // Message Bubble
 // ═══════════════════════════════════
 
@@ -528,6 +642,7 @@ private fun Badge(text: String, color: Color) {
 @Composable
 private fun Bubble(msg: ChatMessage, onCopy: () -> Unit) {
     val isUser = msg.role == "user"
+    val context = LocalContext.current
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
         if (msg.imageBase64 != null) {
             val bmp = remember(msg.imageBase64) {
@@ -550,24 +665,52 @@ private fun Bubble(msg: ChatMessage, onCopy: () -> Unit) {
             }
         }
 
-        Box(Modifier.widthIn(max = 320.dp)
-            .clip(RoundedCornerShape(16.dp, 16.dp, if (isUser) 4.dp else 16.dp, if (isUser) 16.dp else 4.dp))
-            .background(if (isUser) Accent else Card)
-            .combinedClickable(onClick = {}, onLongClick = onCopy).padding(12.dp)) {
+        if (isUser) {
+            // User bubble — simple
+            Box(Modifier.widthIn(max = 320.dp)
+                .clip(RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp))
+                .background(Accent)
+                .combinedClickable(onClick = {}, onLongClick = onCopy).padding(12.dp)) {
+                Text(msg.content, color = Color.Black, fontSize = 14.sp, lineHeight = 20.sp)
+            }
+        } else {
+            // AI bubble — with syntax highlighted code blocks
             val content = msg.content
             if (content.contains("```")) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    content.split("```").forEachIndexed { i, part ->
-                        if (i % 2 == 0) { if (part.isNotBlank()) Text(part.trim(), color = if (isUser) Color.Black else T1, fontSize = 14.sp, lineHeight = 20.sp) }
-                        else {
-                            val code = part.lines().let { l -> if (l.isNotEmpty() && l.first().matches(Regex("^[a-z]+$"))) l.drop(1) else l }.joinToString("\n")
-                            Box(Modifier.fillMaxWidth().background(BG, RoundedCornerShape(6.dp)).padding(8.dp)) {
-                                Text(code, color = Color(0xFFA5D6FF), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
+                Column(Modifier.widthIn(max = 340.dp).combinedClickable(onClick = {}, onLongClick = onCopy),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val parts = content.split("```")
+                    parts.forEachIndexed { i, part ->
+                        if (i % 2 == 0) {
+                            // Regular text
+                            if (part.isNotBlank()) {
+                                Box(Modifier.clip(RoundedCornerShape(16.dp, 16.dp, if (i == parts.lastIndex) 16.dp else 8.dp, 4.dp))
+                                    .background(Card).padding(12.dp)) {
+                                    Text(part.trim(), color = T1, fontSize = 14.sp, lineHeight = 20.sp)
+                                }
+                            }
+                        } else {
+                            // Code block with syntax highlighting
+                            val lines = part.lines()
+                            val lang = if (lines.isNotEmpty() && lines.first().matches(Regex("^[a-zA-Z0-9_+#.-]+$"))) lines.first().lowercase() else ""
+                            val code = if (lang.isNotBlank()) lines.drop(1).joinToString("\n") else part
+                            HighlightedCodeBlock(code.trimEnd(), lang) {
+                                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                    .setPrimaryClip(ClipData.newPlainText("code", code))
+                                Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
                 }
-            } else Text(content, color = if (isUser) Color.Black else T1, fontSize = 14.sp, lineHeight = 20.sp)
+            } else {
+                // Plain text AI response
+                Box(Modifier.widthIn(max = 320.dp)
+                    .clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp))
+                    .background(Card)
+                    .combinedClickable(onClick = {}, onLongClick = onCopy).padding(12.dp)) {
+                    Text(content, color = T1, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            }
         }
     }
 }
