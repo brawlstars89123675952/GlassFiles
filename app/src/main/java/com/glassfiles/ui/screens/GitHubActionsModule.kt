@@ -38,7 +38,7 @@ import java.io.File
 // Compact mode — propagates through all sub-screens automatically
 
 @Composable
-private fun ActionsTab(runs: List<GHWorkflowRun>, repo: GHRepo, onRunClick: (GHWorkflowRun) -> Unit) {
+internal fun ActionsTab(runs: List<GHWorkflowRun>, repo: GHRepo, onRunClick: (GHWorkflowRun) -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     if (runs.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(Strings.ghNoWorkflows, fontSize = 14.sp, color = TextTertiary) }
@@ -102,7 +102,7 @@ private fun ActionsTab(runs: List<GHWorkflowRun>, repo: GHRepo, onRunClick: (GHW
 // ═══════════════════════════════════
 
 @Composable
-private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Unit) {
+internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var jobs by remember { mutableStateOf<List<GHJob>>(emptyList()) }
     var artifacts by remember { mutableStateOf<List<GHArtifact>>(emptyList()) }
@@ -240,7 +240,7 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
                                 Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary,
                                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(fmtSize(artifact.sizeInBytes), fontSize = 11.sp, color = TextSecondary)
+                                    Text(ghFmtSize(artifact.sizeInBytes), fontSize = 11.sp, color = TextSecondary)
                                     if (artifact.expired) Text(Strings.ghExpired, fontSize = 11.sp, color = Color(0xFFFF3B30))
                                     else Text(artifact.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
                                 }
@@ -256,7 +256,7 @@ private fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Uni
     }
 }
 
-private fun calcDuration(start: String, end: String): String {
+internal fun calcDuration(start: String, end: String): String {
     if (start.isBlank() || end.isBlank()) return ""
     return try {
         val fmt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
@@ -272,7 +272,7 @@ private fun calcDuration(start: String, end: String): String {
 // ═══════════════════════════════════
 
 @Composable
-private fun NotificationsScreen(onBack: () -> Unit) {
+internal fun NotificationsScreen(onBack: () -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<GHNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
