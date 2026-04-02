@@ -38,7 +38,7 @@ import java.io.File
 // Compact mode — propagates through all sub-screens automatically
 
 @Composable
-private fun GitHubSettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
+internal fun GitHubSettingsScreen(onBack: () -> Unit, onLogout: () -> Unit, onClose: (() -> Unit)? = null) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var user by remember { mutableStateOf(GitHubManager.getCachedUser(context)) }
     val token = remember { GitHubManager.getToken(context) }
@@ -46,7 +46,7 @@ private fun GitHubSettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     var newToken by remember { mutableStateOf("") }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
-        GHTopBar(Strings.ghSettings, onBack = onBack)
+        GHTopBar(Strings.ghSettings, onBack = onBack, onClose = onClose)
 
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
             // Account section
@@ -155,7 +155,7 @@ private fun GitHubSettingsScreen(onBack: () -> Unit, onLogout: () -> Unit) {
 }
 
 @Composable
-private fun SettingsRow(icon: ImageVector, title: String, subtitle: String? = null, color: Color = TextPrimary, onClick: (() -> Unit)? = null) {
+internal fun SettingsRow(icon: ImageVector, title: String, subtitle: String? = null, color: Color = TextPrimary, onClick: (() -> Unit)? = null) {
     Row(
         Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -170,7 +170,7 @@ private fun SettingsRow(icon: ImageVector, title: String, subtitle: String? = nu
 }
 
 @Composable
-private fun FeatureRow(title: String, desc: String) {
+internal fun FeatureRow(title: String, desc: String) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = Color(0xFF34C759))
         Column(Modifier.weight(1f)) {
