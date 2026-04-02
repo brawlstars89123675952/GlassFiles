@@ -40,7 +40,7 @@ import java.io.File
 internal val LocalGHCompact = compositionLocalOf { false }
 
 @Composable
-fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, compact: Boolean = false) {
+fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -> Unit)? = null, compact: Boolean = false) {
     CompositionLocalProvider(LocalGHCompact provides compact) {
     val context = LocalContext.current
     var isLoggedIn by remember { mutableStateOf(GitHubManager.isLoggedIn(context)) }
@@ -50,17 +50,17 @@ fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, compact: Boole
     var showSettings by remember { mutableStateOf(false) }
     LaunchedEffect(isLoggedIn) { if (isLoggedIn) user = GitHubManager.getUser(context) }
     when {
-        !isLoggedIn -> LoginScreen(onBack, onMinimize) { GitHubManager.saveToken(context, it); isLoggedIn = true }
-        showSettings -> GitHubSettingsScreen(onBack = { showSettings = false }, onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false })
-        showGists -> GistsScreen({ showGists = false }, onMinimize)
-        selectedRepo != null -> RepoDetailScreen(selectedRepo!!, { selectedRepo = null }, onMinimize)
-        else -> ReposScreen(user, onBack, onMinimize, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true })
+        !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { GitHubManager.saveToken(context, it); isLoggedIn = true }
+        showSettings -> GitHubSettingsScreen(onBack = { showSettings = false }, onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false }, onClose = onClose)
+        showGists -> GistsScreen({ showGists = false }, onMinimize, onClose)
+        selectedRepo != null -> RepoDetailScreen(selectedRepo!!, { selectedRepo = null }, onMinimize, onClose)
+        else -> ReposScreen(user, onBack, onMinimize, onClose, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true })
     }
     }
 }
 
 @Composable
-internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Unit, onMinimize: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Unit, onMinimize: (() -> Unit)? = null, onClose: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val compact = LocalGHCompact.current
     val shape = if (compact) RoundedCornerShape(0.dp) else RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
     Row(Modifier.fillMaxWidth().background(SurfaceWhite, shape).padding(
@@ -75,6 +75,7 @@ internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Uni
             if (subtitle != null && !compact) Text(subtitle, fontSize = 13.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (onMinimize != null && !compact) IconButton(onClick = onMinimize) { Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(20.dp), tint = Blue) }
+        if (onClose != null && !compact) IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = Color(0xFFFF3B30)) }
         actions()
     }
 }
