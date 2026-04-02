@@ -49,7 +49,8 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var workflowRuns by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }; var selectedRunId by remember { mutableStateOf<Long?>(null) }
     var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }; var showDispatch by remember { mutableStateOf(false) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
-    var fileContent by remember { mutableStateOf<String?>(null) }; var editingFile by remember { mutableStateOf<GHContent?>(null) }
+    var fileContent by remember { mutableStateOf<String?>(null) }; var openedFile by remember { mutableStateOf<GHContent?>(null) }; var editingFile by remember { mutableStateOf<GHContent?>(null) }
+    var repoQuery by remember { mutableStateOf("") }
     var cloneProgress by remember { mutableStateOf<String?>(null) }; var isStarred by remember { mutableStateOf(false) }
     var isWatching by remember { mutableStateOf(false) }
     var selectedBranch by remember { mutableStateOf(repo.defaultBranch) }
@@ -66,7 +67,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
 
     LaunchedEffect(Unit) { isStarred = GitHubManager.isStarred(context, repo.owner, repo.name); isWatching = GitHubManager.isWatching(context, repo.owner, repo.name); branches = GitHubManager.getBranches(context, repo.owner, repo.name) }
     LaunchedEffect(selectedTab, currentPath, selectedBranch) { loading = true; when (selectedTab) {
-        RepoTab.FILES -> contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath)
+        RepoTab.FILES -> contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch)
         RepoTab.COMMITS -> { commitsPage = 1; val r = GitHubManager.getCommits(context, repo.owner, repo.name, 1); commits = r; commitsHasMore = r.size >= 30 }
         RepoTab.ISSUES -> { issuesPage = 1; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = 1); issues = r; issuesHasMore = r.size >= 30 }
         RepoTab.PULLS -> { pullsPage = 1; val r = GitHubManager.getPullRequests(context, repo.owner, repo.name, page = 1); pulls = r; pullsHasMore = r.size >= 30 }
@@ -80,62 +81,84 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     if (selectedCommitSha != null) { CommitDiffScreen(repo, selectedCommitSha!!) { selectedCommitSha = null }; return }
     if (selectedRunId != null) { WorkflowRunDetailScreen(repo, selectedRunId!!) { selectedRunId = null }; return }
     val safeFileContent = fileContent
-    if (safeFileContent != null) {
-        val ext = currentPath.substringAfterLast(".", "").lowercase()
+    val safeOpenedFile = openedFile
+    if (safeFileContent != null && safeOpenedFile != null) {
+        val ext = safeOpenedFile.name.substringAfterLast(".", "").lowercase()
         val isImage = ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
         val isMd = ext in listOf("md", "markdown")
         val cachedLines = remember(safeFileContent) { safeFileContent.lines() }
         Column(Modifier.fillMaxSize().background(Color(0xFF0D1117))) {
-            GHTopBar(currentPath.substringAfterLast("/"), onBack = { fileContent = null }) {
-                // Copy all
+            GHTopBar(safeOpenedFile.name, onBack = {
+                fileContent = null
+                openedFile = null
+            }) {
                 IconButton(onClick = {
                     val clip = android.content.ClipData.newPlainText("code", safeFileContent)
                     (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
                     Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                 }) { Icon(Icons.Rounded.ContentCopy, null, Modifier.size(20.dp), tint = Blue) }
-                // Download
-                IconButton(onClick = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${currentPath.substringAfterLast("/")}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, currentPath, dest); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } }) { Icon(Icons.Rounded.Download, null, Modifier.size(20.dp), tint = Blue) }
-                // Edit
-                IconButton(onClick = { val fc = contents.find { it.path == currentPath }; if (fc != null) { editingFile = fc; fileContent = null } }) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = Blue) }
+                IconButton(onClick = {
+                    scope.launch {
+                        val dest = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                            "GlassFiles_Git/${safeOpenedFile.name}"
+                        )
+                        val ok = GitHubManager.downloadFile(
+                            context, repo.owner, repo.name, safeOpenedFile.path, dest, selectedBranch
+                        )
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                    }
+                }) { Icon(Icons.Rounded.Download, null, Modifier.size(20.dp), tint = Blue) }
+                IconButton(onClick = {
+                    editingFile = safeOpenedFile
+                    fileContent = null
+                }) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = Blue) }
             }
-            // File info bar
             Row(Modifier.fillMaxWidth().background(Color(0xFF161B22)).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("${cachedLines.size} lines", fontSize = 11.sp, color = Color(0xFF8B949E))
                 Text("${safeFileContent.length} chars", fontSize = 11.sp, color = Color(0xFF8B949E))
                 Text(ext.uppercase(), fontSize = 11.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.SemiBold)
             }
-            // Content
             if (isImage) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Image preview not available\nUse Download to save", fontSize = 14.sp, color = Color(0xFF8B949E), textAlign = TextAlign.Center)
                 }
             } else if (isMd) {
                 LazyColumn(Modifier.fillMaxSize().padding(12.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-                    items(cachedLines.size) { idx ->
-                        MarkdownLine(cachedLines[idx])
-                    }
+                    items(cachedLines.size) { idx -> MarkdownLine(cachedLines[idx]) }
                 }
             } else {
-                // Code with syntax highlighting
                 LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
                     items(cachedLines.size) { idx ->
                         Row(Modifier.fillMaxWidth()) {
-                            Text(
-                                "${idx + 1}".padStart(4),
-                                fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                                color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)
-                            )
-                            Text(
-                                highlightLine(cachedLines[idx], ext),
-                                fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp
-                            )
+                            Text("${idx + 1}".padStart(4), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp))
+                            Text(highlightLine(cachedLines[idx], ext), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
                         }
                     }
                 }
             }
         }; return
     }
-    if (editingFile != null) { EditFileScreen(repo, editingFile!!, selectedBranch, { editingFile = null }) { editingFile = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) } }; return }
+    if (editingFile != null) { EditFileScreen(repo, editingFile!!, selectedBranch, { editingFile = null }) { editingFile = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }; return }
+    val filteredContents = remember(contents, repoQuery) {
+        if (repoQuery.isBlank()) contents else contents.filter { it.name.contains(repoQuery, ignoreCase = true) || it.path.contains(repoQuery, ignoreCase = true) }
+    }
+    val filteredCommits = remember(commits, repoQuery) {
+        if (repoQuery.isBlank()) commits else commits.filter {
+            it.message.contains(repoQuery, ignoreCase = true) || it.author.contains(repoQuery, ignoreCase = true) || it.sha.contains(repoQuery, ignoreCase = true)
+        }
+    }
+    val filteredIssues = remember(issues, repoQuery) {
+        if (repoQuery.isBlank()) issues else issues.filter {
+            it.title.contains(repoQuery, ignoreCase = true) || it.author.contains(repoQuery, ignoreCase = true) || it.number.toString().contains(repoQuery)
+        }
+    }
+    val filteredPulls = remember(pulls, repoQuery) {
+        if (repoQuery.isBlank()) pulls else pulls.filter {
+            it.title.contains(repoQuery, ignoreCase = true) || it.author.contains(repoQuery, ignoreCase = true) || it.number.toString().contains(repoQuery)
+        }
+    }
+
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar(repo.name, subtitle = if (currentPath.isNotBlank()) currentPath else repo.owner, onBack = { if (currentPath.isNotBlank() && selectedTab == RepoTab.FILES) currentPath = currentPath.substringBeforeLast("/", "") else onBack() }, onMinimize = onMinimize, onClose = onClose) {
@@ -158,28 +181,68 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         // Tabs
         Row(Modifier.fillMaxWidth().background(SurfaceWhite).horizontalScroll(rememberScrollState()).padding(horizontal = if (cmp) 6.dp else 12.dp, vertical = if (cmp) 3.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(if (cmp) 4.dp else 6.dp)) {
             RepoTab.entries.forEach { tab -> val sel = selectedTab == tab; val label = when (tab) { RepoTab.FILES -> Strings.ghGistFiles; RepoTab.COMMITS -> Strings.ghCommits; RepoTab.ISSUES -> "Issues"; RepoTab.PULLS -> Strings.ghPulls; RepoTab.RELEASES -> Strings.ghReleases; RepoTab.ACTIONS -> Strings.ghActions; RepoTab.README -> Strings.ghReadme; RepoTab.CODE_SEARCH -> Strings.ghSearchCode }
-                Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) Blue.copy(0.12f) else Color.Transparent).border(1.dp, if (sel) Blue.copy(0.3f) else SeparatorColor, RoundedCornerShape(6.dp)).clickable { selectedTab = tab }.padding(horizontal = if (cmp) 6.dp else 10.dp, vertical = if (cmp) 3.dp else 6.dp)) { Text(label, fontSize = if (cmp) 10.sp else 12.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) Blue else TextSecondary) }
+                Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) Blue.copy(0.12f) else Color.Transparent).border(1.dp, if (sel) Blue.copy(0.3f) else SeparatorColor, RoundedCornerShape(6.dp)).clickable { selectedTab = tab; repoQuery = "" }.padding(horizontal = if (cmp) 6.dp else 10.dp, vertical = if (cmp) 3.dp else 6.dp)) { Text(label, fontSize = if (cmp) 10.sp else 12.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) Blue else TextSecondary) }
+            }
+        }
+        if (selectedTab in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
+            Row(
+                Modifier.fillMaxWidth().background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    if (repoQuery.isEmpty()) {
+                        Text(
+                            when (selectedTab) {
+                                RepoTab.FILES -> "Filter files"
+                                RepoTab.COMMITS -> "Filter commits"
+                                RepoTab.ISSUES -> "Filter issues"
+                                RepoTab.PULLS -> "Filter pull requests"
+                                else -> ""
+                            },
+                            color = TextTertiary,
+                            fontSize = 13.sp
+                        )
+                    }
+                    BasicTextField(
+                        value = repoQuery,
+                        onValueChange = { repoQuery = it },
+                        textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 13.sp),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                if (repoQuery.isNotBlank()) {
+                    Box(
+                        Modifier.clip(RoundedCornerShape(8.dp)).background(SurfaceLight).clickable { repoQuery = "" }.padding(horizontal = 10.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.Close, null, Modifier.size(16.dp), tint = TextSecondary)
+                    }
+                }
             }
         }
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp) }
         else when (selectedTab) {
-            RepoTab.FILES -> FilesTab(contents, onDirClick = { currentPath = it.path }, onFileClick = { scope.launch { fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, it.path); currentPath = it.path } }, onEdit = { editingFile = it }, onDelete = { deleteTarget = it }, onDownload = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${it.name}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } })
-            RepoTab.COMMITS -> CommitsTab(commits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }) { selectedCommitSha = it.sha }
-            RepoTab.ISSUES -> IssuesTab(issues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }) { selectedIssue = it }
-            RepoTab.PULLS -> PullsTab(pulls, repo) { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }
+            RepoTab.FILES -> FilesTab(filteredContents, onDirClick = { currentPath = it.path }, onFileClick = { scope.launch { openedFile = it; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, it.path, selectedBranch) } }, onEdit = { openedFile = it; editingFile = it }, onDelete = { deleteTarget = it }, onDownload = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${it.name}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest, selectedBranch); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } })
+            RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }) { selectedCommitSha = it.sha }
+            RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }) { selectedIssue = it }
+            RepoTab.PULLS -> PullsTab(filteredPulls, repo) { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.README -> ReadmeTab(readme, languages, contributors)
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
     }
-    if (showUpload) UploadDialog(repo, currentPath, selectedBranch, { showUpload = false }) { showUpload = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) } }
-    if (showCreateFile) CreateFileDialog(repo, currentPath, selectedBranch, { showCreateFile = false }) { showCreateFile = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) } }
+    if (showUpload) UploadDialog(repo, currentPath, selectedBranch, { showUpload = false }) { showUpload = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
+    if (showCreateFile) CreateFileDialog(repo, currentPath, selectedBranch, { showCreateFile = false }) { showCreateFile = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
     if (showCreateBranch) CreateBranchDialog(repo, branches, { showCreateBranch = false }) { showCreateBranch = false; scope.launch { branches = GitHubManager.getBranches(context, repo.owner, repo.name) } }
     if (showCreateIssue) CreateIssueDialog(repo, { showCreateIssue = false }) { showCreateIssue = false; scope.launch { issues = GitHubManager.getIssues(context, repo.owner, repo.name) } }
     if (showCreatePR) CreatePRDialog(repo, branches, { showCreatePR = false }) { showCreatePR = false; scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }
-    if (deleteTarget != null) DeleteFileDialog(repo, deleteTarget!!, selectedBranch, { deleteTarget = null }) { deleteTarget = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath) } }
+    if (deleteTarget != null) DeleteFileDialog(repo, deleteTarget!!, selectedBranch, { deleteTarget = null }) { deleteTarget = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
     if (showBranchPicker) BranchPickerDialog(branches, selectedBranch, { selectedBranch = it; showBranchPicker = false }, { showBranchPicker = false }) { showBranchPicker = false; showCreateBranch = true }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
 }
@@ -223,15 +286,81 @@ internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -
 }; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
 
 @Composable
-internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () -> Unit) { val context = LocalContext.current; val scope = rememberCoroutineScope()
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(pulls) { pr ->
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-            Icon(Icons.Rounded.CallMerge, null, Modifier.size(20.dp), tint = when { pr.merged -> Color(0xFF8957E5); pr.state == "open" -> Color(0xFF34C759); else -> Color(0xFF8E8E93) })
-            Column(Modifier.weight(1f)) { Text(pr.title, fontSize = 14.sp, color = TextPrimary, maxLines = 2); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("#${pr.number}", fontSize = 11.sp, color = TextTertiary); Text("${pr.head} \u2192 ${pr.base}", fontSize = 11.sp, color = Blue); Text(pr.author, fontSize = 11.sp, color = TextSecondary) }
-                if (pr.state == "open" && !pr.merged) { Spacer(Modifier.height(6.dp)); Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFF34C759).copy(0.1f)).clickable { scope.launch { val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number); Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show(); if (ok) onRefresh() } }.padding(horizontal = 10.dp, vertical = 4.dp)) { Text(Strings.ghMerge, fontSize = 11.sp, color = Color(0xFF34C759), fontWeight = FontWeight.SemiBold) } }
+internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var reviewTarget by remember { mutableStateOf<GHPullRequest?>(null) }
+    var filesTarget by remember { mutableStateOf<GHPullRequest?>(null) }
+
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+        items(pulls) { pr ->
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                    Icon(
+                        Icons.Rounded.CallMerge, null, Modifier.size(20.dp),
+                        tint = when {
+                            pr.merged -> Color(0xFF8957E5)
+                            pr.state == "open" -> Color(0xFF34C759)
+                            else -> Color(0xFF8E8E93)
+                        }
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text(pr.title, fontSize = 14.sp, color = TextPrimary, maxLines = 2)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("#${pr.number}", fontSize = 11.sp, color = TextTertiary)
+                            Text("${pr.head} → ${pr.base}", fontSize = 11.sp, color = Blue)
+                            Text(pr.author, fontSize = 11.sp, color = TextSecondary)
+                        }
+                        if (pr.body.isNotBlank()) {
+                            Text(
+                                pr.body.replace("
+", " ").take(140),
+                                fontSize = 11.sp,
+                                color = TextTertiary,
+                                maxLines = 2,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Chip(Icons.Rounded.Article, "Files") { filesTarget = pr }
+                            Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
+                            if (pr.state == "open" && !pr.merged) {
+                                Chip(Icons.Rounded.CallMerge, Strings.ghMerge, Color(0xFF34C759)) {
+                                    scope.launch {
+                                        val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
+                                        Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show()
+                                        if (ok) onRefresh()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().padding(top = 10.dp).height(0.5.dp).background(SeparatorColor))
             }
-        }; Box(Modifier.fillMaxWidth().padding(start = 46.dp).height(0.5.dp).background(SeparatorColor))
-    } }
+        }
+    }
+
+    if (reviewTarget != null) {
+        PullReviewDialog(
+            repo = repo,
+            pr = reviewTarget!!,
+            onDismiss = { reviewTarget = null },
+            onDone = {
+                reviewTarget = null
+                onRefresh()
+            }
+        )
+    }
+
+    if (filesTarget != null) {
+        PullFilesDialog(
+            repo = repo,
+            pr = filesTarget!!,
+            onDismiss = { filesTarget = null }
+        )
+    }
 }
 
 @Composable
@@ -261,29 +390,388 @@ internal fun ReadmeTab(readme: String?, languages: Map<String, Long>, contributo
 }
 
 @Composable
-internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Unit) { val context = LocalContext.current; val scope = rememberCoroutineScope()
-    var detail by remember { mutableStateOf<GHIssueDetail?>(null) }; var comments by remember { mutableStateOf<List<GHComment>>(emptyList()) }; var loading by remember { mutableStateOf(true) }; var newComment by remember { mutableStateOf("") }; var sending by remember { mutableStateOf(false) }
-    LaunchedEffect(issueNumber) { loading = true; detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber); comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber); loading = false }
-    Column(Modifier.fillMaxSize().background(SurfaceLight)) {
-        GHTopBar("#$issueNumber", subtitle = detail?.title, onBack = onBack) { if (detail != null) { val isOpen = detail!!.state == "open"
-            IconButton(onClick = { scope.launch { val ok = if (isOpen) GitHubManager.closeIssue(context, repo.owner, repo.name, issueNumber) else GitHubManager.reopenIssue(context, repo.owner, repo.name, issueNumber); if (ok) detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber) } }) { Icon(if (isOpen) Icons.Rounded.Close else Icons.Rounded.Refresh, null, Modifier.size(20.dp), tint = if (isOpen) Color(0xFFFF3B30) else Color(0xFF34C759)) } } }
-        if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp) }
-        else { LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
-            if (detail != null) item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { AsyncImage(detail!!.avatarUrl, null, Modifier.size(28.dp).clip(CircleShape)); Text(detail!!.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Blue); Text(detail!!.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
-                    Box(Modifier.background(if (detail!!.state == "open") Color(0xFF34C759).copy(0.1f) else Color(0xFF8E8E93).copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(if (detail!!.state == "open") Strings.ghOpen else Strings.ghClosed, fontSize = 10.sp, color = if (detail!!.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93)) } }
-                if (detail!!.labels.isNotEmpty()) { Spacer(Modifier.height(6.dp)); Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { detail!!.labels.forEach { Text(it, fontSize = 10.sp, color = Blue, modifier = Modifier.background(Blue.copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) } } }
-                if (detail!!.body.isNotBlank()) { Spacer(Modifier.height(10.dp)); Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(12.dp)) { Text(detail!!.body, fontSize = 13.sp, color = TextPrimary, lineHeight = 20.sp) } }
-                Spacer(Modifier.height(16.dp)); Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor)); Spacer(Modifier.height(12.dp))
-            }
-            if (comments.isEmpty()) item { Text(Strings.ghNoComments, fontSize = 13.sp, color = TextTertiary) }
-            items(comments) { c -> Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) { AsyncImage(c.avatarUrl, null, Modifier.size(24.dp).clip(CircleShape)); Column(Modifier.weight(1f)) { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text(c.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue); Text(c.createdAt.take(10), fontSize = 10.sp, color = TextTertiary) }; Text(c.body, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.padding(top = 2.dp)) } }; Box(Modifier.fillMaxWidth().padding(start = 32.dp).height(0.5.dp).background(SeparatorColor)) }
-        }
-        Row(Modifier.fillMaxWidth().background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 8.dp)) { if (newComment.isEmpty()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp); BasicTextField(newComment, { newComment = it }, textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp), modifier = Modifier.fillMaxWidth()) }
-            IconButton(onClick = { if (newComment.isBlank() || sending) return@IconButton; sending = true; scope.launch { GitHubManager.addComment(context, repo.owner, repo.name, issueNumber, newComment); comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber); newComment = ""; sending = false } }, enabled = !sending) { Icon(Icons.Rounded.Send, null, Modifier.size(20.dp), tint = if (sending) TextTertiary else Blue) }
-        } }
+internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var detail by remember { mutableStateOf<GHIssueDetail?>(null) }
+    var comments by remember { mutableStateOf<List<GHComment>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var newComment by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var showMetaDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(issueNumber) {
+        loading = true
+        detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
+        comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
+        loading = false
     }
+
+    Column(Modifier.fillMaxSize().background(SurfaceLight)) {
+        GHTopBar("#$issueNumber", subtitle = detail?.title, onBack = onBack) {
+            if (detail != null) {
+                IconButton(onClick = { showMetaDialog = true }) {
+                    Icon(Icons.Rounded.Tune, null, Modifier.size(20.dp), tint = Blue)
+                }
+                val isOpen = detail!!.state == "open"
+                IconButton(onClick = {
+                    scope.launch {
+                        val ok = if (isOpen) {
+                            GitHubManager.closeIssue(context, repo.owner, repo.name, issueNumber)
+                        } else {
+                            GitHubManager.reopenIssue(context, repo.owner, repo.name, issueNumber)
+                        }
+                        if (ok) detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
+                    }
+                }) {
+                    Icon(
+                        if (isOpen) Icons.Rounded.Close else Icons.Rounded.Refresh,
+                        null,
+                        Modifier.size(20.dp),
+                        tint = if (isOpen) Color(0xFFFF3B30) else Color(0xFF34C759)
+                    )
+                }
+            }
+        }
+
+        if (loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+            }
+        } else {
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
+                if (detail != null) item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AsyncImage(detail!!.avatarUrl, null, Modifier.size(28.dp).clip(CircleShape))
+                        Text(detail!!.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Blue)
+                        Text(detail!!.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
+                        Box(
+                            Modifier.background(
+                                if (detail!!.state == "open") Color(0xFF34C759).copy(0.1f) else Color(0xFF8E8E93).copy(0.1f),
+                                RoundedCornerShape(4.dp)
+                            ).padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                if (detail!!.state == "open") Strings.ghOpen else Strings.ghClosed,
+                                fontSize = 10.sp,
+                                color = if (detail!!.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    if (detail!!.labels.isNotEmpty()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            detail!!.labels.forEach {
+                                Text(
+                                    it,
+                                    fontSize = 10.sp,
+                                    color = Blue,
+                                    modifier = Modifier.background(Blue.copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    if (detail!!.assignee.isNotBlank() || detail!!.milestoneTitle.isNotBlank()) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            if (detail!!.assignee.isNotBlank()) {
+                                Text(
+                                    "Assignee: ${detail!!.assignee}",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary,
+                                    modifier = Modifier.background(SurfaceWhite, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                            if (detail!!.milestoneTitle.isNotBlank()) {
+                                Text(
+                                    "Milestone: ${detail!!.milestoneTitle}",
+                                    fontSize = 10.sp,
+                                    color = TextSecondary,
+                                    modifier = Modifier.background(SurfaceWhite, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip(Icons.Rounded.Label, "Meta") { showMetaDialog = true }
+                    }
+                    if (detail!!.body.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(12.dp)) {
+                            Text(detail!!.body, fontSize = 13.sp, color = TextPrimary, lineHeight = 20.sp)
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
+                    Spacer(Modifier.height(12.dp))
+                }
+                if (comments.isEmpty()) item { Text(Strings.ghNoComments, fontSize = 13.sp, color = TextTertiary) }
+                items(comments) { c ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        AsyncImage(c.avatarUrl, null, Modifier.size(24.dp).clip(CircleShape))
+                        Column(Modifier.weight(1f)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(c.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue)
+                                Text(c.createdAt.take(10), fontSize = 10.sp, color = TextTertiary)
+                            }
+                            Text(c.body, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().padding(start = 32.dp).height(0.5.dp).background(SeparatorColor))
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    if (newComment.isEmpty()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
+                    BasicTextField(newComment, { newComment = it }, textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp), modifier = Modifier.fillMaxWidth())
+                }
+                IconButton(onClick = {
+                    if (newComment.isBlank() || sending) return@IconButton
+                    sending = true
+                    scope.launch {
+                        GitHubManager.addComment(context, repo.owner, repo.name, issueNumber, newComment)
+                        comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
+                        newComment = ""
+                        sending = false
+                    }
+                }, enabled = !sending) {
+                    Icon(Icons.Rounded.Send, null, Modifier.size(20.dp), tint = if (sending) TextTertiary else Blue)
+                }
+            }
+        }
+    }
+
+    if (showMetaDialog && detail != null) {
+        IssueMetaDialog(
+            repo = repo,
+            detail = detail!!,
+            onDismiss = { showMetaDialog = false },
+            onDone = {
+                showMetaDialog = false
+                scope.launch {
+                    detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
+                }
+            }
+        )
+    }
+}
+
+
+@Composable
+private fun IssueMetaDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -> Unit, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var labels by remember { mutableStateOf<List<GHLabel>>(emptyList()) }
+    var milestones by remember { mutableStateOf<List<GHMilestone>>(emptyList()) }
+    var assignees by remember { mutableStateOf<List<GHUserLite>>(emptyList()) }
+    val selectedLabels = remember(detail.number) { mutableStateListOf<String>().apply { addAll(detail.labels) } }
+    var selectedAssignee by remember(detail.number) { mutableStateOf(detail.assignee) }
+    var selectedMilestone by remember(detail.number) { mutableStateOf(detail.milestoneTitle) }
+    var loading by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+
+    LaunchedEffect(detail.number) {
+        loading = true
+        labels = GitHubManager.getLabels(context, repo.owner, repo.name)
+        milestones = GitHubManager.getMilestones(context, repo.owner, repo.name)
+        assignees = GitHubManager.getAssignees(context, repo.owner, repo.name)
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Issue metadata", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            if (loading) {
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Labels", fontSize = 12.sp, color = TextSecondary)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        labels.forEach { label ->
+                            val selected = label.name in selectedLabels
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
+                                    .clickable {
+                                        if (selected) selectedLabels.remove(label.name) else selectedLabels.add(label.name)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(label.name, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
+                            }
+                        }
+                    }
+
+                    Text("Assignee", fontSize = 12.sp, color = TextSecondary)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (selectedAssignee.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedAssignee = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text("None", fontSize = 12.sp, color = if (selectedAssignee.isBlank()) Blue else TextSecondary)
+                        }
+                        assignees.forEach { user ->
+                            val selected = selectedAssignee == user.login
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
+                                    .clickable { selectedAssignee = user.login }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(user.login, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
+                            }
+                        }
+                    }
+
+                    Text("Milestone", fontSize = 12.sp, color = TextSecondary)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (selectedMilestone.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedMilestone = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Text("None", fontSize = 12.sp, color = if (selectedMilestone.isBlank()) Blue else TextSecondary)
+                        }
+                        milestones.forEach { milestone ->
+                            val selected = selectedMilestone == milestone.title
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
+                                    .clickable { selectedMilestone = milestone.title }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(milestone.title, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (saving) return@TextButton
+                    saving = true
+                    scope.launch {
+                        val milestoneNumber = milestones.firstOrNull { it.title == selectedMilestone }?.number
+                        val ok = GitHubManager.updateIssueMeta(
+                            context = context,
+                            owner = repo.owner,
+                            repo = repo.name,
+                            issueNumber = detail.number,
+                            labels = selectedLabels.toList(),
+                            assignees = if (selectedAssignee.isBlank()) emptyList() else listOf(selectedAssignee),
+                            milestoneNumber = milestoneNumber,
+                            clearMilestone = selectedMilestone.isBlank()
+                        )
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        saving = false
+                        if (ok) onDone()
+                    }
+                },
+                enabled = !loading && !saving
+            ) { Text("Save", color = Blue) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(Strings.cancel, color = TextSecondary) } }
+    )
+}
+
+@Composable
+private fun PullReviewDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> Unit, onDone: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var body by remember { mutableStateOf("") }
+    var event by remember { mutableStateOf("COMMENT") }
+    var sending by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Review #${pr.number}", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("COMMENT" to "Comment", "APPROVE" to "Approve", "REQUEST_CHANGES" to "Request changes").forEach { (value, label) ->
+                        val selected = event == value
+                        Box(
+                            Modifier.clip(RoundedCornerShape(6.dp))
+                                .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
+                                .clickable { event = value }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(label, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = body,
+                    onValueChange = { body = it },
+                    label = { Text("Review message") },
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                    maxLines = 8
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (sending) return@TextButton
+                sending = true
+                scope.launch {
+                    val ok = GitHubManager.submitPullRequestReview(context, repo.owner, repo.name, pr.number, event, body)
+                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                    sending = false
+                    if (ok) onDone()
+                }
+            }) { Text("Submit", color = Blue) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(Strings.cancel, color = TextSecondary) } }
+    )
+}
+
+@Composable
+private fun PullFilesDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var files by remember { mutableStateOf<List<GHPullFile>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(pr.number) {
+        loading = true
+        files = GitHubManager.getPullRequestFiles(context, repo.owner, repo.name, pr.number)
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Files #${pr.number}", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            if (loading) {
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(files) { file ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(SurfaceLight).padding(10.dp)
+                        ) {
+                            Text(file.filename, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
+                            Text("${file.status}  +${file.additions}  -${file.deletions}", fontSize = 10.sp, color = TextSecondary)
+                            if (file.patch.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Box(Modifier.fillMaxWidth().background(Color(0xFF1E1E22), RoundedCornerShape(6.dp)).padding(8.dp)) {
+                                    Text(file.patch.take(1200), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
+    )
 }
 
 @Composable
@@ -309,8 +797,8 @@ internal fun EditFileScreen(repo: GHRepo, file: GHContent, branch: String, onBac
     val ext = file.name.substringAfterLast(".", "").lowercase()
     val clipMgr = remember { context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager }
 
-    LaunchedEffect(file) {
-        val raw = GitHubManager.getFileContent(context, repo.owner, repo.name, file.path)
+    LaunchedEffect(file, branch) {
+        val raw = GitHubManager.getFileContent(context, repo.owner, repo.name, file.path, branch)
         textFieldValue = androidx.compose.ui.text.input.TextFieldValue(raw)
         loading = false
     }
