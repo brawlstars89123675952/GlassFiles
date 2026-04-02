@@ -38,7 +38,7 @@ import java.io.File
 // Compact mode — propagates through all sub-screens automatically
 
 @Composable
-private fun CodeSearchTab(repo: GHRepo) {
+internal fun CodeSearchTab(repo: GHRepo) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<GHCodeResult>>(emptyList()) }
@@ -88,7 +88,7 @@ private fun CodeSearchTab(repo: GHRepo) {
 // ═══════════════════════════════════
 
 @Composable
-private fun StarredScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
+internal fun StarredScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
     val context = LocalContext.current
     var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -108,7 +108,7 @@ private fun StarredScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
 // ═══════════════════════════════════
 
 @Composable
-private fun OrgsScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
+internal fun OrgsScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var orgs by remember { mutableStateOf<List<GHOrg>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -159,7 +159,7 @@ private fun OrgsScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
 // ═══════════════════════════════════
 
 @Composable
-private fun ProfileScreen(username: String, onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
+internal fun ProfileScreen(username: String, onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var profile by remember { mutableStateOf<GHUserProfile?>(null) }
     var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
@@ -230,7 +230,7 @@ private fun ProfileScreen(username: String, onBack: () -> Unit, onRepoClick: (GH
 }
 
 @Composable
-private fun InfoRow(icon: ImageVector, text: String) {
+internal fun InfoRow(icon: ImageVector, text: String) {
     Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Icon(icon, null, Modifier.size(14.dp), tint = TextSecondary)
         Text(text, fontSize = 12.sp, color = TextSecondary)
