@@ -1585,6 +1585,226 @@ object GitHubManager {
         }
     }
 
+
+    suspend fun getAuthenticatedUserProfile(context: Context): GHAccountProfile? {
+        val r = request(context, "/user")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHAccountProfile(
+                login = j.optString("login"),
+                name = j.optString("name", ""),
+                avatarUrl = j.optString("avatar_url", ""),
+                bio = j.optString("bio", ""),
+                company = j.optString("company", ""),
+                location = j.optString("location", ""),
+                blog = j.optString("blog", ""),
+                email = j.optString("email", ""),
+                twitterUsername = j.optString("twitter_username", ""),
+                hireable = !j.isNull("hireable") && j.optBoolean("hireable", false)
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun updateAuthenticatedUserProfile(
+        context: Context,
+        name: String,
+        bio: String,
+        company: String,
+        location: String,
+        blog: String,
+        twitterUsername: String = "",
+        hireable: Boolean? = null
+    ): GHAccountProfile? {
+        val body = JSONObject().apply {
+            put("name", name)
+            put("bio", bio)
+            put("company", company)
+            put("location", location)
+            put("blog", blog)
+            if (twitterUsername.isNotBlank()) put("twitter_username", twitterUsername)
+            if (hireable != null) put("hireable", hireable)
+        }.toString()
+        val r = request(context, "/user", "PATCH", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            val minimal = GHUser(
+                login = j.optString("login"),
+                name = j.optString("name", ""),
+                avatarUrl = j.optString("avatar_url", ""),
+                bio = j.optString("bio", ""),
+                publicRepos = j.optInt("public_repos", 0),
+                privateRepos = j.optInt("total_private_repos", 0),
+                followers = j.optInt("followers", 0),
+                following = j.optInt("following", 0)
+            )
+            prefs(context).edit().putString(KEY_USER, r.body).apply()
+            upsertStoredAccount(context, getToken(context), minimal, r.body)
+            GHAccountProfile(
+                login = j.optString("login"),
+                name = j.optString("name", ""),
+                avatarUrl = j.optString("avatar_url", ""),
+                bio = j.optString("bio", ""),
+                company = j.optString("company", ""),
+                location = j.optString("location", ""),
+                blog = j.optString("blog", ""),
+                email = j.optString("email", ""),
+                twitterUsername = j.optString("twitter_username", ""),
+                hireable = !j.isNull("hireable") && j.optBoolean("hireable", false)
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun getUserEmails(context: Context): List<GHEmailAddress> {
+        val r = request(context, "/user/emails?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHEmailAddress(
+                    email = j.optString("email"),
+                    primary = j.optBoolean("primary", false),
+                    verified = j.optBoolean("verified", false),
+                    visibility = if (j.isNull("visibility")) null else j.optString("visibility", null)
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun addUserEmail(context: Context, email: String): Boolean {
+        val clean = email.trim()
+        if (clean.isBlank()) return false
+        val body = JSONObject().apply { put("emails", JSONArray().put(clean)) }.toString()
+        return request(context, "/user/emails", "POST", body).success
+    }
+
+    suspend fun deleteUserEmail(context: Context, email: String): Boolean {
+        val clean = email.trim()
+        if (clean.isBlank()) return false
+        val body = JSONObject().apply { put("emails", JSONArray().put(clean)) }.toString()
+        return request(context, "/user/emails", "DELETE", body).let { it.code == 204 || it.success }
+    }
+
+    suspend fun setPrimaryEmailVisibility(context: Context, visibility: String): Boolean {
+        val value = if (visibility == "public") "public" else "private"
+        val body = JSONObject().apply { put("visibility", value) }.toString()
+        return request(context, "/user/email/visibility", "PATCH", body).success
+    }
+
+    suspend fun getGitSshKeys(context: Context): List<GHKeyItem> {
+        val r = request(context, "/user/keys?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHKeyItem(
+                    id = j.optLong("id"),
+                    title = j.optString("title"),
+                    key = j.optString("key"),
+                    createdAt = j.optString("created_at", ""),
+                    kind = "git_ssh",
+                    secondary = ""
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun addGitSshKey(context: Context, title: String, key: String): Boolean {
+        if (key.isBlank()) return false
+        val body = JSONObject().apply {
+            put("title", title.ifBlank { "SSH Key" })
+            put("key", key)
+        }.toString()
+        return request(context, "/user/keys", "POST", body).success
+    }
+
+    suspend fun deleteGitSshKey(context: Context, keyId: Long): Boolean =
+        request(context, "/user/keys/$keyId", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun getSshSigningKeysNative(context: Context): List<GHKeyItem> {
+        val r = request(context, "/user/ssh_signing_keys?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHKeyItem(
+                    id = j.optLong("id"),
+                    title = j.optString("title"),
+                    key = j.optString("key"),
+                    createdAt = j.optString("created_at", ""),
+                    kind = "ssh_signing",
+                    secondary = ""
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun addSshSigningKeyNative(context: Context, title: String, key: String): Boolean {
+        if (key.isBlank()) return false
+        val body = JSONObject().apply {
+            put("title", title.ifBlank { "SSH Signing Key" })
+            put("key", key)
+        }.toString()
+        return request(context, "/user/ssh_signing_keys", "POST", body).success
+    }
+
+    suspend fun deleteSshSigningKeyNative(context: Context, keyId: Long): Boolean =
+        request(context, "/user/ssh_signing_keys/$keyId", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun getGpgKeysNative(context: Context): List<GHGpgKeyItem> {
+        val r = request(context, "/user/gpg_keys?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val emailsArr = j.optJSONArray("emails")
+                val emails = mutableListOf<String>()
+                if (emailsArr != null) {
+                    for (e in 0 until emailsArr.length()) {
+                        emails.add(emailsArr.getJSONObject(e).optString("email"))
+                    }
+                }
+                GHGpgKeyItem(
+                    id = j.optLong("id"),
+                    name = j.optString("name"),
+                    keyId = j.optString("key_id"),
+                    publicKey = j.optString("public_key"),
+                    createdAt = j.optString("created_at", ""),
+                    emails = emails
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun addGpgKeyNative(context: Context, name: String, armoredPublicKey: String): Boolean {
+        if (armoredPublicKey.isBlank()) return false
+        val body = JSONObject().apply {
+            put("name", name.ifBlank { "GPG Key" })
+            put("armored_public_key", armoredPublicKey)
+        }.toString()
+        return request(context, "/user/gpg_keys", "POST", body).success
+    }
+
+    suspend fun deleteGpgKeyNative(context: Context, keyId: Long): Boolean =
+        request(context, "/user/gpg_keys/$keyId", "DELETE").let { it.code == 204 || it.success }
+
     private fun parseRepo(j: JSONObject) = GHRepo(
         name = j.optString("name"),
         fullName = j.optString("full_name"),
@@ -1602,6 +1822,45 @@ object GitHubManager {
 
     data class ApiResult(val success: Boolean, val body: String, val code: Int)
 }
+
+
+data class GHAccountProfile(
+    val login: String,
+    val name: String,
+    val avatarUrl: String,
+    val bio: String,
+    val company: String,
+    val location: String,
+    val blog: String,
+    val email: String,
+    val twitterUsername: String,
+    val hireable: Boolean
+)
+
+data class GHEmailAddress(
+    val email: String,
+    val primary: Boolean,
+    val verified: Boolean,
+    val visibility: String?
+)
+
+data class GHKeyItem(
+    val id: Long,
+    val title: String,
+    val key: String,
+    val createdAt: String,
+    val kind: String,
+    val secondary: String
+)
+
+data class GHGpgKeyItem(
+    val id: Long,
+    val name: String,
+    val keyId: String,
+    val publicKey: String,
+    val createdAt: String,
+    val emails: List<String>
+)
 
 data class GHUser(val login: String, val name: String, val avatarUrl: String, val bio: String,
     val publicRepos: Int, val privateRepos: Int, val followers: Int, val following: Int)
