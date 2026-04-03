@@ -1,15 +1,21 @@
 package com.glassfiles.ui.screens
 import com.glassfiles.data.Strings
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Environment
+import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -59,7 +65,7 @@ private val CodeTy = Color(0xFFFFA657); private val CodeFn = Color(0xFFD2A8FF); 
 private val kwSet = setOf("fun","val","var","class","object","interface","enum","when","if","else","for","while","return","import","package","private","public","protected","internal","override","suspend","data","sealed","abstract","open","companion","init","try","catch","throw","finally","is","as","in","by","null","true","false","this","super","it","break","continue","const","lateinit","function","let","def","self","None","True","False","async","await","yield","from","with","lambda","elif","except","raise","static","final","void","int","String","boolean","float","double","long","new","delete","typeof","instanceof","export","default","switch","case","struct","impl","fn","pub","mut","use","mod","func","go","chan","select","defer","range","type","map","make","println","print")
 
 @Composable
-fun AiChatScreen(onBack: () -> Unit, initialPrompt: String? = null, initialImageBase64: String? = null) {
+fun AiChatScreen(onBack: () -> Unit, initialPrompt: String? = null, initialImageBase64: String? = null, currentFolder: String? = null, onRunInTerminal: ((String) -> Unit)? = null) {
     val context = LocalContext.current; val historyMgr = remember { ChatHistoryManager(context) }
     var activeSessionId by remember { mutableStateOf<String?>(null) }; var sessions by remember { mutableStateOf(historyMgr.getSessions()) }
     var consumedPrompt by remember { mutableStateOf(false) }
@@ -74,7 +80,8 @@ fun AiChatScreen(onBack: () -> Unit, initialPrompt: String? = null, initialImage
     fun refresh() { sessions = historyMgr.getSessions() }
     if (activeSessionId != null) {
         ChatView(sessionId = activeSessionId!!, historyMgr = historyMgr, onBack = { activeSessionId = null; refresh() },
-            initialPrompt = if (!consumedPrompt) initialPrompt else null, initialImageBase64 = if (!consumedPrompt) initialImageBase64 else null)
+            initialPrompt = if (!consumedPrompt) initialPrompt else null, initialImageBase64 = if (!consumedPrompt) initialImageBase64 else null,
+            currentFolder = currentFolder, onRunInTerminal = onRunInTerminal)
     } else {
         val dp = if (GeminiKeyStore.hasKey(context)) AiProvider.GEMINI_FLASH else AiProvider.QWEN_PLUS
         ChatHistoryList(sessions, { val s = historyMgr.createSession(dp); historyMgr.saveSession(s); activeSessionId = s.id },
@@ -82,6 +89,9 @@ fun AiChatScreen(onBack: () -> Unit, initialPrompt: String? = null, initialImage
     }
 }
 
+// ═══════════════════════════════════
+// API Key Setup
+// ═══════════════════════════════════
 @Composable
 private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
     val context = LocalContext.current; var geminiKey by remember { mutableStateOf("") }; var qwenKey by remember { mutableStateOf("") }; var proxy by remember { mutableStateOf(GeminiKeyStore.getProxy(context)) }
@@ -103,21 +113,31 @@ private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
     }
 }
 
+// ═══════════════════════════════════
+// Chat History (with search)
+// ═══════════════════════════════════
 @Composable
 private fun ChatHistoryList(sessions: List<ChatSession>, onNew: () -> Unit, onOpen: (ChatSession) -> Unit, onDel: (ChatSession) -> Unit, onDelAll: () -> Unit, onBack: () -> Unit) {
     val sdf = remember { SimpleDateFormat("dd.MM.yy HH:mm", Locale.getDefault()) }
+    var searchQ by remember { mutableStateOf("") }
+    val filtered = if (searchQ.isBlank()) sessions else sessions.filter { it.title.contains(searchQ, true) || it.messages.any { m -> m.content.contains(searchQ, true) } }
     Column(Modifier.fillMaxSize().background(BG)) {
         Row(Modifier.fillMaxWidth().padding(top = 48.dp, start = 4.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = T1) }
             Text("AI", color = T1, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.weight(1f))
             if (sessions.isNotEmpty()) IconButton(onClick = onDelAll) { Icon(Icons.Rounded.DeleteSweep, null, Modifier.size(20.dp), tint = T2) }
         }
-        if (sessions.isEmpty()) { Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // Search bar
+        if (sessions.size > 2) {
+            BasicTextField(searchQ, { searchQ = it }, Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).background(Card, RoundedCornerShape(10.dp)).border(1.dp, Border, RoundedCornerShape(10.dp)).padding(12.dp),
+                textStyle = TextStyle(T1, 14.sp), cursorBrush = SolidColor(Accent), singleLine = true,
+                decorationBox = { inner -> Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.Search, null, Modifier.size(16.dp), tint = T3); Spacer(Modifier.width(8.dp)); Box { if (searchQ.isEmpty()) Text("Search chats...", color = T3, fontSize = 14.sp); inner() } } })
+        }
+        if (filtered.isEmpty()) { Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(48.dp), tint = Accent); Text("No chats yet", color = T2, fontSize = 16.sp); Text("Gemini + Qwen AI", color = T3, fontSize = 14.sp)
-            } }
+                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(48.dp), tint = Accent); Text(if (searchQ.isNotBlank()) "Nothing found" else "No chats yet", color = T2, fontSize = 16.sp) } }
         } else { LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(sessions) { s -> val pc = try { val p = AiProvider.valueOf(s.provider); if (p.isQwen) QwenColor else Accent } catch (_: Exception) { Accent }
+            items(filtered) { s -> val pc = try { val p = AiProvider.valueOf(s.provider); if (p.isQwen) QwenColor else Accent } catch (_: Exception) { Accent }
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Card).clickable { onOpen(s) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.size(40.dp).background(Card2, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Chat, null, Modifier.size(20.dp), tint = pc) }
                     Column(Modifier.weight(1f)) { Text(s.title, color = T1, fontSize = 14.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -130,8 +150,11 @@ private fun ChatHistoryList(sessions: List<ChatSession>, onNew: () -> Unit, onOp
     }
 }
 
+// ═══════════════════════════════════
+// Chat View (main)
+// ═══════════════════════════════════
 @Composable
-private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: () -> Unit, initialPrompt: String? = null, initialImageBase64: String? = null) {
+private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: () -> Unit, initialPrompt: String? = null, initialImageBase64: String? = null, currentFolder: String? = null, onRunInTerminal: ((String) -> Unit)? = null) {
     val context = LocalContext.current; val scope = rememberCoroutineScope(); val session = remember { historyMgr.getSession(sessionId) }
     var messages by remember { mutableStateOf(session?.messages ?: emptyList()) }; var input by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }; var currentResponse by remember { mutableStateOf("") }
@@ -143,7 +166,19 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
     var proxyUrl by remember { mutableStateOf(GeminiKeyStore.getProxy(context)) }; var showSettings by remember { mutableStateOf(false) }
     var autoSent by remember { mutableStateOf(false) }; var currentJob by remember { mutableStateOf<Job?>(null) }
     var editIdx by remember { mutableIntStateOf(-1) }; var editTxt by remember { mutableStateOf("") }
-
+    // TTS
+    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
+    var ttsReady by remember { mutableStateOf(false) }
+    var speakingIdx by remember { mutableIntStateOf(-1) }
+    DisposableEffect(Unit) { tts = TextToSpeech(context) { status -> ttsReady = status == TextToSpeech.SUCCESS }; onDispose { tts?.shutdown() } }
+    // Voice input
+    val voiceLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) { val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull(); if (text != null) input = if (input.isBlank()) text else "$input $text" } }
+    // Camera
+    val cameraFile = remember { File(context.cacheDir, "ai_camera_${System.currentTimeMillis()}.jpg") }
+    val cameraUri = remember { androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile) }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success -> if (success) attachedImage = AiManager.encodeImage(cameraFile) }
+    // File picker
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri ?: return@rememberLauncherForActivityResult
         try { val mime = context.contentResolver.getType(uri) ?: ""; val cursor = context.contentResolver.query(uri, null, null, null, null)
@@ -155,6 +190,9 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
                 else -> { context.contentResolver.openInputStream(uri)?.use { s -> val t = s.bufferedReader().readText(); attachedFile = Pair(name, if (t.length > 10000) t.take(10000) + "\n...[truncated]" else t) } } }
         } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() } }
 
+    // Folder context
+    val folderFiles = remember(currentFolder) { if (currentFolder != null) try { File(currentFolder).listFiles()?.map { "${if (it.isDirectory) "[DIR]" else "[${it.extension}]"} ${it.name}" }?.take(30)?.joinToString("\n") } catch (_: Exception) { null } else null }
+
     fun save(msgs: List<ChatMessage>) { historyMgr.saveSession(ChatSession(id = sessionId, title = historyMgr.generateTitle(msgs), provider = provider.name, messages = msgs, createdAt = session?.createdAt ?: System.currentTimeMillis(), updatedAt = System.currentTimeMillis())) }
     fun clip(t: String) { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ai", t)); Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show() }
     fun exportChat() { val sb = StringBuilder("# AI Chat\n**${provider.label}** — ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())}\n\n---\n\n")
@@ -164,9 +202,17 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
     fun saveCode(code: String, lang: String) { val ext = when (lang) { "kotlin","kt" -> "kt"; "java" -> "java"; "python","py" -> "py"; "javascript","js" -> "js"; "typescript","ts" -> "ts"; "html" -> "html"; "css" -> "css"; "xml" -> "xml"; "json" -> "json"; "yaml","yml" -> "yml"; "bash","sh" -> "sh"; "sql" -> "sql"; "go" -> "go"; "rust","rs" -> "rs"; "swift" -> "swift"; "c" -> "c"; "cpp" -> "cpp"; else -> "txt" }
         val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_AI"); dir.mkdirs()
         val f = File(dir, "code_${System.currentTimeMillis()}.$ext"); f.writeText(code); Toast.makeText(context, "Saved: ${f.name}", Toast.LENGTH_SHORT).show() }
+    fun speak(text: String, idx: Int) { if (!ttsReady || tts == null) return; if (speakingIdx == idx) { tts?.stop(); speakingIdx = -1; return }
+        val clean = text.replace(Regex("```[\\s\\S]*?```"), "code block").replace(Regex("[*_`#>]"), ""); tts?.speak(clean, TextToSpeech.QUEUE_FLUSH, null, "msg_$idx"); speakingIdx = idx }
+    fun voiceInput() { val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply { putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM); putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak...") }
+        try { voiceLauncher.launch(intent) } catch (_: Exception) { Toast.makeText(context, "Voice not available", Toast.LENGTH_SHORT).show() } }
 
-    fun doSend(text: String, image: String? = null, fc: String? = null) { if (isLoading) return; val um = ChatMessage("user", text, image, fc); currentResponse = ""; messages = messages + um; isLoading = true
-        currentJob = scope.launch { try { val r = AiManager.chat(provider, messages, geminiKey, "", proxyUrl, qwenKey, qwenRegion) { currentResponse += it }; messages = messages + ChatMessage("assistant", r); currentResponse = ""; save(messages)
+    fun doSend(text: String, image: String? = null, fc: String? = null) { if (isLoading) return
+        // Add folder context if available
+        val fullText = if (folderFiles != null && messages.isEmpty()) "Current folder: $currentFolder\nFiles:\n$folderFiles\n\nUser: $text" else text
+        val um = ChatMessage("user", text, image, fc); currentResponse = ""; messages = messages + um; isLoading = true
+        val msgsForApi = if (folderFiles != null && messages.size == 1) listOf(ChatMessage("user", fullText, image, fc)) else messages
+        currentJob = scope.launch { try { val r = AiManager.chat(provider, msgsForApi, geminiKey, "", proxyUrl, qwenKey, qwenRegion) { currentResponse += it }; messages = messages + ChatMessage("assistant", r); currentResponse = ""; save(messages)
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException && currentResponse.isNotBlank()) { messages = messages + ChatMessage("assistant", currentResponse + "\n\n*(stopped)*"); currentResponse = "" } else { messages = messages + ChatMessage("assistant", "Error: ${e.message}"); currentResponse = "" }; save(messages) }; isLoading = false; currentJob = null } }
 
     fun send() { var t = input.trim(); if (t.isEmpty() && attachedImage == null && attachedFile == null && attachedZip == null) return
@@ -177,6 +223,11 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
     fun regenerate() { if (messages.isEmpty() || isLoading) return; val m = messages.toMutableList(); if (m.last().role == "assistant") m.removeLast(); messages = m; isLoading = true; currentResponse = ""
         currentJob = scope.launch { try { val r = AiManager.chat(provider, messages, geminiKey, "", proxyUrl, qwenKey, qwenRegion) { currentResponse += it }; messages = messages + ChatMessage("assistant", r); currentResponse = ""; save(messages)
         } catch (e: Exception) { if (e is kotlinx.coroutines.CancellationException && currentResponse.isNotBlank()) { messages = messages + ChatMessage("assistant", currentResponse + "\n\n*(stopped)*") } else { messages = messages + ChatMessage("assistant", "Error: ${e.message}") }; currentResponse = ""; save(messages) }; isLoading = false; currentJob = null } }
+
+    fun quickAction(action: String) { val lastAi = messages.lastOrNull { it.role == "assistant" }?.content ?: return
+        val prompt = when (action) { "shorter" -> "Make this shorter:\n$lastAi"; "detail" -> "Explain in more detail:\n$lastAi"; "translate_ru" -> "Translate to Russian:\n$lastAi"; "translate_en" -> "Translate to English:\n$lastAi"
+            "script" -> "Convert this into a bash script that can be run in terminal:\n$lastAi"; "fix" -> "Fix any errors in this code:\n$lastAi"; "explain" -> "Explain this code step by step:\n$lastAi"; else -> action }
+        doSend(prompt) }
 
     fun confirmEdit() { if (editIdx < 0) return; val nm = messages.take(editIdx) + ChatMessage("user", editTxt, messages[editIdx].imageBase64, messages[editIdx].fileContent); messages = nm; editIdx = -1; editTxt = ""
         isLoading = true; currentResponse = ""; currentJob = scope.launch { try { val r = AiManager.chat(provider, messages, geminiKey, "", proxyUrl, qwenKey, qwenRegion) { currentResponse += it }; messages = messages + ChatMessage("assistant", r); currentResponse = ""; save(messages) } catch (e: Exception) { messages = messages + ChatMessage("assistant", "Error: ${e.message}"); currentResponse = ""; save(messages) }; isLoading = false; currentJob = null } }
@@ -195,7 +246,8 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
         // Top bar
         Row(Modifier.fillMaxWidth().background(Card).padding(top = 48.dp, start = 4.dp, end = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { save(messages); onBack() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = T1) }
-            Text("AI", color = T1, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) { Text("AI", color = T1, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                if (currentFolder != null) Text(currentFolder.substringAfterLast("/"), color = T3, fontSize = 11.sp, maxLines = 1) }
             IconButton(onClick = { exportChat() }, modifier = Modifier.size(36.dp)) { Icon(Icons.Rounded.FileDownload, null, Modifier.size(18.dp), tint = T2) }
             val pc = if (provider.isQwen) QwenColor else Accent
             Row(Modifier.clip(RoundedCornerShape(8.dp)).background(Card2).border(1.dp, Border, RoundedCornerShape(8.dp)).clickable { showModelPicker = true }.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -206,20 +258,36 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
         }
         // Messages
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (messages.isEmpty()) { item { Column(Modifier.fillMaxWidth().padding(top = 60.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (messages.isEmpty()) { item { Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(48.dp), tint = if (provider.isQwen) QwenColor else Accent)
                 Text(provider.label, color = T1, fontSize = 20.sp, fontWeight = FontWeight.Bold); Text(provider.desc, color = T3, fontSize = 13.sp)
-                if (provider.supportsFiles) Text("Supports: files, ZIP, images", color = T3, fontSize = 12.sp)
-                Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Explain this code", "Analyze ZIP archive", "What's in this image?").forEach { q ->
-                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).border(1.dp, Border, RoundedCornerShape(10.dp)).clickable { input = q }.padding(12.dp)) { Text(q, color = T2, fontSize = 13.sp) } } }
+                if (currentFolder != null) { Text("Context: ${currentFolder.substringAfterLast("/")}", color = Accent, fontSize = 12.sp) }
+                // Smart suggestions
+                Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val suggestions = mutableListOf("Explain this code", "Analyze ZIP archive", "What's in this image?")
+                    if (currentFolder != null) { suggestions.add(0, "What files are in this folder?"); suggestions.add(1, "What takes the most space here?") }
+                    suggestions.take(5).forEach { q -> Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Card).border(1.dp, Border, RoundedCornerShape(10.dp)).clickable { input = q }.padding(12.dp)) { Text(q, color = T2, fontSize = 13.sp) } } }
             } } }
             items(messages.size) { idx -> val msg = messages[idx]; val isLast = idx == messages.lastIndex
-                Bubble(msg, provider, onCopy = { clip(msg.content) }, onEdit = if (msg.role == "user") {{ editIdx = idx; editTxt = msg.content }} else null,
-                    onDelete = { val m = messages.toMutableList(); m.removeAt(idx); messages = m; save(messages) }, onSaveCode = { c, l -> saveCode(c, l) },
-                    onRegenerate = if (isLast && msg.role == "assistant" && !isLoading) {{ regenerate() }} else null) }
-            if (currentResponse.isNotEmpty()) { item { Bubble(ChatMessage("assistant", currentResponse + "\u2588"), provider, {}, null, {}, { _, _ -> }, null) } }
+                Bubble(msg, provider, idx, speakingIdx,
+                    onCopy = { clip(msg.content) },
+                    onEdit = if (msg.role == "user") {{ editIdx = idx; editTxt = msg.content }} else null,
+                    onDelete = { val m = messages.toMutableList(); m.removeAt(idx); messages = m; save(messages) },
+                    onSaveCode = { c, l -> saveCode(c, l) },
+                    onRegenerate = if (isLast && msg.role == "assistant" && !isLoading) {{ regenerate() }} else null,
+                    onSpeak = { speak(msg.content, idx) },
+                    onRunScript = if (msg.role == "assistant" && onRunInTerminal != null) {{ onRunInTerminal(msg.content) }} else null
+                ) }
+            if (currentResponse.isNotEmpty()) { item { Bubble(ChatMessage("assistant", currentResponse + "\u2588"), provider, -1, speakingIdx, {}, null, {}, { _, _ -> }, null, {}, null) } }
             if (isLoading && currentResponse.isEmpty()) { item { Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(16.dp), color = if (provider.isQwen) QwenColor else Accent, strokeWidth = 2.dp); Text("Thinking...", color = T2, fontSize = 13.sp) } } }
+            // Quick actions after last AI message
+            if (!isLoading && messages.isNotEmpty() && messages.last().role == "assistant") { item {
+                LazyRow(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val actions = mutableListOf("shorter" to "Shorter", "detail" to "More detail", "translate_ru" to "RU", "translate_en" to "EN", "explain" to "Explain code", "fix" to "Fix code")
+                    if (onRunInTerminal != null) actions.add("script" to "Make script")
+                    items(actions) { (key, label) -> Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Card).border(1.dp, Border, RoundedCornerShape(8.dp)).clickable { quickAction(key) }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text(label, fontSize = 11.sp, color = T2, fontWeight = FontWeight.Medium) } } } } }
         }
         // Attachments
         if (attachedImage != null || attachedFile != null) { Row(Modifier.fillMaxWidth().background(Card).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -227,15 +295,17 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
             if (attachedFile != null) { Icon(if (attachedZip != null) Icons.Rounded.FolderZip else Icons.Rounded.Description, null, Modifier.size(18.dp), tint = if (attachedZip != null) QwenColor else Bl)
                 Column(Modifier.weight(1f)) { Text(attachedFile!!.first, color = T2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis); if (attachedZip != null) Text(attachedFile!!.second, color = T3, fontSize = 10.sp) }
                 IconButton(onClick = { attachedFile = null; attachedZip = null }, modifier = Modifier.size(24.dp)) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = T2) } } } }
-        // Input
-        Row(Modifier.fillMaxWidth().background(Card).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            IconButton(onClick = { filePicker.launch("*/*") }, modifier = Modifier.size(44.dp)) { Icon(Icons.Rounded.AttachFile, null, Modifier.size(20.dp), tint = T2) }
-            BasicTextField(input, { input = it }, Modifier.weight(1f).background(Card2, RoundedCornerShape(20.dp)).border(1.dp, Border, RoundedCornerShape(20.dp)).padding(horizontal = 16.dp, vertical = 12.dp),
+        // Input bar
+        Row(Modifier.fillMaxWidth().background(Card).padding(8.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(onClick = { filePicker.launch("*/*") }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.AttachFile, null, Modifier.size(20.dp), tint = T2) }
+            IconButton(onClick = { try { cameraLauncher.launch(cameraUri) } catch (_: Exception) { Toast.makeText(context, "Camera not available", Toast.LENGTH_SHORT).show() } }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.CameraAlt, null, Modifier.size(20.dp), tint = T2) }
+            BasicTextField(input, { input = it }, Modifier.weight(1f).background(Card2, RoundedCornerShape(20.dp)).border(1.dp, Border, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 11.dp),
                 textStyle = TextStyle(T1, 15.sp), cursorBrush = SolidColor(if (provider.isQwen) QwenColor else Accent), decorationBox = { i -> if (input.isEmpty()) Text("Message...", color = T3, fontSize = 15.sp); i() })
+            IconButton(onClick = { voiceInput() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Mic, null, Modifier.size(20.dp), tint = T2) }
             val sc = if (provider.isQwen) QwenColor else Accent
-            if (isLoading) { Box(Modifier.size(44.dp).clip(CircleShape).background(Color(0xFFFF3B30)).clickable { currentJob?.cancel(); currentJob = null }, contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Stop, null, Modifier.size(20.dp), tint = Color.White) } }
+            if (isLoading) { Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFFF3B30)).clickable { currentJob?.cancel(); currentJob = null }, contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Stop, null, Modifier.size(20.dp), tint = Color.White) } }
             else { val cs = input.isNotBlank() || attachedImage != null || attachedFile != null
-                Box(Modifier.size(44.dp).clip(CircleShape).background(if (cs) sc else Card2).clickable(enabled = cs) { send() }, contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Rounded.Send, null, Modifier.size(20.dp), tint = if (cs) Color.White else T3) } } }
+                Box(Modifier.size(40.dp).clip(CircleShape).background(if (cs) sc else Card2).clickable(enabled = cs) { send() }, contentAlignment = Alignment.Center) { Icon(Icons.AutoMirrored.Rounded.Send, null, Modifier.size(20.dp), tint = if (cs) Color.White else T3) } } }
     }
     // Model picker
     if (showModelPicker) { val hG = geminiKey.isNotBlank(); val hQ = qwenKey.isNotBlank()
@@ -244,8 +314,8 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
                 val av = AiProvider.entries.filter { (it.isGemini && hG) || (it.isQwen && hQ) }; val cats = av.groupBy { it.category }.toList()
                 cats.forEach { (cat, models) -> val cc = if (models.first().isQwen) QwenColor else Accent; item { Text(cat, fontSize = 12.sp, color = cc, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) }
                     items(models) { p -> ModelCard(p, provider == p, cc) { provider = p; showModelPicker = false } } }
-                if (!hG) { item { Text("Add Gemini key in Settings", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) } }
-                if (!hQ) { item { Text("Add Qwen key in Settings", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) } }
+                if (!hG) item { Text("Add Gemini key in Settings", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) }
+                if (!hQ) item { Text("Add Qwen key in Settings", color = T3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) }
             } }, confirmButton = {}) }
     // Settings
     if (showSettings) { var gK by remember { mutableStateOf(geminiKey) }; var pU by remember { mutableStateOf(proxyUrl) }; var qK by remember { mutableStateOf(qwenKey) }; var rI by remember { mutableStateOf(qwenRegion) }
@@ -262,12 +332,14 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
             }) { Text("Save", color = Accent) } }, dismissButton = { TextButton(onClick = { showSettings = false }) { Text("Cancel", color = T2) } }) }
 }
 
+// ═══════════════════════════════════
+// Model Card + Badge
+// ═══════════════════════════════════
 @Composable private fun ModelCard(p: AiProvider, sel: Boolean, ac: Color, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (sel) ac.copy(0.1f) else Color.Transparent).border(1.dp, if (sel) ac.copy(0.3f) else Border, RoundedCornerShape(10.dp)).clickable(onClick = onClick).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.size(36.dp).background(if (sel) ac.copy(0.15f) else Card2, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = if (sel) ac else T2) }
         Column(Modifier.weight(1f)) { Text(p.label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (sel) ac else T1); Text(p.desc, fontSize = 11.sp, color = T3) }
-        if (p.supportsVision) Bdg("Vision", T2); if (p.supportsFiles) Bdg("Files", ac); if (sel) Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = ac)
-    } }
+        if (p.supportsVision) Bdg("Vision", T2); if (p.supportsFiles) Bdg("Files", ac); if (sel) Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = ac) } }
 @Composable private fun Bdg(t: String, c: Color) { Box(Modifier.background(c.copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 2.dp)) { Text(t, fontSize = 9.sp, color = c, fontWeight = FontWeight.SemiBold) } }
 
 // ═══════════════════════════════════
@@ -280,8 +352,7 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
             Text(lang.ifBlank { "code" }, fontSize = 11.sp, color = CodeCmt, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF30363D)).clickable { onSave() }.padding(horizontal = 8.dp, vertical = 3.dp)) { Text("Save", fontSize = 10.sp, color = CodeDef) }
             Spacer(Modifier.width(6.dp))
-            Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF30363D)).clickable { onCopy() }.padding(horizontal = 8.dp, vertical = 3.dp)) { Text("Copy", fontSize = 10.sp, color = CodeDef) }
-        }
+            Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF30363D)).clickable { onCopy() }.padding(horizontal = 8.dp, vertical = 3.dp)) { Text("Copy", fontSize = 10.sp, color = CodeDef) } }
         Column(Modifier.background(CodeBg).horizontalScroll(rememberScrollState()).padding(8.dp)) {
             lines.forEachIndexed { idx, line -> Row { Text("${idx + 1}".padStart(3), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)); Text(hlLine(line, lang), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp) } } } } }
 
@@ -305,7 +376,7 @@ private fun hlLine(line: String, lang: String): AnnotatedString = buildAnnotated
         l.startsWith("### ") -> Text(l.removePrefix("### "), color = T1, fontSize = 15.sp, fontWeight = FontWeight.Bold)
         l.startsWith("## ") -> Text(l.removePrefix("## "), color = T1, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         l.startsWith("# ") -> Text(l.removePrefix("# "), color = T1, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        l.startsWith("- ") || l.startsWith("* ") -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("•", color = Accent, fontSize = 14.sp); Text(inlineMd(l.drop(2)), fontSize = 14.sp, lineHeight = 20.sp) }
+        l.startsWith("- ") || l.startsWith("* ") -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text("\u2022", color = Accent, fontSize = 14.sp); Text(inlineMd(l.drop(2)), fontSize = 14.sp, lineHeight = 20.sp) }
         l.matches(Regex("^\\d+\\.\\s.*")) -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Text(l.substringBefore(".") + ".", color = Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold); Text(inlineMd(l.substringAfter(". ")), fontSize = 14.sp, lineHeight = 20.sp) }
         l.startsWith("> ") -> Row { Box(Modifier.width(3.dp).height(20.dp).background(Accent, RoundedCornerShape(2.dp))); Spacer(Modifier.width(8.dp)); Text(inlineMd(l.removePrefix("> ")), fontSize = 14.sp, color = T2, fontStyle = FontStyle.Italic, lineHeight = 20.sp) }
         l.isBlank() -> Spacer(Modifier.height(4.dp))
@@ -322,7 +393,7 @@ private fun inlineMd(t: String): AnnotatedString = buildAnnotatedString { var i 
 // Bubble
 // ═══════════════════════════════════
 @OptIn(ExperimentalFoundationApi::class) @Composable
-private fun Bubble(msg: ChatMessage, prov: AiProvider, onCopy: () -> Unit, onEdit: (() -> Unit)?, onDelete: () -> Unit, onSaveCode: (String, String) -> Unit, onRegenerate: (() -> Unit)?) {
+private fun Bubble(msg: ChatMessage, prov: AiProvider, msgIdx: Int, speakingIdx: Int, onCopy: () -> Unit, onEdit: (() -> Unit)?, onDelete: () -> Unit, onSaveCode: (String, String) -> Unit, onRegenerate: (() -> Unit)?, onSpeak: () -> Unit, onRunScript: (() -> Unit)?) {
     val isUser = msg.role == "user"; val context = LocalContext.current; val pc = if (prov.isQwen) QwenColor else Accent
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start, verticalAlignment = Alignment.Top) {
         if (!isUser) { Box(Modifier.padding(top = 4.dp).size(28.dp).clip(CircleShape).background(pc.copy(0.15f)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(14.dp), tint = pc) }; Spacer(Modifier.width(6.dp)) }
@@ -339,9 +410,14 @@ private fun Bubble(msg: ChatMessage, prov: AiProvider, onCopy: () -> Unit, onEdi
                             CodeBlock(code.trimEnd(), lang, onCopy = { (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("code", code)); Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show() }, onSave = { onSaveCode(code, lang) }) } } } }
                 else Box(Modifier.widthIn(max = 320.dp).clip(RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)).background(Card).combinedClickable(onClick = {}, onLongClick = onCopy).padding(12.dp)) { MdText(content) } }
             // Actions
-            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                SBtn(Icons.Rounded.ContentCopy) { onCopy() }; if (onEdit != null) SBtn(Icons.Rounded.Edit) { onEdit() }; SBtn(Icons.Rounded.Delete) { onDelete() }
-                if (onRegenerate != null) SBtn(Icons.Rounded.Refresh) { onRegenerate() } }
+            Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                SBtn(Icons.Rounded.ContentCopy) { onCopy() }
+                if (onEdit != null) SBtn(Icons.Rounded.Edit) { onEdit() }
+                SBtn(Icons.Rounded.Delete) { onDelete() }
+                if (!isUser) SBtn(if (speakingIdx == msgIdx) Icons.Rounded.StopCircle else Icons.Rounded.VolumeUp) { onSpeak() }
+                if (onRegenerate != null) SBtn(Icons.Rounded.Refresh) { onRegenerate() }
+                if (onRunScript != null) SBtn(Icons.Rounded.Terminal) { onRunScript() }
+            }
         }
         if (isUser) { Spacer(Modifier.width(6.dp)); Box(Modifier.padding(top = 4.dp).size(28.dp).clip(CircleShape).background(Accent.copy(0.15f)), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, Modifier.size(14.dp), tint = Accent) } }
     } }
