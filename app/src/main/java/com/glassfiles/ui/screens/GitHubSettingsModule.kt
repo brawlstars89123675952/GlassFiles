@@ -427,6 +427,8 @@ internal fun GitHubSettingsScreen(
                                 actionLog.forEach { line -> Text(line, color = TextTertiary, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp)) }
                             }
                         }
+                    
+                        null -> Unit
                     }
                 }
 
