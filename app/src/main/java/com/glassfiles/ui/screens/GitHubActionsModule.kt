@@ -434,12 +434,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
 
                         Spacer(Modifier.height(6.dp))
                         job.steps.forEach { step ->
-                            val sColor = when (step.conclusion) {
-                                "success" -> Color(0xFF34C759)
-                                "failure" -> Color(0xFFFF3B30)
-                                "skipped" -> Color(0xFF8E8E93)
-                                else -> Color(0xFFFF9500)
-                            }
+                            val sColor = stepStatusColor(step)
                             val stepKey = "${job.id}:${step.number}"
                             val stepLog = jobStepLogs[job.id]?.get(step.number)
                             Column(Modifier.fillMaxWidth()) {
@@ -455,7 +450,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                                 ) {
                                     Icon(Icons.Rounded.Check, null, Modifier.size(12.dp), tint = sColor)
                                     Text(step.name, fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    Text(step.conclusion.ifBlank { step.status }, fontSize = 10.sp, color = sColor)
+                                    Text(displayStepStatus(step), fontSize = 10.sp, color = stepStatusColor(step))
                                 }
                                 if (expandedStepKey == stepKey) {
                                     Box(
@@ -684,6 +679,43 @@ private fun formatDuration(ms: Long): String {
         sec < 60 -> "${sec}s"
         sec < 3600 -> "${sec / 60}m ${sec % 60}s"
         else -> "${sec / 3600}h ${(sec % 3600) / 60}m ${(sec % 60)}s"
+    }
+}
+
+
+
+private fun displayStepStatus(step: GHStep): String {
+    val c = step.conclusion.trim().lowercase()
+    val s = step.status.trim().lowercase()
+    return when {
+        c == "success" -> "success"
+        c == "failure" -> "failed"
+        c == "cancelled" -> "cancelled"
+        c == "skipped" -> "skipped"
+        c == "neutral" -> "neutral"
+        c == "timed_out" -> "timed out"
+        c == "action_required" -> "action required"
+        c == "startup_failure" -> "startup failure"
+        c == "stale" -> "stale"
+        c.isNotBlank() && c != "null" -> c
+        s == "in_progress" -> "running"
+        s == "queued" -> "queued"
+        s == "completed" -> "completed"
+        s.isNotBlank() && s != "null" -> s
+        else -> "pending"
+    }
+}
+
+private fun stepStatusColor(step: GHStep): Color {
+    return when (displayStepStatus(step)) {
+        "success" -> Color(0xFF34C759)
+        "failed" -> Color(0xFFFF3B30)
+        "cancelled" -> Color(0xFF8E8E93)
+        "skipped" -> Color(0xFF8E8E93)
+        "running" -> Blue
+        "queued" -> Color(0xFFFF9500)
+        "completed" -> Color(0xFF8E8E93)
+        else -> Color(0xFFFF9500)
     }
 }
 
