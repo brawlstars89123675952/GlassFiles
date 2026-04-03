@@ -77,7 +77,12 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     val filtered = remember(repos, query, searchPublic) {
         if (searchPublic) publicResults else if (query.isNotBlank()) repos.filter { it.name.contains(query, true) || it.description.contains(query, true) } else repos
     }
-    if (showNotifications) { NotificationsScreen(onBack = { showNotifications = false }); return }
+    if (showNotifications) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Notifications temporarily unavailable", color = TextTertiary, fontSize = 14.sp)
+    }
+    return
+}
     if (showStarred) { StarredScreen(onBack = { showStarred = false }, onRepoClick = { showStarred = false; onRepoClick(it) }); return }
     if (showOrgs) { OrgsScreen(onBack = { showOrgs = false }, onRepoClick = { showOrgs = false; onRepoClick(it) }); return }
     if (viewProfile != null) { ProfileScreen(username = viewProfile!!, onBack = { viewProfile = null }, onRepoClick = { viewProfile = null; onRepoClick(it) }); return }
