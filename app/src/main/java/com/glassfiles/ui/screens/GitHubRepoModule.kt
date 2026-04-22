@@ -59,6 +59,15 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var showCreatePR by remember { mutableStateOf(false) }; var selectedIssue by remember { mutableStateOf<GHIssue?>(null) }
     var selectedCommitSha by remember { mutableStateOf<String?>(null) }; var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
     var showBranchPicker by remember { mutableStateOf(false) }
+    var selectedPRNumber by remember { mutableStateOf<Int?>(null) }
+    var showRepoSettings by remember { mutableStateOf(false) }
+    var showBranchProtection by remember { mutableStateOf(false) }
+    var showCollaborators by remember { mutableStateOf(false) }
+    var showCompare by remember { mutableStateOf(false) }
+    var showWebhooks by remember { mutableStateOf(false) }
+    var showDiscussions by remember { mutableStateOf(false) }
+    var showRulesets by remember { mutableStateOf(false) }
+    var showSecurity by remember { mutableStateOf(false) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by remember { mutableIntStateOf(1) }; var commitsHasMore by remember { mutableStateOf(true) }
@@ -78,9 +87,58 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     }; loading = false }
 
     if (selectedIssue != null) { IssueDetailScreen(repo, selectedIssue!!.number) { selectedIssue = null }; return }
-    if (selectedCommitSha != null) { CommitDiffScreen(repo, selectedCommitSha!!) { selectedCommitSha = null }; return }
+    if (selectedCommitSha != null) { 
+        CommitDiffScreen(repo.owner, repo.name, selectedCommitSha!!) { selectedCommitSha = null }; 
+        return 
+    }
+    if (selectedPRNumber != null) {
+        PullRequestDiffScreen(
+            repoOwner = repo.owner,
+            repoName = repo.name,
+            pullNumber = selectedPRNumber!!,
+            onBack = { selectedPRNumber = null }
+        )
+        return
+    }
     if (selectedRunId != null) { WorkflowRunDetailScreen(repo, selectedRunId!!) { selectedRunId = null }; return }
+    if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
+    if (showBranchProtection) { BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) ; return }
+    if (showCollaborators) { CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false }; return }
+    if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name) { showCompare = false }; return }
+    if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name) { showWebhooks = false }; return }
+    if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name) { showDiscussions = false }; return }
+    if (showRulesets) { RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { showRulesets = false }; return }
+    if (showSecurity) { SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { showSecurity = false }; return }
+    
+    // File editor screen
+    val safeEditingFile = editingFile
     val safeFileContent = fileContent
+    if (safeEditingFile != null && safeFileContent != null) {
+        CodeEditorScreen(
+            repoOwner = repo.owner,
+            repoName = repo.name,
+            file = safeEditingFile,
+            branch = selectedBranch,
+            initialContent = safeFileContent,
+            onBack = { 
+                editingFile = null
+                fileContent = null
+            }
+        )
+        return
+    }
+    
+    // Releases screen
+    if (selectedTab == RepoTab.RELEASES && releases.isNotEmpty()) {
+        ReleasesScreen(
+            repoOwner = repo.owner,
+            repoName = repo.name,
+            onBack = { selectedTab = RepoTab.FILES },
+            onReleaseClick = { /* optional */ }
+        )
+        return
+    }
+    
     val safeOpenedFile = openedFile
     if (safeFileContent != null && safeOpenedFile != null) {
         val ext = safeOpenedFile.name.substringAfterLast(".", "").lowercase()
@@ -111,7 +169,6 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
                 }) { Icon(Icons.Rounded.Download, null, Modifier.size(20.dp), tint = Blue) }
                 IconButton(onClick = {
                     editingFile = safeOpenedFile
-                    fileContent = null
                 }) { Icon(Icons.Rounded.Edit, null, Modifier.size(20.dp), tint = Blue) }
             }
             Row(Modifier.fillMaxWidth().background(Color(0xFF161B22)).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -165,6 +222,8 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
             val ic = if (LocalGHCompact.current) 16.dp else 20.dp
             IconButton(onClick = { scope.launch { if (isStarred) GitHubManager.unstarRepo(context, repo.owner, repo.name) else GitHubManager.starRepo(context, repo.owner, repo.name); isStarred = !isStarred } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder, null, Modifier.size(ic), tint = Color(0xFFFFCC00)) }
             IconButton(onClick = { scope.launch { if (isWatching) GitHubManager.unwatchRepo(context, repo.owner, repo.name) else GitHubManager.watchRepo(context, repo.owner, repo.name); isWatching = !isWatching } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(if (isWatching) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, null, Modifier.size(ic), tint = if (isWatching) Blue else TextSecondary) }
+            IconButton(onClick = { showRepoSettings = true }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.Settings, null, Modifier.size(ic), tint = TextSecondary) }
+            IconButton(onClick = { showCompare = true }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.CompareArrows, null, Modifier.size(ic), tint = Blue) }
             IconButton(onClick = { scope.launch { val ok = GitHubManager.forkRepo(context, repo.owner, repo.name); Toast.makeText(context, if (ok) Strings.ghForked else Strings.error, Toast.LENGTH_SHORT).show() } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.CallSplit, null, Modifier.size(ic), tint = Blue) }
             IconButton(onClick = { cloneProgress = "Starting..."; scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git"); val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it }; Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); cloneProgress = null } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.Download, null, Modifier.size(ic), tint = Blue) }
         }
@@ -230,7 +289,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
             RepoTab.FILES -> FilesTab(filteredContents, onDirClick = { currentPath = it.path }, onFileClick = { scope.launch { openedFile = it; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, it.path, selectedBranch) } }, onEdit = { openedFile = it; editingFile = it }, onDelete = { deleteTarget = it }, onDownload = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${it.name}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest, selectedBranch); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } })
             RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }) { selectedCommitSha = it.sha }
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }) { selectedIssue = it }
-            RepoTab.PULLS -> PullsTab(filteredPulls, repo) { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }
+            RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }) { prNumber -> selectedPRNumber = prNumber }
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.README -> ReadmeTab(readme, languages, contributors)
@@ -286,11 +345,11 @@ internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -
 }; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
 
 @Composable
-internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () -> Unit) {
+internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () -> Unit, onFilesClick: (Int) -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var reviewTarget by remember { mutableStateOf<GHPullRequest?>(null) }
-    var filesTarget by remember { mutableStateOf<GHPullRequest?>(null) }
+    var checkRunTarget by remember { mutableStateOf<GHPullRequest?>(null) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         items(pulls) { pr ->
@@ -322,8 +381,9 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
                         }
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Chip(Icons.Rounded.Article, "Files") { filesTarget = pr }
+                            Chip(Icons.Rounded.Article, "Files") { onFilesClick(pr.number) }
                             Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
+                            Chip(Icons.Rounded.FactCheck, "Checks") { checkRunTarget = pr }
                             if (pr.state == "open" && !pr.merged) {
                                 Chip(Icons.Rounded.CallMerge, Strings.ghMerge, Color(0xFF34C759)) {
                                     scope.launch {
@@ -353,11 +413,12 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
         )
     }
 
-    if (filesTarget != null) {
-        PullFilesDialog(
-            repo = repo,
-            pr = filesTarget!!,
-            onDismiss = { filesTarget = null }
+    if (checkRunTarget != null) {
+        CheckRunsScreen(
+            repoOwner = repo.owner,
+            repoName = repo.name,
+            ref = checkRunTarget!!.head,
+            onBack = { checkRunTarget = null }
         )
     }
 }
@@ -398,6 +459,8 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     var newComment by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var showMetaDialog by remember { mutableStateOf(false) }
+    var showReactions by remember { mutableStateOf(false) }
+    var showTimeline by remember { mutableStateOf(false) }
 
     LaunchedEffect(issueNumber) {
         loading = true
@@ -409,6 +472,12 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar("#$issueNumber", subtitle = detail?.title, onBack = onBack) {
             if (detail != null) {
+                IconButton(onClick = { showReactions = true }) {
+                    Icon(Icons.Rounded.EmojiEmotions, null, Modifier.size(20.dp), tint = Blue)
+                }
+                IconButton(onClick = { showTimeline = true }) {
+                    Icon(Icons.Rounded.Timeline, null, Modifier.size(20.dp), tint = Blue)
+                }
                 IconButton(onClick = { showMetaDialog = true }) {
                     Icon(Icons.Rounded.Tune, null, Modifier.size(20.dp), tint = Blue)
                 }
@@ -556,6 +625,22 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                     detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
                 }
             }
+        )
+    }
+
+    if (showReactions) {
+        IssueReactionsDialog(
+            repo = repo,
+            issueNumber = issueNumber,
+            onDismiss = { showReactions = false }
+        )
+    }
+
+    if (showTimeline) {
+        IssueTimelineDialog(
+            repo = repo,
+            issueNumber = issueNumber,
+            onDismiss = { showTimeline = false }
         )
     }
 }
@@ -951,4 +1036,134 @@ internal fun EditFileScreen(repo: GHRepo, file: GHContent, branch: String, onBac
             }
         }
     }
+}
+
+// ═══════════════════════════════════
+// Issue Reactions Dialog
+// ═══════════════════════════════════
+
+@Composable
+private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(issueNumber) {
+        reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
+        loading = false
+    }
+
+    val emojiMap = mapOf(
+        "+1" to "👍", "-1" to "👎", "laugh" to "😄", "confused" to "😕",
+        "heart" to "❤️", "hooray" to "🎉", "eyes" to "👀", "rocket" to "🚀"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Reactions", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            Column {
+                // Add reaction row
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
+                    emojiMap.forEach { (key, emoji) ->
+                        Box(
+                            Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(SurfaceLight)
+                                .clickable {
+                                    scope.launch {
+                                        GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
+                                        reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
+                                    }
+                                }
+                                .padding(8.dp)
+                        ) {
+                            Text(emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+
+                if (loading) {
+                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                } else if (reactions.isEmpty()) {
+                    Text("No reactions yet", fontSize = 13.sp, color = TextTertiary)
+                } else {
+                    // Group by reaction type
+                    val grouped = reactions.groupBy { it.content }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        grouped.forEach { (content, items) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(emojiMap[content] ?: content, fontSize = 16.sp)
+                                Text("${items.size}", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                                Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
+    )
+}
+
+// ═══════════════════════════════════
+// Issue Timeline Dialog
+// ═══════════════════════════════════
+
+@Composable
+private fun IssueTimelineDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var events by remember { mutableStateOf<List<GHTimelineEvent>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(issueNumber) {
+        events = GitHubManager.getIssueTimeline(context, repo.owner, repo.name, issueNumber)
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Timeline", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            if (loading) {
+                Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
+            } else if (events.isEmpty()) {
+                Text("No timeline events", fontSize = 13.sp, color = TextTertiary)
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(events) { event ->
+                        val eventText = when (event.event) {
+                            "labeled" -> "added label \"${event.label}\""
+                            "unlabeled" -> "removed label \"${event.label}\""
+                            "milestoned" -> "added to milestone \"${event.milestone}\""
+                            "demilestoned" -> "removed from milestone \"${event.milestone}\""
+                            "assigned" -> "assigned to ${event.assignee}"
+                            "unassigned" -> "unassigned ${event.assignee}"
+                            "closed" -> "closed this"
+                            "reopened" -> "reopened this"
+                            "cross-referenced" -> "referenced this"
+                            "commented" -> "commented"
+                            "committed" -> "committed"
+                            "reviewed" -> "reviewed"
+                            else -> event.event
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(Blue))
+                            Column {
+                                Text("${event.actor} $eventText", fontSize = 12.sp, color = TextPrimary)
+                                Text(event.createdAt.take(10), fontSize = 10.sp, color = TextTertiary)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
+    )
 }
