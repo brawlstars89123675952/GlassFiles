@@ -330,7 +330,8 @@ private fun DynamicBuildWorkflowDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 BuildDropdownField("Branch", selectedBranch, { branchMenu = true })
                 build.schema.inputs.forEach { input ->
-                    if (input.options.isNotEmpty()) {
+                    val options = inputOptions(input)
+                    if (options.isNotEmpty()) {
                         BuildDropdownField(
                             label = inputLabel(input.key),
                             value = inputValues[input.key].orEmpty().ifBlank { input.defaultValue },
@@ -386,7 +387,7 @@ private fun DynamicBuildWorkflowDialog(
         val target = choiceTarget!!
         SimpleChoiceDialog(
             inputLabel(target.key),
-            target.options,
+            inputOptions(target),
             inputValues[target.key].orEmpty().ifBlank { target.defaultValue },
             { picked -> inputValues[target.key] = picked; choiceTarget = null },
             { choiceTarget = null }
@@ -394,13 +395,18 @@ private fun DynamicBuildWorkflowDialog(
     }
 }
 
-private fun inputLabel(key: String): String = when (key) {
-    "release_type" -> "Release Type"
-    "kernel_version" -> "Kernel Version to Build"
-    "feature_set" -> "Feature Set"
-    "ksu_commit" -> "KSU Commit"
-    else -> key.replace('_', ' ').replaceFirstChar { it.uppercase() }
+private fun inputOptions(input: GHWorkflowDispatchInput): List<String> = when {
+    input.options.isNotEmpty() -> input.options
+    input.type == "boolean" -> listOf("true", "false")
+    else -> emptyList()
 }
+
+private fun inputLabel(key: String): String = key
+    .replace('_', ' ')
+    .replace('-', ' ')
+    .split(' ')
+    .filter { it.isNotBlank() }
+    .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
 
 @Composable
 private fun BuildDropdownField(

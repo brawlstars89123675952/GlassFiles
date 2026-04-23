@@ -147,6 +147,12 @@
   - `BuildsScreen` подключён к реальным `workflows`, `branches` и текущей ветке из repo screen
   - workflows с `workflow_dispatch` без inputs больше не скрываются
   - после `Run workflow` выполняется поиск нового `workflow_dispatch` run и открывается detail screen с polling
+- Выполнен расширенный dynamic-discovery pass:
+  - parser теперь принимает больше реальных YAML-вариантов `workflow_dispatch`
+  - поддержаны inline trigger forms и comments-safe parsing
+  - `workflow_dispatch.inputs.type` читается из YAML
+  - boolean inputs автоматически отображаются как выбор `true/false`
+  - убран специальный label-маппинг под отдельные примеры параметров
 
 ### Важно
 - По просьбе пользователя server-side сборки/compile checks больше не запускать.

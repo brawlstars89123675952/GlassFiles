@@ -836,13 +836,24 @@ object GitHubManager {
             .orEmpty()
             .ifBlank { workflowPath.substringAfterLast('/') }
 
-        val dispatchIndex = lines.indexOfFirst { it.trim() == "workflow_dispatch:" }
-        if (dispatchIndex < 0) return null
+        val inlineDispatch = lines.any { line ->
+            val clean = yamlClean(line)
+            clean == "on: workflow_dispatch" ||
+                clean.matches(Regex("""on:\s*\[.*\bworkflow_dispatch\b.*]""")) ||
+                clean == "- workflow_dispatch"
+        }
+        val dispatchIndex = lines.indexOfFirst { line ->
+            val clean = yamlClean(line)
+            clean == "workflow_dispatch" || clean.startsWith("workflow_dispatch:")
+        }
+        if (dispatchIndex < 0) {
+            return if (inlineDispatch) GHWorkflowDispatchSchema(workflowPath, workflowName, emptyList()) else null
+        }
 
         val dispatchIndent = lines[dispatchIndex].takeWhile { it == ' ' }.length
         val inputsIndex = lines.indexOfFirstIndexed(dispatchIndex + 1) { _, line ->
             val indent = line.takeWhile { it == ' ' }.length
-            line.trim() == "inputs:" && indent > dispatchIndent
+            yamlClean(line).startsWith("inputs:") && indent > dispatchIndent
         }
         if (inputsIndex < 0) return GHWorkflowDispatchSchema(workflowPath, workflowName, emptyList())
 
@@ -854,12 +865,13 @@ object GitHubManager {
             if (raw.trim().isBlank()) { i++; continue }
             val indent = raw.takeWhile { it == ' ' }.length
             if (indent <= inputsIndent) break
-            val trimmed = raw.trim()
+            val trimmed = yamlClean(raw)
             if (trimmed.endsWith(":") && !trimmed.startsWith("#")) {
-                val key = trimmed.removeSuffix(":").trim()
+                val key = trimmed.removeSuffix(":").trim().trim('"', '\'')
                 var description = ""
                 var required = false
                 var defaultValue = ""
+                var type = ""
                 val options = mutableListOf<String>()
                 val keyIndent = indent
                 i++
@@ -868,20 +880,27 @@ object GitHubManager {
                     if (childRaw.trim().isBlank()) { i++; continue }
                     val childIndent = childRaw.takeWhile { it == ' ' }.length
                     if (childIndent <= keyIndent) break
-                    val childTrim = childRaw.trim()
+                    val childTrim = yamlClean(childRaw)
                     when {
-                        childTrim.startsWith("description:") -> description = childTrim.substringAfter(":").trim().trim('"', '\'')
-                        childTrim.startsWith("required:") -> required = childTrim.substringAfter(":").trim().equals("true", true)
-                        childTrim.startsWith("default:") -> defaultValue = childTrim.substringAfter(":").trim().trim('"', '\'')
+                        childTrim.startsWith("description:") -> description = yamlScalar(childTrim.substringAfter(":"))
+                        childTrim.startsWith("required:") -> required = yamlScalar(childTrim.substringAfter(":")).equals("true", true)
+                        childTrim.startsWith("default:") -> defaultValue = yamlScalar(childTrim.substringAfter(":"))
+                        childTrim.startsWith("type:") -> type = yamlScalar(childTrim.substringAfter(":")).lowercase()
                         childTrim.startsWith("options:") -> {
+                            val inlineOptions = yamlInlineList(childTrim.substringAfter(":"))
+                            if (inlineOptions.isNotEmpty()) {
+                                options += inlineOptions
+                                i++
+                                continue
+                            }
                             i++
                             while (i < lines.size) {
                                 val optionRaw = lines[i]
                                 if (optionRaw.trim().isBlank()) { i++; continue }
                                 val optionIndent = optionRaw.takeWhile { it == ' ' }.length
                                 if (optionIndent <= childIndent) break
-                                val optionTrim = optionRaw.trim()
-                                if (optionTrim.startsWith("- ")) options += optionTrim.removePrefix("- ").trim().trim('"', '\'')
+                                val optionTrim = yamlClean(optionRaw)
+                                if (optionTrim.startsWith("- ")) options += yamlScalar(optionTrim.removePrefix("- "))
                                 i++
                             }
                             continue
@@ -894,6 +913,7 @@ object GitHubManager {
                     description = description,
                     required = required,
                     defaultValue = defaultValue,
+                    type = type,
                     options = options
                 )
                 continue
@@ -901,6 +921,20 @@ object GitHubManager {
             i++
         }
         return GHWorkflowDispatchSchema(workflowPath, workflowName, results)
+    }
+
+    private fun yamlClean(line: String): String = line.substringBefore("#").trim()
+
+    private fun yamlScalar(value: String): String = value.trim().trim('"', '\'')
+
+    private fun yamlInlineList(value: String): List<String> {
+        val trimmed = value.trim()
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return emptyList()
+        return trimmed.removePrefix("[")
+            .removeSuffix("]")
+            .split(',')
+            .map { yamlScalar(it) }
+            .filter { it.isNotBlank() }
     }
 
     private inline fun List<String>.indexOfFirstIndexed(startIndex: Int, predicate: (Int, String) -> Boolean): Int {
@@ -1999,6 +2033,7 @@ data class GHWorkflowDispatchInput(
     val description: String,
     val required: Boolean,
     val defaultValue: String,
+    val type: String,
     val options: List<String>
 )
 
