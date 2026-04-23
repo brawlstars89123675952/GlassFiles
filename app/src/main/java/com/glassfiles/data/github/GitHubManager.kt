@@ -778,6 +778,19 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/actions/workflows/$workflowId/dispatches", "POST", body).let { it.code == 204 || it.success }
     }
 
+    suspend fun dispatchWorkflow(context: Context, owner: String, repo: String, workflowId: String, ref: String, inputs: Map<String, String> = emptyMap()): Boolean {
+        val body = JSONObject().apply {
+            put("ref", ref)
+            if (inputs.isNotEmpty()) {
+                val inputsObj = JSONObject()
+                inputs.forEach { (k, v) -> inputsObj.put(k, v) }
+                put("inputs", inputsObj)
+            }
+        }.toString()
+        val encodedId = URLEncoder.encode(workflowId, "UTF-8")
+        return request(context, "/repos/$owner/$repo/actions/workflows/$encodedId/dispatches", "POST", body).let { it.code == 204 || it.success }
+    }
+
     suspend fun getRunArtifacts(context: Context, owner: String, repo: String, runId: Long): List<GHArtifact> {
         val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/artifacts")
         if (!r.success) return emptyList()

@@ -101,11 +101,44 @@
 - По запросу пользователя текущее состояние зафиксировано для следующей CI-сборки и визуальной оценки после push.
 - После нового CI-лога выполнен быстрый compile-fix:
   - добавлены недостающие theme imports (`Blue`, `SeparatorColor`, `TextSecondary`, `TextTertiary`) в `GitHubCodeEditorModule.kt`
+- Начата реализация нового модуля `Сборки` (CI/CD Builder) по ТЗ.
+- Реализовано:
+  - новый файл `BuildsScreen.kt`
+  - overload `dispatchWorkflow(context, owner, repo, workflowId: String, ref, inputs)` в `GitHubManager.kt`
+  - вкладка `Сборки` добавлена рядом с `Actions` в `GitHubRepoModule.kt`
+  - после успешного запуска build screen переводит пользователя в `Actions` и обновляет workflow runs
+- Основание реализации verified against official GitHub Docs:
+  - `workflow_dispatch`
+  - REST create workflow dispatch event
+- Пользователь уточнил целевой scope для builder module: нужно поддержать широкий набор типов сборок как UI-категории/пресеты поверх GitHub Actions/workflow_dispatch.
+- Builder screen расширен до полного каталога категорий:
+  - Ядра и система
+  - Модули
+  - Драйверы и графика
+  - Приложения
+  - Кросс-платформа
+  - Автоматизация
+  - Специфические
+- В Build workflow form now implemented fixed settings required by user:
+  - Branch
+  - Release Type
+  - Kernel Version to Build
+  - Feature Set
+  - KSU Commit
+  - green `Run workflow` button
+- Current builder uses official GitHub `workflow_dispatch` model: `ref` + `inputs`.
+- Выполнен дополнительный tidy-up pass:
+  - `Workflow control` уменьшен заметнее по высоте
+  - stat cards ужаты
+  - поля dispatch сделаны компактнее
+  - вкладка `Сборки` в `RepoDetailScreen` приведена в более аккуратный вид
+  - пустая action-кнопка заменена на осмысленную `Builder`
 
 ### Важно
 - По просьбе пользователя server-side сборки/compile checks больше не запускать.
 - Фокус только на реальной доработке UI/UX и функциональности GitHub-модулей внутри проекта.
 
 ### Текущее состояние
-- Исправлена последняя серия compile-ошибок по недостающим imports в новом editor screen.
-- Изменения готовы к fix commit / push.
+- `Workflow control` дополнительно ужат.
+- Builder и Builds tab выглядят целостнее и аккуратнее.
+- Следующий шаг: дождаться CI/ручного фидбека и затем зафиксировать коммитом, если пользователь подтвердит состояние.

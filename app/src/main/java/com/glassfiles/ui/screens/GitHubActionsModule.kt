@@ -350,14 +350,14 @@ private fun ActionsOverviewHeader(
         Modifier
             .fillMaxWidth()
             .background(SurfaceLight)
-            .padding(top = 8.dp)
+            .padding(top = 4.dp)
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             StatCard("Total", totalRuns.toString(), Icons.Rounded.Timeline, Blue)
             StatCard("Active", activeCount.toString(), Icons.Rounded.FlashOn, Color(0xFF58A6FF))
@@ -366,29 +366,29 @@ private fun ActionsOverviewHeader(
             StatCard("Cancelled", cancelledCount.toString(), Icons.Rounded.Cancel, Color(0xFF8E8E93))
         }
 
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
 
         Column(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(SurfaceWhite)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Row(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = Blue)
-                    Text("Workflow control", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = Blue, modifier = Modifier.size(16.dp))
+                    Text("Workflow control", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 }
                 IconButton(onClick = onRefresh) {
-                    if (refreshing) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
-                    else Icon(Icons.Rounded.Refresh, null, tint = Blue)
+                    if (refreshing) CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
+                    else Icon(Icons.Rounded.Refresh, null, tint = Blue, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -414,6 +414,7 @@ private fun ActionsOverviewHeader(
                 value = selectedBranch,
                 onValueChange = onBranchChange,
                 label = { Text("Branch / ref") },
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -422,10 +423,11 @@ private fun ActionsOverviewHeader(
                 value = dispatchInputsText,
                 onValueChange = onDispatchInputsChange,
                 label = { Text("Dispatch inputs") },
-                supportingText = { Text("Format: key=value, one per line", fontSize = 11.sp) },
+                supportingText = { Text("key=value per line", fontSize = 10.sp) },
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
                 modifier = Modifier.fillMaxWidth(),
-                minLines = 3,
-                maxLines = 6
+                minLines = 2,
+                maxLines = 4
             )
 
             Row(
@@ -445,7 +447,7 @@ private fun ActionsOverviewHeader(
             }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(6.dp))
     }
 }
 
@@ -453,17 +455,17 @@ private fun ActionsOverviewHeader(
 private fun StatCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color) {
     Column(
         Modifier
-            .width(118.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .width(96.dp)
+            .clip(RoundedCornerShape(12.dp))
             .background(SurfaceWhite)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-            Text(label, fontSize = 12.sp, color = TextSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
+            Text(label, fontSize = 11.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(value, fontSize = 22.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text(value, fontSize = 18.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
     }
 }
 
