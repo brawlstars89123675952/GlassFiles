@@ -1583,11 +1583,23 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                 if (checkRuns.isNotEmpty()) {
                     item {
                         CheckRunsCard(
-                            checkRuns = checkRuns,
+                            checkRuns = checkRuns.filter { checkRun ->
+                                checkRun.id != 0L && (
+                                    checkRun.name.isNotBlank() ||
+                                        checkRun.title.isNotBlank() ||
+                                        checkRun.summary.isNotBlank() ||
+                                        checkRun.annotationsCount > 0
+                                    )
+                            },
                             annotations = checkAnnotations,
                             onLoadAnnotations = { checkRun ->
                                 scope.launch {
                                     checkAnnotations[checkRun.id] = GitHubManager.getCheckRunAnnotations(context, repo.owner, repo.name, checkRun.id)
+                                        .filter { annotation ->
+                                            annotation.message.isNotBlank() ||
+                                                annotation.title.isNotBlank() ||
+                                                annotation.path.isNotBlank()
+                                        }
                                 }
                             }
                         )
@@ -1971,13 +1983,21 @@ private fun ensureJobLogsLoaded(
     if (!force && jobLogs.containsKey(job.id)) return
     scope.launch {
         setLoading(job.id)
-        val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
-        // Only save if it's not an error message
-        if (!log.startsWith("Error: ")) {
-            jobLogs[job.id] = log
-            jobStepLogs[job.id] = splitLogsBySteps(job, log)
+        try {
+            val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
+            when {
+                !log.startsWith("Error: ") -> {
+                    jobLogs[job.id] = log
+                    jobStepLogs[job.id] = splitLogsBySteps(job, log)
+                }
+                isTemporaryLiveLogUnavailable(job, log) -> {
+                    // Active GitHub jobs can legitimately return 404 until logs are published.
+                    // Keep polling and let the UI show step-level placeholders instead of surfacing an error state.
+                }
+            }
+        } finally {
+            setLoading(null)
         }
-        setLoading(null)
     }
 }
 
@@ -1989,11 +2009,23 @@ private suspend fun refreshJobLogsNow(
     jobStepLogs: MutableMap<Long, Map<Int, String>>
 ) {
     val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
-    // Only update if it's not an error message
-    if (!log.startsWith("Error: ")) {
-        jobLogs[job.id] = log
-        jobStepLogs[job.id] = splitLogsBySteps(job, log)
+    when {
+        !log.startsWith("Error: ") -> {
+            jobLogs[job.id] = log
+            jobStepLogs[job.id] = splitLogsBySteps(job, log)
+        }
+        isTemporaryLiveLogUnavailable(job, log) -> {
+            // Normal temporary state for active runs; keep previous logs/placeholder UI.
+        }
     }
+}
+
+private fun isTemporaryLiveLogUnavailable(job: GHJob, log: String): Boolean {
+    if (job.status != "queued" && job.status != "in_progress") return false
+    val normalized = log.trim().lowercase()
+    return normalized == "error: http 404" ||
+        "no step log captured" in normalized ||
+        "not found" in normalized
 }
 
 private fun splitLogsBySteps(job: GHJob, raw: String): Map<Int, String> {

@@ -161,6 +161,13 @@
   - таким образом, transient состояния (queued/in_progress) не вызывают ложные ошибки
   - UI теперь не показывает Toast на нормальные промежуточные состояния workflow
 
+- Выполнен targeted fix для GitHub Actions run details при активных workflow:
+  - ранний 404 / `No step log captured` для live step logs теперь считается временным нормальным состоянием, а не ошибкой
+  - polling активного run/jobs сохранён без изменения UI
+  - step log placeholders продолжают показываться как `Log not available yet` / `Waiting for live log...` вместо error-state
+  - generic error toast больше не провоцируется временным отсутствием step logs у active jobs
+  - null/empty check annotations и пустые check items скрыты из run details
+
 ### Важно
 - По просьбе пользователя server-side сборки/compile checks больше не запускать.
 - Фокус только на реальной доработке UI/UX и функциональности GitHub-модулей внутри проекта.
