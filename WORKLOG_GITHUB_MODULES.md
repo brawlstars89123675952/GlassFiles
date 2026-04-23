@@ -79,11 +79,32 @@
   - removed unresolved `Icons.Rounded.Markdown`
   - added missing `verticalScroll` import
   - resolved size formatter name conflict in `GitHubActionsModule.kt`
+- Выполнен новый UX-поворот по запросу пользователя.
+- Изменения по Actions:
+  - `Workflow control` сделан компактнее, чтобы список сборок было удобнее смотреть
+- Изменения по editor:
+  - редактор файлов в GitHub-модуле полностью переработан как новый clean modern screen
+  - layout упрощён и перестроен
+  - режимы чтения/редактирования/markdown preview выделены чище
+  - UI сделан более современным и визуально легче
+- Выполнен ещё один этап: редактор полностью переписан с нуля новой архитектурой.
+- Новый editor now built around:
+  - отдельный top bar
+  - mode strip
+  - search/replace card
+  - action ribbon
+  - modern edit canvas
+  - modern read canvas с syntax highlighting
+  - markdown canvas
+  - image canvas
+- Цель этого этапа: не полировка старого editor, а новый экран с нуля.
+- По запросу пользователя текущее состояние зафиксировано для следующей CI-сборки и визуальной оценки после push.
 
 ### Важно
 - По просьбе пользователя server-side сборки/compile checks больше не запускать.
 - Фокус только на реальной доработке UI/UX и функциональности GitHub-модулей внутри проекта.
 
 ### Текущее состояние
-- Исправлены конкретные compile-ошибки, пришедшие из CI-лога.
-- Изменения готовы к fix commit / push.
+- Actions UI стал компактнее по vertical space.
+- Editor переписан как новый экран с новой структурой.
+- Изменения зафиксированы перед commit/push для проверки через CI и последующей визуальной оценки.
