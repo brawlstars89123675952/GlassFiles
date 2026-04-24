@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.GHRepoSettings
+import com.glassfiles.data.github.GHTag
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
@@ -45,8 +46,10 @@ internal fun RepoSettingsScreen(
     val scope = rememberCoroutineScope()
 
     var settings by remember { mutableStateOf<GHRepoSettings?>(null) }
+    var tags by remember { mutableStateOf<List<GHTag>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    var showArchiveConfirm by remember { mutableStateOf<Boolean?>(null) }
 
     // Editable fields
     var description by remember { mutableStateOf("") }
@@ -67,6 +70,7 @@ internal fun RepoSettingsScreen(
 
     LaunchedEffect(repoOwner, repoName) {
         val s = GitHubManager.getRepoSettings(context, repoOwner, repoName)
+        tags = GitHubManager.getRepoTags(context, repoOwner, repoName)
         settings = s
         if (s != null) {
             description = s.description
@@ -90,6 +94,7 @@ internal fun RepoSettingsScreen(
     fun saveChanges() {
         saving = true
         scope.launch {
+            val cleanTopics = topics.map { normalizeRepoTopic(it) }.filter { it.isNotBlank() }.distinct().take(20)
             val ok = GitHubManager.updateRepoSettings(
                 context = context,
                 owner = repoOwner,
@@ -103,21 +108,40 @@ internal fun RepoSettingsScreen(
                 allowForking = allowForking,
                 isTemplate = isTemplate,
                 archived = archived,
-                topics = topics,
+                topics = null,
                 allowMergeCommit = allowMergeCommit,
                 allowSquashMerge = allowSquashMerge,
                 allowRebaseMerge = allowRebaseMerge,
                 deleteBranchOnMerge = deleteBranchOnMerge
-            )
+            ) && GitHubManager.replaceRepoTopics(context, repoOwner, repoName, cleanTopics)
             Toast.makeText(context, if (ok) "Settings saved" else "Failed to save", Toast.LENGTH_SHORT).show()
             saving = false
             if (ok) {
                 // Refresh
                 val s = GitHubManager.getRepoSettings(context, repoOwner, repoName)
                 settings = s
+                topics = s?.topics ?: cleanTopics
+                tags = GitHubManager.getRepoTags(context, repoOwner, repoName)
             }
         }
     }
+
+    val hasUnsavedChanges = settings?.let { s ->
+        description != s.description ||
+            homepage != s.homepage ||
+            hasIssues != s.hasIssues ||
+            hasProjects != s.hasProjects ||
+            hasWiki != s.hasWiki ||
+            hasDiscussions != s.hasDiscussions ||
+            allowForking != s.allowForking ||
+            isTemplate != s.isTemplate ||
+            archived != s.archived ||
+            allowMergeCommit != s.allowMergeCommit ||
+            allowSquashMerge != s.allowSquashMerge ||
+            allowRebaseMerge != s.allowRebaseMerge ||
+            deleteBranchOnMerge != s.deleteBranchOnMerge ||
+            topics.map(::normalizeRepoTopic).filter { it.isNotBlank() }.distinct() != s.topics.map(::normalizeRepoTopic).filter { it.isNotBlank() }.distinct()
+    } ?: false
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar(
@@ -128,8 +152,8 @@ internal fun RepoSettingsScreen(
                 if (saving) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = Blue, strokeWidth = 2.dp)
                 } else {
-                    TextButton(onClick = { saveChanges() }) {
-                        Text("Save", color = Blue, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { saveChanges() }, enabled = hasUnsavedChanges) {
+                        Text(if (hasUnsavedChanges) "Save" else "Saved", color = if (hasUnsavedChanges) Blue else TextTertiary, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -145,6 +169,10 @@ internal fun RepoSettingsScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item {
+                    RepoSettingsSummaryCard(settings, tags, hasUnsavedChanges)
+                }
+
                 // General section
                 item { SectionHeader("General") }
 
@@ -200,8 +228,8 @@ internal fun RepoSettingsScreen(
                     }
                 }
 
-                // Danger zone
-                item { SectionHeader("Danger Zone", Color(0xFFFF3B30)) }
+                // Administration section
+                item { SectionHeader("Administration") }
 
                 item {
                     SettingsCard {
@@ -315,7 +343,7 @@ internal fun RepoSettingsScreen(
                             Row(
                                 Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                                     .background(if (archived) Color(0xFFFF3B30).copy(0.1f) else SurfaceLight)
-                                    .clickable { archived = !archived }
+                                    .clickable { showArchiveConfirm = !archived }
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -341,7 +369,7 @@ internal fun RepoSettingsScreen(
                                 }
                                 Switch(
                                     checked = archived,
-                                    onCheckedChange = { archived = it },
+                                    onCheckedChange = { showArchiveConfirm = it },
                                     colors = SwitchDefaults.colors(
                                         checkedTrackColor = Color(0xFFFF3B30),
                                         checkedThumbColor = Color.White
@@ -380,21 +408,42 @@ internal fun RepoSettingsScreen(
                             ) {
                                 OutlinedTextField(
                                     value = newTopic,
-                                    onValueChange = { newTopic = it.lowercase().replace(" ", "-") },
+                                    onValueChange = { newTopic = normalizeRepoTopic(it) },
                                     label = { Text("Add topic") },
                                     modifier = Modifier.weight(1f),
                                     singleLine = true
                                 )
                                 Button(
                                     onClick = {
-                                        if (newTopic.isNotBlank() && newTopic !in topics) {
-                                            topics = topics + newTopic
+                                        val normalized = normalizeRepoTopic(newTopic)
+                                        if (normalized.isNotBlank() && normalized !in topics.map(::normalizeRepoTopic) && topics.size < 20) {
+                                            topics = topics + normalized
                                             newTopic = ""
                                         }
                                     },
-                                    enabled = newTopic.isNotBlank()
+                                    enabled = newTopic.isNotBlank() && topics.size < 20
                                 ) {
                                     Text("Add")
+                                }
+                            }
+                            Text("${topics.size}/20 topics", fontSize = 11.sp, color = TextTertiary)
+                        }
+                    }
+                }
+
+                item { SectionHeader("Tags") }
+
+                item {
+                    SettingsCard {
+                        if (tags.isEmpty()) {
+                            Text("No tags returned for this repository.", fontSize = 13.sp, color = TextTertiary)
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                tags.take(12).forEach { tag ->
+                                    RepoTagRow(tag)
+                                }
+                                if (tags.size > 12) {
+                                    Text("+${tags.size - 12} more tags", fontSize = 11.sp, color = TextTertiary)
                                 }
                             }
                         }
@@ -403,6 +452,78 @@ internal fun RepoSettingsScreen(
 
                 item { Spacer(Modifier.height(32.dp)) }
             }
+        }
+    }
+
+    val archiveTarget = showArchiveConfirm
+    if (archiveTarget != null) {
+        AlertDialog(
+            onDismissRequest = { showArchiveConfirm = null },
+            containerColor = SurfaceWhite,
+            title = { Text(if (archiveTarget) "Archive repository" else "Unarchive repository", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    if (archiveTarget) "Archiving makes the repository read-only until it is unarchived. Save settings after confirming."
+                    else "Unarchiving restores normal repository writes after you save settings.",
+                    color = TextSecondary,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    archived = archiveTarget
+                    showArchiveConfirm = null
+                }) {
+                    Text(if (archiveTarget) "Archive" else "Unarchive", color = if (archiveTarget) Color(0xFFFF3B30) else Blue)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showArchiveConfirm = null }) { Text(Strings.cancel, color = TextSecondary) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun RepoSettingsSummaryCard(settings: GHRepoSettings?, tags: List<GHTag>, hasUnsavedChanges: Boolean) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.Settings, null, Modifier.size(22.dp), tint = Blue)
+            Column(Modifier.weight(1f)) {
+                Text(settings?.name ?: "Repository", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(
+                    buildString {
+                        append(settings?.defaultBranch ?: "default branch")
+                        append(" · ")
+                        append(if (settings?.isPrivate == true) "private" else "public")
+                        append(" · ")
+                        append("${settings?.topics?.size ?: 0} topics")
+                        append(" · ")
+                        append("${tags.size} tags")
+                    },
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (hasUnsavedChanges) {
+                Text(
+                    "Unsaved",
+                    fontSize = 10.sp,
+                    color = Color(0xFFFF9500),
+                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
+        }
+        if (settings?.archived == true) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Repository is archived and read-only.",
+                fontSize = 12.sp,
+                color = Color(0xFFFF3B30),
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFFF3B30).copy(0.10f)).padding(horizontal = 10.dp, vertical = 7.dp)
+            )
         }
     }
 }
@@ -424,6 +545,24 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
     ) {
         content()
+    }
+}
+
+@Composable
+private fun RepoTagRow(tag: GHTag) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(SurfaceLight).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(Icons.Rounded.Label, null, Modifier.size(16.dp), tint = Blue)
+        Column(Modifier.weight(1f)) {
+            Text(tag.name, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (tag.commitSha.isNotBlank()) {
+                Text(tag.commitSha.take(7), fontSize = 10.sp, color = TextTertiary)
+            }
+        }
+        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(15.dp), tint = TextTertiary)
     }
 }
 
@@ -450,6 +589,13 @@ internal fun ToggleRow(
         )
     }
 }
+
+private fun normalizeRepoTopic(value: String): String =
+    value.lowercase()
+        .replace(Regex("""[^a-z0-9-]+"""), "-")
+        .replace(Regex("""-+"""), "-")
+        .trim('-')
+        .take(50)
 
 @Composable
 private fun TopicChip(topic: String, onRemove: () -> Unit) {

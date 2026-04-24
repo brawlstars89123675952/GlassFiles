@@ -38,6 +38,9 @@ internal fun BranchProtectionScreen(
     var protection by remember { mutableStateOf<GHBranchProtection?>(null) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    var loadedState by remember { mutableStateOf<BranchProtectionEditState?>(null) }
+    var showDisableConfirm by remember { mutableStateOf(false) }
+    var disableConfirmed by remember { mutableStateOf(false) }
 
     // Editable fields
     var enabled by remember { mutableStateOf(false) }
@@ -88,13 +91,47 @@ internal fun BranchProtectionScreen(
                 requireConversationResolution = false
                 enforceAdmins = false
             }
+            loadedState = BranchProtectionEditState(
+                enabled = enabled,
+                requireStatusChecks = requireStatusChecks,
+                statusChecksStrict = statusChecksStrict,
+                statusCheckContexts = statusCheckContexts,
+                requirePRReviews = requirePRReviews,
+                requiredApprovalCount = requiredApprovalCount,
+                dismissStaleReviews = dismissStaleReviews,
+                requireCodeOwnerReviews = requireCodeOwnerReviews,
+                allowForcePushes = allowForcePushes,
+                allowDeletions = allowDeletions,
+                requireConversationResolution = requireConversationResolution,
+                enforceAdmins = enforceAdmins
+            )
             loading = false
         }
     }
 
     LaunchedEffect(selectedBranch) { loadProtection() }
 
+    val currentState = BranchProtectionEditState(
+        enabled = enabled,
+        requireStatusChecks = requireStatusChecks,
+        statusChecksStrict = statusChecksStrict,
+        statusCheckContexts = statusCheckContexts,
+        requirePRReviews = requirePRReviews,
+        requiredApprovalCount = requiredApprovalCount,
+        dismissStaleReviews = dismissStaleReviews,
+        requireCodeOwnerReviews = requireCodeOwnerReviews,
+        allowForcePushes = allowForcePushes,
+        allowDeletions = allowDeletions,
+        requireConversationResolution = requireConversationResolution,
+        enforceAdmins = enforceAdmins
+    )
+    val hasUnsavedChanges = loadedState != null && currentState != loadedState
+
     fun saveProtection() {
+        if (!enabled && protection?.enabled == true && !disableConfirmed) {
+            showDisableConfirm = true
+            return
+        }
         saving = true
         scope.launch {
             if (!enabled) {
@@ -124,6 +161,7 @@ internal fun BranchProtectionScreen(
                 )
                 Toast.makeText(context, if (ok) "Protection saved" else "Failed to save", Toast.LENGTH_SHORT).show()
             }
+            disableConfirmed = false
             saving = false
             loadProtection()
         }
@@ -138,8 +176,8 @@ internal fun BranchProtectionScreen(
                 if (saving) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = Blue, strokeWidth = 2.dp)
                 } else {
-                    TextButton(onClick = { saveProtection() }) {
-                        Text("Save", color = Blue, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { saveProtection() }, enabled = hasUnsavedChanges) {
+                        Text(if (hasUnsavedChanges) "Save" else "Saved", color = if (hasUnsavedChanges) Blue else TextTertiary, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -171,6 +209,14 @@ internal fun BranchProtectionScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                item {
+                    BranchProtectionSummaryCard(
+                        branch = selectedBranch,
+                        state = currentState,
+                        hasUnsavedChanges = hasUnsavedChanges
+                    )
+                }
+
                 // Enable/disable protection
                 item {
                     SettingsCard {
@@ -360,6 +406,99 @@ internal fun BranchProtectionScreen(
             }
         }
     }
+
+    if (showDisableConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDisableConfirm = false },
+            containerColor = SurfaceWhite,
+            title = { Text("Disable branch protection?", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            text = {
+                Text(
+                    "This removes protection rules from $selectedBranch. Required reviews, status checks, and admin enforcement will no longer apply.",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    disableConfirmed = true
+                    showDisableConfirm = false
+                    saveProtection()
+                }) {
+                    Text("Disable", color = Color(0xFFFF3B30))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDisableConfirm = false
+                    disableConfirmed = false
+                    enabled = true
+                }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+}
+
+private data class BranchProtectionEditState(
+    val enabled: Boolean,
+    val requireStatusChecks: Boolean,
+    val statusChecksStrict: Boolean,
+    val statusCheckContexts: List<String>,
+    val requirePRReviews: Boolean,
+    val requiredApprovalCount: Int,
+    val dismissStaleReviews: Boolean,
+    val requireCodeOwnerReviews: Boolean,
+    val allowForcePushes: Boolean,
+    val allowDeletions: Boolean,
+    val requireConversationResolution: Boolean,
+    val enforceAdmins: Boolean
+)
+
+@Composable
+private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionEditState, hasUnsavedChanges: Boolean) {
+    SettingsCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.Shield, null, Modifier.size(22.dp), tint = if (state.enabled) Color(0xFF34C759) else TextSecondary)
+            Column(Modifier.weight(1f)) {
+                Text(branch, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text(
+                    if (state.enabled) "${state.statusCheckContexts.size} checks · ${if (state.requirePRReviews) "${state.requiredApprovalCount} approvals" else "no review requirement"}"
+                    else "No branch protection enabled",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+            if (hasUnsavedChanges) {
+                Text(
+                    "Unsaved",
+                    fontSize = 10.sp,
+                    color = Color(0xFFFF9500),
+                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
+        }
+        if (state.enabled) {
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (state.requireStatusChecks) MiniProtectionBadge("Status checks", Blue)
+                if (state.requirePRReviews) MiniProtectionBadge("Reviews", Color(0xFF34C759))
+                if (state.requireConversationResolution) MiniProtectionBadge("Conversations", Color(0xFFFF9500))
+                if (state.enforceAdmins) MiniProtectionBadge("Admins", Color(0xFFFF3B30))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniProtectionBadge(label: String, color: Color) {
+    Text(
+        label,
+        fontSize = 10.sp,
+        color = color,
+        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(color.copy(0.10f)).padding(horizontal = 7.dp, vertical = 3.dp)
+    )
 }
 
 @Composable
@@ -419,5 +558,3 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 private fun SectionHeader(title: String, color: Color = TextPrimary) {
     Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(bottom = 8.dp))
 }
-
-

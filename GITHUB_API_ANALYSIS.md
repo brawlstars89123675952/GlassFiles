@@ -37,6 +37,11 @@
 | Get languages | `/repos/{owner}/{repo}/languages` | ✅ | ✅ | README tab |
 | Get contributors | `/repos/{owner}/{repo}/contributors` | ✅ | ✅ | README tab |
 | Search code | `/search/code` | ✅ | ✅ | CodeSearchTab |
+| Update repo settings | `/repos/{owner}/{repo}` (PATCH) | ✅ | ✅ | Description, homepage, features, merge settings, archive |
+| Repo topics | `/repos/{owner}/{repo}/topics` | ✅ | ✅ | List/replace topics in settings |
+| Repo tags | `/repos/{owner}/{repo}/tags` | ✅ | ✅ | Read-only tags list in settings |
+| Branch protection rules | `/repos/{owner}/{repo}/branches/{branch}/protection` | ✅ | ✅ | Required checks/reviews/admins/conversation resolution |
+| Repo collaborators | `/repos/{owner}/{repo}/collaborators` | ✅ | ✅ | List/add/remove/update permission |
 
 ### Branches
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -52,6 +57,7 @@
 | List commits | `/repos/{owner}/{repo}/commits` | ✅ | ✅ | With pagination |
 | Get commit diff | `/repos/{owner}/{repo}/commits/{sha}` | ✅ | ✅ | CommitDiffScreen |
 | View commit details | `/repos/{owner}/{repo}/commits/{sha}` | ✅ | ✅ | Files, stats, patches |
+| Compare commits | `/repos/{owner}/{repo}/compare/{base}...{head}` | ✅ | ✅ | Branch compare, commits, changed files, diff viewer, PR creation |
 
 ### Issues
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -62,6 +68,8 @@
 | Get issue detail | `/repos/{owner}/{repo}/issues/{number}` | ✅ | ✅ | Full detail with labels |
 | List comments | `/repos/{owner}/{repo}/issues/{number}/comments` | ✅ | ✅ | IssueDetailScreen |
 | Add comment | `/repos/{owner}/{repo}/issues/{number}/comments` (POST) | ✅ | ✅ | Comment input |
+| Issue reactions | `/repos/{owner}/{repo}/issues/{number}/reactions` | ✅ | ✅ | Add/list reactions |
+| Comment reactions | `/repos/{owner}/{repo}/issues/comments/{id}/reactions` | ✅ | ✅ | Add/list reactions on issue comments |
 | List labels | `/repos/{owner}/{repo}/labels` | ✅ | ✅ | SettingsModule |
 | Create label | `/repos/{owner}/{repo}/labels` (POST) | ✅ | ✅ | SettingsModule |
 | Delete label | `/repos/{owner}/{repo}/labels/{name}` (DELETE) | ✅ | ✅ | SettingsModule |
@@ -74,11 +82,14 @@
 | Feature | API Endpoint | Backend | UI | Notes |
 |---------|-------------|---------|-----|-------|
 | List PRs | `/repos/{owner}/{repo}/pulls` | ✅ | ✅ | With pagination |
+| Get PR detail | `/repos/{owner}/{repo}/pulls/{number}` | ✅ | ✅ | Mergeability, draft/merged state, stats |
 | Create PR | `/repos/{owner}/{repo}/pulls` (POST) | ✅ | ✅ | CreatePRDialog |
 | Merge PR | `/repos/{owner}/{repo}/pulls/{number}/merge` (PUT) | ✅ | ✅ | Via menu |
 | Submit PR review | `/repos/{owner}/{repo}/pulls/{number}/reviews` (POST) | ✅ | ✅ | Approve/request changes |
 | Get PR files | `/repos/{owner}/{repo}/pulls/{number}/files` | ✅ | ✅ | PullRequestDiffScreen |
 | View PR diff | `/repos/{owner}/{repo}/pulls/{number}/files` | ✅ | ✅ | PullRequestDiffScreen |
+| PR review comments | `/repos/{owner}/{repo}/pulls/{number}/comments` | ✅ | ✅ | Line comments in diff viewer |
+| PR check runs | `/repos/{owner}/{repo}/commits/{ref}/check-runs` | ✅ | ✅ | PR detail checks summary and full checks screen |
 
 ### Releases
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -87,7 +98,9 @@
 | Create release | `/repos/{owner}/{repo}/releases` (POST) | ✅ | ✅ | CreateReleaseDialog |
 | Update release | `/repos/{owner}/{repo}/releases/{id}` (PATCH) | ✅ | ✅ | EditReleaseDialog |
 | Delete release | `/repos/{owner}/{repo}/releases/{id}` (DELETE) | ✅ | ✅ | With confirmation |
-| Upload release asset | `/repos/{owner}/{repo}/releases/{id}/assets` (POST) | ✅ | ✅ | File upload with content-type |
+| Upload release asset | `/repos/{owner}/{repo}/releases/{id}/assets` (POST) | ✅ | ✅ | Actions artifacts and manual file picker |
+| Download release asset | `browser_download_url` | ✅ | ✅ | To Downloads/GlassFiles_Git |
+| Delete release asset | `/repos/{owner}/{repo}/releases/assets/{asset_id}` | ✅ | ✅ | With confirmation |
 
 ### GitHub Actions
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -153,12 +166,6 @@
 | Feature | API Endpoint | Backend | UI | What's Missing |
 |---------|-------------|---------|-----|---------------|
 | Update file content | Contents API (PUT with sha) | ✅ | ⚠️ | EditFileScreen exists but basic |
-| PR comments | `/repos/{owner}/{repo}/pulls/{number}/comments` | ❌ | ❌ | Not implemented |
-| Issue reactions | `/repos/{owner}/{repo}/issues/{number}/reactions` | ❌ | ❌ | Not implemented |
-| Comment reactions | `/repos/{owner}/{repo}/issues/comments/{id}/reactions` | ❌ | ❌ | Not implemented |
-| Repo topics | `/repos/{owner}/{repo}/topics` | ❌ | ❌ | Not implemented |
-| Repo tags | `/repos/{owner}/{repo}/tags` | ❌ | ❌ | Not implemented |
-| Compare commits | `/repos/{owner}/{repo}/compare/{base}...{head}` | ❌ | ❌ | Not implemented |
 | Merge branch | `/repos/{owner}/{repo}/merges` (POST) | ❌ | ❌ | Not implemented |
 
 ---
@@ -168,17 +175,9 @@
 ### Repository Management
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
-| Update repo settings | `/repos/{owner}/{repo}` (PATCH) | Medium | Description, homepage, topics |
 | Transfer repo | `/repos/{owner}/{repo}/transfer` (POST) | Low | |
-| Archive/unarchive repo | `/repos/{owner}/{repo}` (PATCH) | Medium | `archived` field |
-| Enable/disable wiki | `/repos/{owner}/{repo}` (PATCH) | Low | `has_wiki` field |
-| Enable/disable issues | `/repos/{owner}/{repo}` (PATCH) | Low | `has_issues` field |
-| Enable/disable projects | `/repos/{owner}/{repo}` (PATCH) | Low | `has_projects` field |
-| Enable/disable discussions | `/repos/{owner}/{repo}` (PATCH) | Low | `has_discussions` field |
 | Rename default branch | `/repos/{owner}/{repo}/branches/{branch}/rename` (POST) | Low | |
-| Branch protection rules | `/repos/{owner}/{repo}/branches/{branch}/protection` | Medium | Required status checks, reviews |
 | Required signatures | `/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures` | Low | |
-| Repo collaborators | `/repos/{owner}/{repo}/collaborators` | Medium | Add/remove/list |
 | Repo teams | `/repos/{owner}/{repo}/teams` | Low | Org repos only |
 | Repo invites | `/repos/{owner}/{repo}/invitations` | Low | |
 | Repo traffic | `/repos/{owner}/{repo}/traffic/views` | Low | Analytics |
@@ -295,19 +294,19 @@
 | Get code scanning alert | `/repos/{owner}/{repo}/code-scanning/alerts/{id}` | Low | |
 | List secret scanning alerts | `/repos/{owner}/{repo}/secret-scanning/alerts` | Low | |
 | Get secret scanning alert | `/repos/{owner}/{repo}/secret-scanning/alerts/{id}` | Low | |
-| List Dependabot alerts | `/repos/{owner}/{repo}/dependabot/alerts` | Low | |
+| List Dependabot alerts | `/repos/{owner}/{repo}/dependabot/alerts` | Low | ✅ Implemented with mobile filters/search |
 | Repo security analysis | `/repos/{owner}/{repo}/community/profile` | Low | Community health |
 
 ### Webhooks
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
-| List webhooks | `/repos/{owner}/{repo}/hooks` | Low | |
+| List webhooks | `/repos/{owner}/{repo}/hooks` | Low | ✅ Implemented |
 | Get webhook | `/repos/{owner}/{repo}/hooks/{id}` | Low | |
-| Create webhook | `/repos/{owner}/{repo}/hooks` (POST) | Low | |
-| Update webhook | `/repos/{owner}/{repo}/hooks/{id}` (PATCH) | Low | |
-| Delete webhook | `/repos/{owner}/{repo}/hooks/{id}` (DELETE) | Low | |
+| Create webhook | `/repos/{owner}/{repo}/hooks` (POST) | Low | ✅ Implemented |
+| Update webhook | `/repos/{owner}/{repo}/hooks/{id}` (PATCH) | Low | ✅ Implemented |
+| Delete webhook | `/repos/{owner}/{repo}/hooks/{id}` (DELETE) | Low | ✅ Implemented |
 | Test webhook | `/repos/{owner}/{repo}/hooks/{id}/tests` (POST) | Low | |
-| Ping webhook | `/repos/{owner}/{repo}/hooks/{id}/pings` (POST) | Low | |
+| Ping webhook | `/repos/{owner}/{repo}/hooks/{id}/pings` (POST) | Low | ✅ Implemented |
 | Get webhook config | `/repos/{owner}/{repo}/hooks/{id}/config` | Low | |
 | Update webhook config | `/repos/{owner}/{repo}/hooks/{id}/config` (PATCH) | Low | |
 | Get webhook deliveries | `/repos/{owner}/{repo}/hooks/{id}/deliveries` | Low | |
@@ -316,7 +315,7 @@
 ### Repository Rules
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
-| List rulesets | `/repos/{owner}/{repo}/rulesets` | Medium | Newer than branch protection |
+| List rulesets | `/repos/{owner}/{repo}/rulesets` | Medium | ✅ Implemented; newer than branch protection |
 | Get ruleset | `/repos/{owner}/{repo}/rulesets/{id}` | Medium | |
 | Create ruleset | `/repos/{owner}/{repo}/rulesets` (POST) | Medium | |
 | Update ruleset | `/repos/{owner}/{repo}/rulesets/{id}` (PUT) | Medium | |
@@ -383,9 +382,9 @@
 | Discussions | 0 | 0 | 6 | 0% |
 | Projects | 0 | 0 | 8 | 0% |
 | Packages | 0 | 0 | 4 | 0% |
-| Security | 0 | 0 | 10+ | 0% |
-| Webhooks | 0 | 0 | 10+ | 0% |
-| Repository Rules | 0 | 0 | 5 | 0% |
+| Security | 1 | 0 | 8+ | 11% |
+| Webhooks | 5 | 0 | 6 | 45% |
+| Repository Rules | 1 | 0 | 4 | 20% |
 
 ### Overall Assessment
 
@@ -408,36 +407,28 @@
 - ⚠️ GitHub Actions (missing advanced features)
 - ⚠️ Notifications (missing thread subscription)
 
-**Not Implemented (0% coverage) — Major Gaps:**
-- ❌ Repository settings (archive, topics, features toggle)
-- ❌ Branch protection rules
-- ❌ Repository collaborators/teams
+**Not Implemented / Early Coverage — Major Gaps:**
+- ❌ Repository teams
 - ❌ Advanced PR features (review comments, check runs, squash/rebase merge)
 - ❌ Advanced issue features (reactions, timeline, lock/unlock)
 - ❌ Discussions
 - ❌ Projects (classic & V2)
-- ❌ Webhooks
-- ❌ Security features (Dependabot, code scanning, secret scanning)
+- ⚠️ Webhooks (list/create/update/delete/ping implemented; delivery history/redelivery still missing)
+- ⚠️ Security features (Dependabot alerts implemented; code scanning and secret scanning still missing)
 - ❌ Packages
-- ❌ Repository rulesets
+- ⚠️ Repository rulesets (list/read UI implemented; create/update/delete still missing)
 - ❌ Advanced search (commits, issues, topics)
 
 ### Recommendations for Next Implementation
 
 **High Priority (would add significant value):**
-1. **Repository Settings** — Archive, topics, feature toggles (wiki, issues, projects)
-2. **Branch Protection** — Required reviews, status checks, push restrictions
-3. **PR Review Comments** — Line-level commenting on diffs
-4. **Repository Collaborators** — Add/remove collaborators
+1. **Repository Teams** — Org repo team permissions
 
 **Medium Priority:**
-5. **Issue Reactions** — Emoji reactions on issues/comments
-6. **PR Check Runs** — Show CI status on PRs
-7. **Compare Commits** — Compare two branches/commits
-8. **Webhook Management** — List/create webhooks
+4. **Webhook Deliveries** — delivery history, redelivery and payload inspection
 
 **Low Priority (nice to have):**
 9. **Discussions** — If the app targets communities
 10. **Projects** — If project management is needed
-11. **Security Tab** — Dependabot alerts, code scanning
+11. **Security Tab** — code scanning and secret scanning alerts
 12. **Packages** — GitHub Packages integration

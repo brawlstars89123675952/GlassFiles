@@ -200,3 +200,232 @@
   - Jobs поддерживают logs, step logs и rerun отдельного job.
   - Runs поддерживают rerun, rerun failed jobs, cancel, force cancel, delete logs и delete run.
   - Добавлены attempts, check runs, annotations, pending deployments, approve/reject deployments и review history.
+
+## 2026-04-24
+
+### Завершено
+- Начата следующая связка после Actions: Releases + Actions artifacts.
+- В `GitHubManager.kt` расширена модель GitHub Releases:
+  - `GHRelease` теперь хранит `id`, `draft`, `htmlUrl`, `uploadUrl`
+  - `GHAsset` теперь хранит `id`, `contentType`, `state`
+  - добавлен общий parser для release и release assets
+- Добавлены GitHub API helpers для Releases:
+  - create release с возвратом полной модели release
+  - get release by tag
+  - upload release asset с возвратом полной модели asset
+  - download release asset
+  - delete release asset
+- В `GitHubActionsModule.kt` добавлена публикация artifacts из run details в GitHub Release:
+  - кнопка `Publish release` в секции artifacts
+  - диалог создания draft/pre-release release
+  - автогенерация tag/name/body по выбранному workflow run
+  - скачивание Actions artifacts во временный cache
+  - загрузка этих файлов как release assets
+- В `GitHubReleasesModule.kt` доработан экран Releases:
+  - создание draft release
+  - создание pre-release
+  - генерация changelog из последних commits
+  - отображение badges `Draft` и `Pre`
+  - скачивание release assets в `Downloads/GlassFiles_Git`
+  - удаление release assets
+- В `GitHubRepoModule.kt` исправлен переход в Releases:
+  - экран Releases теперь открывается даже если в репозитории пока нет релизов
+
+### Проверка
+- Локальная Gradle/Android сборка не запускалась по просьбе пользователя.
+- Выполнена безопасная статическая проверка `git diff --check`, ошибок не найдено.
+
+### Правило на следующие этапы
+- Все дальнейшие изменения по GitHub-модулю фиксировать в этом markdown-журнале после каждого завершенного блока работ.
+
+### Продолжение Releases polish-pass
+- Доработан Releases UI до более полноценного GitHub-like поведения:
+  - добавлена публикация draft release через действие `Publish`
+  - добавлено открытие release на сайте GitHub через `Open`
+  - добавлен ручной upload release asset с устройства
+  - удаление release asset теперь идет через отдельное подтверждение
+  - edit release теперь умеет менять не только title/body/pre-release, но и draft state
+- Улучшена работа с release assets:
+  - выбранный через Android picker файл копируется во временный cache перед upload
+  - после upload asset сразу добавляется в текущую release card без полной перезагрузки экрана
+  - assets визуально классифицируются как APK, kernel image, Magisk/kernel module, Turnip/Adreno driver, Windows/Linux/iOS build, archive, checksum/signature
+  - для assets добавлены более подходящие icons/colors вместо одинакового generic attachment
+- В `GitHubManager.kt` добавлены/доработаны release mutation helpers:
+  - `updateReleaseDetailed`
+  - `publishRelease`
+  - tag lookup для update/delete теперь использует URL-encoding
+- Цель pass:
+  - закрыть базовый release lifecycle после Actions artifacts
+  - подготовить UI к публикации сборок kernel/APK/img/Turnip/модулей как нормальных GitHub Release assets
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Commits / Compare pass
+- Доработан `GitHubCompareModule.kt` до полноценного GitHub-like compare flow:
+  - compare screen теперь использует реальные ветки из GitHub API
+  - текущая ветка репозитория передается как base branch по умолчанию
+  - добавлен swap base/head
+  - добавлен summary по compare result: ahead, behind, commits, changed files
+  - показываются commits из compare response
+  - показывается список changed files со status/additions/deletions
+  - добавлен переход в существующий `DiffViewerScreen` для просмотра patch/diff
+  - добавлено открытие compare на сайте GitHub
+  - добавлено создание Pull Request прямо из compare result
+- В `GitHubManager.kt` улучшен compare API:
+  - branch/ref names в compare endpoint теперь URL-encoded
+  - `GHCompareResult` расширен списком commits и `htmlUrl`
+  - parser compare response теперь вытаскивает commits, author/date/avatar и files
+- В `GitHubRepoModule.kt` compare screen получает `selectedBranch` как initial base.
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Compare commits перенесен из not implemented в implemented
+  - Releases assets coverage дополнен download/delete/manual upload
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Pull Requests pass
+- Доработан PR flow в `GitHubRepoModule.kt`:
+  - список Pull Requests остался компактным
+  - добавлен отдельный full-screen PR detail screen
+  - PR detail загружает `/pulls/{number}` для точных данных GitHub
+  - показываются state/merged/draft badges
+  - показываются `head -> base`, author и body
+  - добавлены PR metrics: commits, changed files, additions, deletions, review comments
+  - добавлен mergeability block с `mergeable` и `mergeable_state`
+  - добавлен checks summary: successful / active / failed / no checks
+  - добавлены действия: Files, Review, Checks, Merge, Open on GitHub, Refresh
+  - merge скрыт для draft PR и обновляет detail после успешного merge
+- В `GitHubManager.kt` расширена модель PR:
+  - `draft`
+  - `htmlUrl`
+  - `headSha`
+  - `mergeable`
+  - `mergeableState`
+  - `reviewComments`
+  - `commits`
+  - `additions`
+  - `deletions`
+  - `changedFiles`
+- Добавлен API helper:
+  - `getPullRequestDetail`
+- Улучшены checks для PR:
+  - check-runs теперь запрашиваются по `headSha`, если он доступен
+  - ref для check-runs URL-encoded
+- Доработан `GitHubDiffModule.kt`:
+  - после добавления line-level PR review comment комментарии перезагружаются сразу
+  - больше не нужно выходить из diff viewer, чтобы увидеть новый комментарий
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - PR detail, PR review comments и PR check runs отмечены как implemented
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Issues quality pass
+- Доработан `IssueDetailScreen` в `GitHubRepoModule.kt` с фокусом на удобство:
+  - issue detail теперь строится из отдельных карточек: header, metadata, description, comments
+  - metadata видна прямо на экране, а не только внутри скрытого dialog
+  - labels, assignee и milestone можно редактировать через существующий metadata dialog
+  - после изменения metadata issue detail обновляется без выхода со страницы
+  - close/reopen теперь обновляет весь detail/comments/reactions state и показывает результат
+- Улучшены комментарии issue:
+  - комментарии отображаются в отдельных cards с avatar/author/date
+  - добавлен composer с режимами `Write` и `Preview`
+  - preview использует простой markdown-rendering для headings, lists, quotes и separators
+  - после отправки комментарии обновляются сразу
+- Добавлены реакции:
+  - issue reactions теперь загружаются вместе с issue detail
+  - summary реакций показывается прямо в header card
+  - после добавления реакции summary обновляется
+  - добавлены reactions для issue comments через `/issues/comments/{id}/reactions`
+- В `GitHubManager.kt` добавлены:
+  - `getIssueCommentReactions`
+  - `addIssueCommentReaction`
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Issue reactions и comment reactions отмечены как implemented
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Repository metadata/settings pass
+- Доработан `RepoSettingsScreen` в `GitHubRepoSettingsModule.kt`:
+  - добавлена summary-card с default branch, visibility, topics count, tags count
+  - добавлен индикатор `Unsaved`, когда на экране есть несохраненные изменения
+  - кнопка Save теперь disabled, если изменений нет
+  - topics нормализуются в GitHub-compatible формат
+  - topics ограничиваются до 20 уникальных значений
+  - topics сохраняются через dedicated `/repos/{owner}/{repo}/topics` endpoint
+  - добавлена read-only секция Tags с последними тегами и SHA
+  - `Danger Zone` переименован в более корректный `Administration`, потому что там не только опасные действия
+  - archive/unarchive теперь требует подтверждение dialog перед изменением toggle
+- В `GitHubManager.kt` добавлено:
+  - `getRepoTags`
+  - `GHTag`
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - update repo settings отмечен как implemented
+  - repo topics отмечены как implemented
+  - repo tags отмечены как implemented
+  - repository settings убраны из high-priority missing list
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Branch Protection / Collaborators pass
+- Доработан Branch Protection flow:
+  - branch protection API теперь URL-encodes branch names для branches со slash/спецсимволами
+  - добавлена summary-card по выбранной ветке
+  - добавлен индикатор `Unsaved`
+  - кнопка Save disabled, если изменений нет
+  - disable protection теперь требует подтверждение dialog
+  - summary показывает checks/reviews/conversation/admin badges
+- Исправлен Collaborators flow:
+  - исправлен permission mapping `read/write` -> GitHub API values `pull/push`
+  - update collaborator теперь отправляет корректные permission values
+  - добавлен summary по collaborators и ролям
+  - добавлен поиск по username/role
+  - add/remove/update защищены от повторных кликов через action-in-flight state
+  - role labels/colors теперь строятся из нормализованных permission values
+- В `GitHubManager.kt` уточнено:
+  - `getBranchProtection`
+  - `updateBranchProtection`
+  - `deleteBranchProtection`
+  - `getCollaborators`
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Branch protection rules отмечены как implemented
+  - Repo collaborators отмечены как implemented
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась
+
+### Webhooks / Rulesets / Security polish
+- Доработан Webhooks flow:
+  - добавлена summary-card по endpoints: total, active, inactive, failing
+  - добавлен поиск по URL, event и delivery status
+  - карточки webhook теперь показывают active state, content type, events, SSL verification marker, updated date и last response
+  - добавлены действия `Ping`, `Edit`, `Delete` с защитой от повторных кликов
+  - delete теперь требует подтверждение dialog
+  - add/edit dialog поддерживает URL, events presets, secret, active toggle, content type и insecure SSL
+  - секрет показывается как write-only: при редактировании пустое поле не перезаписывает существующий secret
+- Доработан Rulesets screen:
+  - добавлена summary-card по active/evaluate/disabled rulesets
+  - добавлены search и фильтр по enforcement
+  - карточки показывают target, source type, rules count, updated date
+  - добавлен переход к ruleset в GitHub settings, если доступен URL
+- Доработан Security screen:
+  - Dependabot alerts получили summary-card по open/high-risk alerts
+  - добавлены фильтры по state и severity
+  - добавлен поиск по package, advisory id, ecosystem и manifest path
+  - карточки показывают package, ecosystem, manifest, GHSA/CVE, vulnerable requirements, fixed version и updated date
+  - пустые/null значения скрываются, вместо технического мусора показываются спокойные fallback labels
+- В `GitHubManager.kt` расширено:
+  - `GHWebhook`: content type, insecure SSL, created/updated timestamps, last response
+  - `createWebhook`, `updateWebhook`, `pingWebhook`, `deleteWebhook`
+  - `GHRuleset`: target, source type, timestamps, html URL
+  - `GHDependabotAlert`: ecosystem, manifest, requirements, GHSA/CVE, html URL, updated date, fixed versions
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Webhooks отмечены как partial/usable
+  - Repository Rules отмечены как partial/readable
+  - Security отмечен как partial через Dependabot alerts
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Gradle/Android сборка не запускалась

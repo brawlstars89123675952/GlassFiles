@@ -41,6 +41,7 @@ fun DiffViewerScreen(
     repoName: String? = null,
     pullNumber: Int? = null,
     comments: List<GHReviewComment> = emptyList(),
+    onCommentAdded: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -57,6 +58,7 @@ fun DiffViewerScreen(
             repoName = repoName,
             pullNumber = pullNumber,
             comments = comments.filter { it.path == selectedFile!!.filename },
+            onCommentAdded = onCommentAdded,
             onBack = { selectedFile = null },
             onViewModeChange = { viewMode = it }
         )
@@ -147,6 +149,7 @@ private fun FileDiffScreen(
     repoName: String? = null,
     pullNumber: Int? = null,
     comments: List<GHReviewComment> = emptyList(),
+    onCommentAdded: () -> Unit = {},
     onBack: () -> Unit,
     onViewModeChange: (DiffViewMode) -> Unit
 ) {
@@ -240,6 +243,7 @@ private fun FileDiffScreen(
                             if (ok) {
                                 showCommentDialog = false
                                 commentBody = ""
+                                onCommentAdded()
                             }
                         }
                     }
@@ -467,6 +471,11 @@ fun PullRequestDiffScreen(
         repoName = repoName,
         pullNumber = pullNumber,
         comments = comments,
+        onCommentAdded = {
+            scope.launch {
+                comments = GitHubManager.getPullRequestReviewComments(context, repoOwner, repoName, pullNumber)
+            }
+        },
         onBack = onBack
     )
 }

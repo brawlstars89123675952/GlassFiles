@@ -1,5 +1,7 @@
 package com.glassfiles.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -60,6 +62,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var selectedCommitSha by remember { mutableStateOf<String?>(null) }; var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
     var showBranchPicker by remember { mutableStateOf(false) }
     var selectedPRNumber by remember { mutableStateOf<Int?>(null) }
+    var selectedPullNumber by remember { mutableStateOf<Int?>(null) }
     var showRepoSettings by remember { mutableStateOf(false) }
     var showBranchProtection by remember { mutableStateOf(false) }
     var showCollaborators by remember { mutableStateOf(false) }
@@ -100,11 +103,20 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         )
         return
     }
+    if (selectedPullNumber != null) {
+        PullRequestDetailScreen(
+            repo = repo,
+            pullNumber = selectedPullNumber!!,
+            onBack = { selectedPullNumber = null },
+            onOpenFiles = { selectedPRNumber = it }
+        )
+        return
+    }
     if (selectedRunId != null) { WorkflowRunDetailScreen(repo, selectedRunId!!) { selectedRunId = null }; return }
     if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
     if (showBranchProtection) { BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) ; return }
     if (showCollaborators) { CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false }; return }
-    if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name) { showCompare = false }; return }
+    if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name, initialBase = selectedBranch) { showCompare = false }; return }
     if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name) { showWebhooks = false }; return }
     if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name) { showDiscussions = false }; return }
     if (showRulesets) { RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { showRulesets = false }; return }
@@ -145,7 +157,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     }
     
     // Releases screen
-    if (selectedTab == RepoTab.RELEASES && releases.isNotEmpty()) {
+    if (selectedTab == RepoTab.RELEASES) {
         com.glassfiles.ui.screens.ReleasesScreen(
             repoOwner = repo.owner,
             repoName = repo.name,
@@ -304,7 +316,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
             RepoTab.FILES -> FilesTab(filteredContents, onDirClick = { currentPath = it.path }, onFileClick = { scope.launch { openedFile = it; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, it.path, selectedBranch) } }, onEdit = { openedFile = null; fileContent = null; editingFile = it }, onDelete = { deleteTarget = it }, onDownload = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${it.name}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest, selectedBranch); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } })
             RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }) { selectedCommitSha = it.sha }
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }) { selectedIssue = it }
-            RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }) { prNumber -> selectedPRNumber = prNumber }
+            RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }, onOpenDetail = { selectedPullNumber = it.number }) { prNumber -> selectedPRNumber = prNumber }
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.BUILDS -> BuildsScreen(
@@ -373,7 +385,13 @@ internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -
 }; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
 
 @Composable
-internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () -> Unit, onFilesClick: (Int) -> Unit = {}) {
+internal fun PullsTab(
+    pulls: List<GHPullRequest>,
+    repo: GHRepo,
+    onRefresh: () -> Unit,
+    onOpenDetail: (GHPullRequest) -> Unit = {},
+    onFilesClick: (Int) -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var reviewTarget by remember { mutableStateOf<GHPullRequest?>(null) }
@@ -381,7 +399,7 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         items(pulls) { pr ->
-            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxWidth().clickable { onOpenDetail(pr) }.padding(horizontal = 16.dp, vertical = 10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                     Icon(
                         Icons.Rounded.CallMerge, null, Modifier.size(20.dp),
@@ -397,6 +415,8 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
                             Text("#${pr.number}", fontSize = 11.sp, color = TextTertiary)
                             Text("${pr.head} → ${pr.base}", fontSize = 11.sp, color = Blue)
                             Text(pr.author, fontSize = 11.sp, color = TextSecondary)
+                            if (pr.draft) Text("Draft", fontSize = 11.sp, color = TextTertiary)
+                            if (pr.reviewComments > 0) Text("${pr.reviewComments} review comments", fontSize = 11.sp, color = TextTertiary)
                         }
                         if (pr.body.isNotBlank()) {
                             Text(
@@ -409,10 +429,11 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
                         }
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Chip(Icons.Rounded.Visibility, "Details", Blue) { onOpenDetail(pr) }
                             Chip(Icons.Rounded.Article, "Files") { onFilesClick(pr.number) }
                             Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
                             Chip(Icons.Rounded.FactCheck, "Checks") { checkRunTarget = pr }
-                            if (pr.state == "open" && !pr.merged) {
+                            if (pr.state == "open" && !pr.merged && !pr.draft) {
                                 Chip(Icons.Rounded.CallMerge, Strings.ghMerge, Color(0xFF34C759)) {
                                     scope.launch {
                                         val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
@@ -445,10 +466,274 @@ internal fun PullsTab(pulls: List<GHPullRequest>, repo: GHRepo, onRefresh: () ->
         CheckRunsScreen(
             repoOwner = repo.owner,
             repoName = repo.name,
-            ref = checkRunTarget!!.head,
+            ref = checkRunTarget!!.headSha.ifBlank { checkRunTarget!!.head },
             onBack = { checkRunTarget = null }
         )
     }
+}
+
+@Composable
+private fun PullRequestDetailScreen(
+    repo: GHRepo,
+    pullNumber: Int,
+    onBack: () -> Unit,
+    onOpenFiles: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pr by remember { mutableStateOf<GHPullRequest?>(null) }
+    var files by remember { mutableStateOf<List<GHPullFile>>(emptyList()) }
+    var comments by remember { mutableStateOf<List<GHReviewComment>>(emptyList()) }
+    var checks by remember { mutableStateOf<List<GHCheckRun>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var showReview by remember { mutableStateOf(false) }
+    var showChecks by remember { mutableStateOf(false) }
+    var merging by remember { mutableStateOf(false) }
+
+    suspend fun refreshPull() {
+        loading = true
+        val detail = GitHubManager.getPullRequestDetail(context, repo.owner, repo.name, pullNumber)
+        pr = detail
+        files = GitHubManager.getPullRequestFiles(context, repo.owner, repo.name, pullNumber)
+        comments = GitHubManager.getPullRequestReviewComments(context, repo.owner, repo.name, pullNumber)
+        checks = detail?.let { GitHubManager.getPullRequestCheckRuns(context, repo.owner, repo.name, it.headSha.ifBlank { it.head }) }.orEmpty()
+        loading = false
+    }
+
+    LaunchedEffect(pullNumber) { refreshPull() }
+
+    val current = pr
+    val currentHtmlUrl = current?.htmlUrl.orEmpty()
+    if (showChecks && current != null) {
+        CheckRunsScreen(
+            repoOwner = repo.owner,
+            repoName = repo.name,
+            ref = current.headSha.ifBlank { current.head },
+            onBack = { showChecks = false }
+        )
+        return
+    }
+
+    Column(Modifier.fillMaxSize().background(SurfaceLight)) {
+        GHTopBar(
+            title = "Pull request #$pullNumber",
+            subtitle = repo.name,
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = { scope.launch { refreshPull() } }) {
+                    Icon(Icons.Rounded.Refresh, null, Modifier.size(20.dp), tint = Blue)
+                }
+                if (currentHtmlUrl.isNotBlank()) {
+                    IconButton(onClick = {
+                        try {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(currentHtmlUrl)))
+                        } catch (_: Exception) {
+                            Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(Icons.Rounded.OpenInNew, null, Modifier.size(20.dp), tint = Blue)
+                    }
+                }
+            }
+        )
+
+        if (loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+            }
+            return@Column
+        }
+
+        if (current == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Failed to load pull request", color = TextTertiary, fontSize = 14.sp)
+            }
+            return@Column
+        }
+
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Rounded.CallMerge, null, Modifier.size(22.dp), tint = pullStateColor(current))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(current.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, lineHeight = 20.sp)
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                PullBadge(pullStateLabel(current), pullStateColor(current))
+                                if (current.draft) PullBadge("Draft", TextTertiary)
+                                PullBadge("${current.head} -> ${current.base}", Blue)
+                            }
+                            Text("Opened by ${current.author}", fontSize = 11.sp, color = TextSecondary)
+                        }
+                    }
+                    if (current.body.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(current.body, fontSize = 12.sp, color = TextSecondary, maxLines = 8, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PullMetric("${current.commits.takeIf { it > 0 } ?: "?"}", "commits", Blue)
+                    PullMetric("${current.changedFiles.takeIf { it > 0 } ?: files.size}", "files", TextSecondary)
+                    PullMetric("+${current.additions.takeIf { it > 0 } ?: files.sumOf { f -> f.additions }}", "added", Color(0xFF34C759))
+                    PullMetric("-${current.deletions.takeIf { it > 0 } ?: files.sumOf { f -> f.deletions }}", "deleted", Color(0xFFFF3B30))
+                    PullMetric("${comments.size}", "review comments", TextSecondary)
+                }
+            }
+
+            item {
+                PullMergeabilityCard(current, checks)
+            }
+
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip(Icons.Rounded.Article, "Files", Blue) { onOpenFiles(pullNumber) }
+                    Chip(Icons.Rounded.RateReview, "Review", Blue) { showReview = true }
+                    Chip(Icons.Rounded.FactCheck, "Checks", Blue) { showChecks = true }
+                    if (current.state == "open" && !current.merged && !current.draft) {
+                        Chip(Icons.Rounded.CallMerge, if (merging) "Merging..." else Strings.ghMerge, Color(0xFF34C759)) {
+                            if (!merging) {
+                                merging = true
+                                scope.launch {
+                                    val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pullNumber)
+                                    merging = false
+                                    Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show()
+                                    if (ok) refreshPull()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text("Changed files", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+            }
+            if (files.isEmpty()) {
+                item { Text("No files loaded", fontSize = 13.sp, color = TextTertiary) }
+            } else {
+                items(files.take(12)) { file ->
+                    PullFileSummaryRow(file)
+                }
+                if (files.size > 12) {
+                    item {
+                        Text("+${files.size - 12} more files", fontSize = 11.sp, color = TextTertiary)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showReview && current != null) {
+        PullReviewDialog(
+            repo = repo,
+            pr = current,
+            onDismiss = { showReview = false },
+            onDone = {
+                showReview = false
+                scope.launch { refreshPull() }
+            }
+        )
+    }
+}
+
+@Composable
+private fun PullBadge(text: String, color: Color) {
+    Text(
+        text,
+        fontSize = 10.sp,
+        color = color,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(color.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp)
+    )
+}
+
+@Composable
+private fun PullMetric(value: String, label: String, color: Color) {
+    Row(
+        Modifier.clip(RoundedCornerShape(8.dp)).background(SurfaceWhite).padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(value, fontSize = 13.sp, color = color, fontWeight = FontWeight.Bold)
+        Text(label, fontSize = 11.sp, color = TextSecondary)
+    }
+}
+
+@Composable
+private fun PullMergeabilityCard(pr: GHPullRequest, checks: List<GHCheckRun>) {
+    val failedChecks = checks.count { it.conclusion in listOf("failure", "cancelled", "timed_out", "action_required") }
+    val activeChecks = checks.count { it.status != "completed" }
+    val successChecks = checks.count { it.conclusion == "success" }
+    val mergeColor = pullMergeColor(pr)
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.Verified, null, Modifier.size(18.dp), tint = mergeColor)
+            Text(pullMergeText(pr), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PullBadge("$successChecks successful", Color(0xFF34C759))
+            if (activeChecks > 0) PullBadge("$activeChecks active", Blue)
+            if (failedChecks > 0) PullBadge("$failedChecks failed", Color(0xFFFF3B30))
+            if (checks.isEmpty()) PullBadge("No checks", TextTertiary)
+        }
+        if (pr.mergeableState.isNotBlank()) {
+            Text("Merge state: ${pr.mergeableState}", fontSize = 11.sp, color = TextTertiary)
+        }
+    }
+}
+
+@Composable
+private fun PullFileSummaryRow(file: GHPullFile) {
+    val color = when (file.status) {
+        "added" -> Color(0xFF34C759)
+        "removed" -> Color(0xFFFF3B30)
+        "renamed" -> Color(0xFF5856D6)
+        else -> Color(0xFFFF9500)
+    }
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(file.filename, fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text("+${file.additions}", fontSize = 11.sp, color = Color(0xFF34C759))
+        Text("-${file.deletions}", fontSize = 11.sp, color = Color(0xFFFF3B30))
+    }
+}
+
+private fun pullStateLabel(pr: GHPullRequest): String = when {
+    pr.merged -> "Merged"
+    pr.state == "closed" -> "Closed"
+    pr.state == "open" -> "Open"
+    else -> pr.state.replaceFirstChar { it.uppercase() }
+}
+
+private fun pullStateColor(pr: GHPullRequest): Color = when {
+    pr.merged -> Color(0xFF8957E5)
+    pr.state == "open" -> Color(0xFF34C759)
+    else -> Color(0xFF8E8E93)
+}
+
+private fun pullMergeColor(pr: GHPullRequest): Color = when {
+    pr.draft -> TextTertiary
+    pr.mergeable == true && pr.mergeableState in listOf("clean", "has_hooks", "unstable") -> Color(0xFF34C759)
+    pr.mergeable == false || pr.mergeableState in listOf("dirty", "blocked") -> Color(0xFFFF3B30)
+    else -> Blue
+}
+
+private fun pullMergeText(pr: GHPullRequest): String = when {
+    pr.draft -> "Draft pull request cannot be merged yet"
+    pr.merged -> "Pull request has been merged"
+    pr.state == "closed" -> "Pull request is closed"
+    pr.mergeable == true && pr.mergeableState == "clean" -> "Ready to merge"
+    pr.mergeable == true && pr.mergeableState == "unstable" -> "Mergeable, but checks need attention"
+    pr.mergeableState == "blocked" -> "Blocked by required checks or reviews"
+    pr.mergeable == false || pr.mergeableState == "dirty" -> "Cannot merge cleanly"
+    else -> "Mergeability is being calculated"
 }
 
 @Composable
@@ -483,18 +768,26 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     val scope = rememberCoroutineScope()
     var detail by remember { mutableStateOf<GHIssueDetail?>(null) }
     var comments by remember { mutableStateOf<List<GHComment>>(emptyList()) }
+    var issueReactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var newComment by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
+    var previewComment by remember { mutableStateOf(false) }
     var showMetaDialog by remember { mutableStateOf(false) }
     var showReactions by remember { mutableStateOf(false) }
     var showTimeline by remember { mutableStateOf(false) }
+    var commentReactionTarget by remember { mutableStateOf<GHComment?>(null) }
 
-    LaunchedEffect(issueNumber) {
-        loading = true
+    suspend fun refreshIssueDetail(showLoader: Boolean = false) {
+        if (showLoader) loading = true
         detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
         comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
+        issueReactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
         loading = false
+    }
+
+    LaunchedEffect(issueNumber) {
+        refreshIssueDetail(showLoader = true)
     }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
@@ -517,7 +810,8 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                         } else {
                             GitHubManager.reopenIssue(context, repo.owner, repo.name, issueNumber)
                         }
-                        if (ok) detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
+                        if (ok) refreshIssueDetail()
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                     }
                 }) {
                     Icon(
@@ -535,108 +829,80 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                 CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
             }
         } else {
-            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp)) {
-                if (detail != null) item {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(detail!!.avatarUrl, null, Modifier.size(28.dp).clip(CircleShape))
-                        Text(detail!!.author, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Blue)
-                        Text(detail!!.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
-                        Box(
-                            Modifier.background(
-                                if (detail!!.state == "open") Color(0xFF34C759).copy(0.1f) else Color(0xFF8E8E93).copy(0.1f),
-                                RoundedCornerShape(4.dp)
-                            ).padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                if (detail!!.state == "open") Strings.ghOpen else Strings.ghClosed,
-                                fontSize = 10.sp,
-                                color = if (detail!!.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93)
-                            )
-                        }
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                detail?.let { issue ->
+                    item {
+                        IssueHeaderCard(
+                            detail = issue,
+                            reactions = issueReactions,
+                            onMeta = { showMetaDialog = true },
+                            onReactions = { showReactions = true },
+                            onTimeline = { showTimeline = true }
+                        )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    if (detail!!.labels.isNotEmpty()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                            detail!!.labels.forEach {
-                                Text(
-                                    it,
-                                    fontSize = 10.sp,
-                                    color = Blue,
-                                    modifier = Modifier.background(Blue.copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
+                    item {
+                        IssueMetaCard(issue) { showMetaDialog = true }
                     }
-                    if (detail!!.assignee.isNotBlank() || detail!!.milestoneTitle.isNotBlank()) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                            if (detail!!.assignee.isNotBlank()) {
-                                Text(
-                                    "Assignee: ${detail!!.assignee}",
-                                    fontSize = 10.sp,
-                                    color = TextSecondary,
-                                    modifier = Modifier.background(SurfaceWhite, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                            if (detail!!.milestoneTitle.isNotBlank()) {
-                                Text(
-                                    "Milestone: ${detail!!.milestoneTitle}",
-                                    fontSize = 10.sp,
-                                    color = TextSecondary,
-                                    modifier = Modifier.background(SurfaceWhite, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(6.dp))
+                    item {
+                        IssueBodyCard(issue.body)
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Chip(Icons.Rounded.Label, "Meta") { showMetaDialog = true }
+                    item {
+                        Text("${comments.size} comments", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                     }
-                    if (detail!!.body.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(12.dp)) {
-                            Text(detail!!.body, fontSize = 13.sp, color = TextPrimary, lineHeight = 20.sp)
-                        }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
-                    Spacer(Modifier.height(12.dp))
                 }
-                if (comments.isEmpty()) item { Text(Strings.ghNoComments, fontSize = 13.sp, color = TextTertiary) }
-                items(comments) { c ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        AsyncImage(c.avatarUrl, null, Modifier.size(24.dp).clip(CircleShape))
-                        Column(Modifier.weight(1f)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(c.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue)
-                                Text(c.createdAt.take(10), fontSize = 10.sp, color = TextTertiary)
-                            }
-                            Text(c.body, fontSize = 13.sp, color = TextPrimary, modifier = Modifier.padding(top = 2.dp))
-                        }
+                if (comments.isEmpty()) item {
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(16.dp)) {
+                        Text(Strings.ghNoComments, fontSize = 13.sp, color = TextTertiary)
                     }
-                    Box(Modifier.fillMaxWidth().padding(start = 32.dp).height(0.5.dp).background(SeparatorColor))
+                }
+                items(comments) { c ->
+                    IssueCommentCard(comment = c, onReactions = { commentReactionTarget = c })
                 }
             }
-            Row(
+            Column(
                 Modifier.fillMaxWidth().background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 8.dp)) {
-                    if (newComment.isEmpty()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
-                    BasicTextField(newComment, { newComment = it }, textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp), modifier = Modifier.fillMaxWidth())
-                }
-                IconButton(onClick = {
-                    if (newComment.isBlank() || sending) return@IconButton
-                    sending = true
-                    scope.launch {
-                        GitHubManager.addComment(context, repo.owner, repo.name, issueNumber, newComment)
-                        comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
-                        newComment = ""
-                        sending = false
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { previewComment = false }) {
+                        Text("Write", fontSize = 12.sp, color = if (!previewComment) Blue else TextSecondary)
                     }
-                }, enabled = !sending) {
-                    Icon(Icons.Rounded.Send, null, Modifier.size(20.dp), tint = if (sending) TextTertiary else Blue)
+                    TextButton(onClick = { previewComment = true }) {
+                        Text("Preview", fontSize = 12.sp, color = if (previewComment) Blue else TextSecondary)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        if (newComment.isBlank() || sending) return@IconButton
+                        sending = true
+                        scope.launch {
+                            val ok = GitHubManager.addComment(context, repo.owner, repo.name, issueNumber, newComment)
+                            if (ok) {
+                                comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
+                                newComment = ""
+                                previewComment = false
+                            }
+                            sending = false
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        }
+                    }, enabled = !sending && newComment.isNotBlank()) {
+                        Icon(Icons.Rounded.Send, null, Modifier.size(20.dp), tint = if (sending || newComment.isBlank()) TextTertiary else Blue)
+                    }
+                }
+                if (previewComment) {
+                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(12.dp).verticalScroll(rememberScrollState())) {
+                        if (newComment.isBlank()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
+                        else IssueMarkdownBlock(newComment)
+                    }
+                } else {
+                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 10.dp)) {
+                        if (newComment.isEmpty()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
+                        BasicTextField(
+                            newComment,
+                            { newComment = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp, lineHeight = 19.sp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
             }
         }
@@ -649,9 +915,7 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
             onDismiss = { showMetaDialog = false },
             onDone = {
                 showMetaDialog = false
-                scope.launch {
-                    detail = GitHubManager.getIssueDetail(context, repo.owner, repo.name, issueNumber)
-                }
+                scope.launch { refreshIssueDetail() }
             }
         )
     }
@@ -660,7 +924,16 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
         IssueReactionsDialog(
             repo = repo,
             issueNumber = issueNumber,
-            onDismiss = { showReactions = false }
+            onDismiss = { showReactions = false },
+            onChanged = { scope.launch { issueReactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber) } }
+        )
+    }
+
+    commentReactionTarget?.let { comment ->
+        IssueCommentReactionsDialog(
+            repo = repo,
+            comment = comment,
+            onDismiss = { commentReactionTarget = null }
         )
     }
 
@@ -673,6 +946,146 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     }
 }
 
+
+@Composable
+private fun IssueHeaderCard(
+    detail: GHIssueDetail,
+    reactions: List<GHReaction>,
+    onMeta: () -> Unit,
+    onReactions: () -> Unit,
+    onTimeline: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+            AsyncImage(detail.avatarUrl, null, Modifier.size(34.dp).clip(CircleShape))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(detail.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, lineHeight = 20.sp)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    PullBadge(if (detail.state == "open") Strings.ghOpen else Strings.ghClosed, if (detail.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93))
+                    Text(detail.author, fontSize = 11.sp, color = Blue, fontWeight = FontWeight.Medium)
+                    Text(detail.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
+                }
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip(Icons.Rounded.Label, "Meta", Blue, onMeta)
+            Chip(Icons.Rounded.EmojiEmotions, "Reactions ${reactions.size}", Blue, onReactions)
+            Chip(Icons.Rounded.Timeline, "Timeline", Blue, onTimeline)
+        }
+        if (reactions.isNotEmpty()) {
+            IssueReactionSummary(reactions)
+        }
+    }
+}
+
+@Composable
+private fun IssueMetaCard(detail: GHIssueDetail, onEdit: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Metadata", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+            TextButton(onClick = onEdit) { Text("Edit", fontSize = 12.sp, color = Blue) }
+        }
+        if (detail.labels.isEmpty() && detail.assignee.isBlank() && detail.milestoneTitle.isBlank()) {
+            Text("No labels, assignee, or milestone", fontSize = 12.sp, color = TextTertiary)
+            return@Column
+        }
+        if (detail.labels.isNotEmpty()) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                detail.labels.forEach { label ->
+                    Text(label, fontSize = 11.sp, color = Blue, modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Blue.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp))
+                }
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (detail.assignee.isNotBlank()) PullBadge("Assignee: ${detail.assignee}", TextSecondary)
+            if (detail.milestoneTitle.isNotBlank()) PullBadge("Milestone: ${detail.milestoneTitle}", TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun IssueBodyCard(body: String) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Description", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        if (body.isBlank()) {
+            Text("No description provided.", fontSize = 13.sp, color = TextTertiary)
+        } else {
+            IssueMarkdownBlock(body)
+        }
+    }
+}
+
+@Composable
+private fun IssueCommentCard(comment: GHComment, onReactions: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+        AsyncImage(comment.avatarUrl, null, Modifier.size(28.dp).clip(CircleShape))
+        Column(Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(comment.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue)
+                Text(comment.createdAt.take(10), fontSize = 10.sp, color = TextTertiary)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onReactions, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Rounded.EmojiEmotions, null, Modifier.size(16.dp), tint = TextSecondary)
+                }
+            }
+            IssueMarkdownBlock(comment.body)
+        }
+    }
+}
+
+@Composable
+private fun IssueReactionSummary(reactions: List<GHReaction>) {
+    val emojiMap = issueEmojiMap()
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        reactions.groupBy { it.content }.forEach { (content, items) ->
+            Row(
+                Modifier.clip(RoundedCornerShape(8.dp)).background(SurfaceLight).padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(emojiMap[content] ?: content, fontSize = 14.sp)
+                Text("${items.size}", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IssueMarkdownBlock(text: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        text.lines().forEach { raw ->
+            val line = raw.trimEnd()
+            val trimmed = line.trimStart()
+            when {
+                trimmed.startsWith("### ") -> Text(trimmed.removePrefix("### "), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.padding(top = 4.dp))
+                trimmed.startsWith("## ") -> Text(trimmed.removePrefix("## "), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(top = 5.dp))
+                trimmed.startsWith("# ") -> Text(trimmed.removePrefix("# "), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(top = 6.dp))
+                trimmed.startsWith("- ") || trimmed.startsWith("* ") -> Row {
+                    Text("• ", fontSize = 13.sp, color = TextSecondary)
+                    Text(trimmed.drop(2), fontSize = 13.sp, color = TextPrimary, lineHeight = 18.sp)
+                }
+                trimmed.startsWith("> ") -> Row(Modifier.padding(vertical = 2.dp)) {
+                    Box(Modifier.width(3.dp).height(18.dp).background(SeparatorColor))
+                    Text(trimmed.drop(2), fontSize = 13.sp, color = TextSecondary, modifier = Modifier.padding(start = 8.dp))
+                }
+                trimmed.startsWith("```") -> Box(Modifier.fillMaxWidth().height(1.dp).background(SeparatorColor))
+                trimmed.isBlank() -> Spacer(Modifier.height(5.dp))
+                else -> Text(trimmed, fontSize = 13.sp, color = TextPrimary, lineHeight = 19.sp)
+            }
+        }
+    }
+}
+
+private fun issueEmojiMap(): Map<String, String> = mapOf(
+    "+1" to "👍",
+    "-1" to "👎",
+    "laugh" to "😄",
+    "confused" to "😕",
+    "heart" to "❤️",
+    "hooray" to "🎉",
+    "eyes" to "👀",
+    "rocket" to "🚀"
+)
 
 @Composable
 private fun IssueMetaDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -> Unit, onDone: () -> Unit) {
@@ -905,7 +1318,7 @@ internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { v
 // ═══════════════════════════════════
 
 @Composable
-private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -> Unit) {
+private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -> Unit, onChanged: () -> Unit = {}) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
@@ -916,10 +1329,7 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
         loading = false
     }
 
-    val emojiMap = mapOf(
-        "+1" to "👍", "-1" to "👎", "laugh" to "😄", "confused" to "😕",
-        "heart" to "❤️", "hooray" to "🎉", "eyes" to "👀", "rocket" to "🚀"
-    )
+    val emojiMap = issueEmojiMap()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -935,8 +1345,9 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
                                 .background(SurfaceLight)
                                 .clickable {
                                     scope.launch {
-                                        GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
+                                        val ok = GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
                                         reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
+                                        if (ok) onChanged()
                                     }
                                 }
                                 .padding(8.dp)
@@ -957,6 +1368,66 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
                     val grouped = reactions.groupBy { it.content }
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         grouped.forEach { (content, items) ->
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(emojiMap[content] ?: content, fontSize = 16.sp)
+                                Text("${items.size}", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                                Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
+    )
+}
+
+@Composable
+private fun IssueCommentReactionsDialog(repo: GHRepo, comment: GHComment, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    val emojiMap = issueEmojiMap()
+
+    LaunchedEffect(comment.id) {
+        reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
+        loading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceWhite,
+        title = { Text("Comment reactions", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(comment.body.lineSequence().firstOrNull().orEmpty().take(120), fontSize = 12.sp, color = TextSecondary, maxLines = 2)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    emojiMap.forEach { (key, emoji) ->
+                        Box(
+                            Modifier.clip(RoundedCornerShape(8.dp))
+                                .background(SurfaceLight)
+                                .clickable {
+                                    scope.launch {
+                                        GitHubManager.addIssueCommentReaction(context, repo.owner, repo.name, comment.id, key)
+                                        reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
+                                    }
+                                }
+                                .padding(8.dp)
+                        ) {
+                            Text(emoji, fontSize = 20.sp)
+                        }
+                    }
+                }
+                if (loading) {
+                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                } else if (reactions.isEmpty()) {
+                    Text("No reactions yet", fontSize = 13.sp, color = TextTertiary)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        reactions.groupBy { it.content }.forEach { (content, items) ->
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(emojiMap[content] ?: content, fontSize = 16.sp)
                                 Text("${items.size}", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)

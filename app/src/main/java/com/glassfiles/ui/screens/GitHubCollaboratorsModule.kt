@@ -52,6 +52,8 @@ internal fun CollaboratorsScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var userToRemove by remember { mutableStateOf<GHCollaborator?>(null) }
     var userToEdit by remember { mutableStateOf<GHCollaborator?>(null) }
+    var query by remember { mutableStateOf("") }
+    var actionInFlight by remember { mutableStateOf(false) }
 
     fun loadCollaborators() {
         loading = true
@@ -80,12 +82,28 @@ internal fun CollaboratorsScreen(
                 CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
             }
         } else {
+            val visibleCollaborators = collaborators.filter {
+                query.isBlank() || it.login.contains(query, ignoreCase = true) || permissionLabel(it.role).contains(query, ignoreCase = true)
+            }
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(collaborators) { collaborator ->
+                item {
+                    CollaboratorsSummaryCard(collaborators)
+                }
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search collaborators") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = TextSecondary) }
+                    )
+                }
+                items(visibleCollaborators) { collaborator ->
                     CollaboratorCard(
                         collaborator = collaborator,
                         onPermissionChange = { userToEdit = collaborator },
@@ -93,10 +111,10 @@ internal fun CollaboratorsScreen(
                     )
                 }
 
-                if (collaborators.isEmpty()) {
+                if (visibleCollaborators.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                            Text("No collaborators yet", fontSize = 14.sp, color = TextTertiary)
+                            Text(if (collaborators.isEmpty()) "No collaborators yet" else "No matching collaborators", fontSize = 14.sp, color = TextTertiary)
                         }
                     }
                 }
@@ -138,11 +156,14 @@ internal fun CollaboratorsScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !actionInFlight && newUsername.isNotBlank(),
                     onClick = {
                         if (newUsername.isNotBlank()) {
+                            actionInFlight = true
                             scope.launch {
                                 val ok = GitHubManager.addCollaborator(context, repoOwner, repoName, newUsername, selectedPermission)
                                 Toast.makeText(context, if (ok) "Invitation sent" else "Failed", Toast.LENGTH_SHORT).show()
+                                actionInFlight = false
                                 if (ok) {
                                     newUsername = ""
                                     showAddDialog = false
@@ -174,10 +195,13 @@ internal fun CollaboratorsScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !actionInFlight,
                     onClick = {
+                        actionInFlight = true
                         scope.launch {
                             val ok = GitHubManager.removeCollaborator(context, repoOwner, repoName, userToRemove!!.login)
                             Toast.makeText(context, if (ok) "Removed" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
                             userToRemove = null
                             loadCollaborators()
                         }
@@ -196,7 +220,7 @@ internal fun CollaboratorsScreen(
 
     // Edit permission dialog
     if (userToEdit != null) {
-        var editPermission by remember(userToEdit) { mutableStateOf(userToEdit!!.role) }
+        var editPermission by remember(userToEdit) { mutableStateOf(normalizeCollaboratorPermission(userToEdit!!.role)) }
         AlertDialog(
             onDismissRequest = { userToEdit = null },
             containerColor = SurfaceWhite,
@@ -222,10 +246,13 @@ internal fun CollaboratorsScreen(
             },
             confirmButton = {
                 TextButton(
+                    enabled = !actionInFlight && editPermission != normalizeCollaboratorPermission(userToEdit!!.role),
                     onClick = {
+                        actionInFlight = true
                         scope.launch {
                             val ok = GitHubManager.updateCollaboratorPermission(context, repoOwner, repoName, userToEdit!!.login, editPermission)
                             Toast.makeText(context, if (ok) "Updated" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
                             userToEdit = null
                             loadCollaborators()
                         }
@@ -244,18 +271,42 @@ internal fun CollaboratorsScreen(
 }
 
 @Composable
+private fun CollaboratorsSummaryCard(collaborators: List<GHCollaborator>) {
+    val grouped = collaborators.groupingBy { normalizeCollaboratorPermission(it.role) }.eachCount()
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.Group, null, Modifier.size(18.dp), tint = Blue)
+            Text("${collaborators.size} collaborators", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            COLLABORATOR_PERMISSIONS.forEach { (permission, label) ->
+                val count = grouped[permission] ?: 0
+                if (count > 0) PermissionCountChip(label, count, collaboratorRoleColor(permission))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionCountChip(label: String, count: Int, color: Color) {
+    Row(
+        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(label, fontSize = 11.sp, color = color, fontWeight = FontWeight.Medium)
+        Text("$count", fontSize = 11.sp, color = color)
+    }
+}
+
+@Composable
 private fun CollaboratorCard(
     collaborator: GHCollaborator,
     onPermissionChange: () -> Unit,
     onRemove: () -> Unit
 ) {
-    val roleColor = when (collaborator.role) {
-        "admin" -> Color(0xFFFF3B30)
-        "maintain" -> Color(0xFFFF9F0A)
-        "write" -> Color(0xFF34C759)
-        "triage" -> Blue
-        else -> TextSecondary
-    }
+    val permission = normalizeCollaboratorPermission(collaborator.role)
+    val roleColor = collaboratorRoleColor(permission)
 
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite)
@@ -273,7 +324,7 @@ private fun CollaboratorCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(8.dp).clip(CircleShape).background(roleColor))
                 Text(
-                    collaborator.role.replaceFirstChar { it.uppercase() },
+                    permissionLabel(permission),
                     fontSize = 12.sp,
                     color = roleColor,
                     fontWeight = FontWeight.Medium
@@ -287,6 +338,24 @@ private fun CollaboratorCard(
             Icon(Icons.Rounded.PersonRemove, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
         }
     }
+}
+
+private fun normalizeCollaboratorPermission(role: String): String = when (role) {
+    "read" -> "pull"
+    "write" -> "push"
+    "pull", "triage", "push", "maintain", "admin" -> role
+    else -> "pull"
+}
+
+private fun permissionLabel(permission: String): String =
+    COLLABORATOR_PERMISSIONS.firstOrNull { it.first == normalizeCollaboratorPermission(permission) }?.second ?: permission.replaceFirstChar { it.uppercase() }
+
+private fun collaboratorRoleColor(permission: String): Color = when (normalizeCollaboratorPermission(permission)) {
+    "admin" -> Color(0xFFFF3B30)
+    "maintain" -> Color(0xFFFF9F0A)
+    "push" -> Color(0xFF34C759)
+    "triage" -> Blue
+    else -> TextSecondary
 }
 
 @Composable

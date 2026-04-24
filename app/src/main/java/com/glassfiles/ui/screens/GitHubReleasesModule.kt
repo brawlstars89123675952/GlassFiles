@@ -1,6 +1,13 @@
 package com.glassfiles.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -17,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,6 +36,7 @@ import com.glassfiles.data.github.GHRelease
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -113,6 +122,29 @@ private fun ReleaseCard(
     var expanded by remember { mutableStateOf(false) }
     var showEdit by remember { mutableStateOf(false) }
     var showDelete by remember { mutableStateOf(false) }
+    var deletingAsset by remember { mutableStateOf<GHAsset?>(null) }
+    var uploadingAsset by remember { mutableStateOf(false) }
+    val assetPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        if (release.id == 0L) {
+            Toast.makeText(context, "Release id is missing", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            uploadingAsset = true
+            val file = cachePickedReleaseAsset(context, uri)
+            val uploaded = file?.let { GitHubManager.uploadReleaseAssetDetailed(context, repoOwner, repoName, release.id, it) }
+            uploadingAsset = false
+            if (uploaded != null) {
+                onReleasesUpdate(releases.map {
+                    if (it.tag == release.tag) it.copy(assets = it.assets + uploaded) else it
+                })
+                Toast.makeText(context, "${Strings.done}: ${uploaded.name}", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
@@ -123,6 +155,12 @@ private fun ReleaseCard(
             Column(Modifier.weight(1f)) {
                 Text(release.name.ifBlank { release.tag }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Text(release.tag, fontSize = 12.sp, color = TextSecondary)
+            }
+            if (release.draft) {
+                Text("Draft", fontSize = 10.sp, color = Blue, modifier = Modifier.background(Blue.copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+            }
+            if (release.prerelease) {
+                Text("Pre", fontSize = 10.sp, color = Color(0xFFFF9500), modifier = Modifier.background(Color(0xFFFF9500).copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
             }
             IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(32.dp)) {
                 Icon(
@@ -150,11 +188,59 @@ private fun ReleaseCard(
                 Text("Assets", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
                 Spacer(Modifier.height(6.dp))
                 release.assets.forEach { asset ->
-                    AssetRow(asset)
+                    AssetRow(
+                        asset = asset,
+                        onDownload = {
+                            scope.launch {
+                                val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${asset.name}")
+                                val ok = GitHubManager.downloadReleaseAsset(context, asset, dest)
+                                Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onDelete = if (asset.id > 0L) { { deletingAsset = asset } } else null
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (release.draft) {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val published = GitHubManager.publishRelease(context, repoOwner, repoName, release)
+                                if (published != null) {
+                                    onReleasesUpdate(releases.map { if (it.tag == release.tag) published else it })
+                                    Toast.makeText(context, "Published", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Rounded.Publish, null, Modifier.size(16.dp), tint = Color(0xFF34C759))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Publish", color = Color(0xFF34C759), fontSize = 12.sp)
+                    }
+                }
+                TextButton(
+                    enabled = !uploadingAsset && release.id > 0L,
+                    onClick = { assetPicker.launch("*/*") }
+                ) {
+                    if (uploadingAsset) CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
+                    else Icon(Icons.Rounded.UploadFile, null, Modifier.size(16.dp), tint = Blue)
+                    Spacer(Modifier.width(4.dp))
+                    Text("Asset", color = Blue, fontSize = 12.sp)
+                }
+                if (release.htmlUrl.isNotBlank()) {
+                    TextButton(onClick = { openGitHubUrl(context, release.htmlUrl) }) {
+                        Icon(Icons.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = TextSecondary)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open", color = TextSecondary, fontSize = 12.sp)
+                    }
+                }
                 TextButton(onClick = { showEdit = true }) {
                     Icon(Icons.Rounded.Edit, null, Modifier.size(16.dp), tint = Blue)
                     Spacer(Modifier.width(4.dp))
@@ -210,20 +296,61 @@ private fun ReleaseCard(
             }
         )
     }
+
+    val targetAsset = deletingAsset
+    if (targetAsset != null) {
+        AlertDialog(
+            onDismissRequest = { deletingAsset = null },
+            title = { Text("Delete asset") },
+            text = { Text("Delete ${targetAsset.name} from this release?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.deleteReleaseAsset(context, repoOwner, repoName, targetAsset.id)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            if (ok) {
+                                onReleasesUpdate(releases.map {
+                                    if (it.tag == release.tag) it.copy(assets = it.assets.filterNot { a -> a.id == targetAsset.id }) else it
+                                })
+                            }
+                            deletingAsset = null
+                        }
+                    }
+                ) {
+                    Text("Delete", color = Color(0xFFFF3B30))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingAsset = null }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @Composable
-private fun AssetRow(asset: GHAsset) {
+private fun AssetRow(asset: GHAsset, onDownload: () -> Unit, onDelete: (() -> Unit)?) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
             .background(SurfaceLight).padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(Icons.Rounded.Attachment, null, Modifier.size(16.dp), tint = TextSecondary)
-        Text(asset.name, modifier = Modifier.weight(1f), fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Icon(releaseAssetIcon(asset.name), null, Modifier.size(16.dp), tint = releaseAssetColor(asset.name))
+        Column(Modifier.weight(1f)) {
+            Text(asset.name, fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(releaseAssetKind(asset.name), fontSize = 10.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         Text(formatBytes(asset.size), fontSize = 11.sp, color = TextTertiary)
         Text("${asset.downloadCount}↓", fontSize = 11.sp, color = Blue)
+        IconButton(onClick = onDownload, modifier = Modifier.size(30.dp)) {
+            Icon(Icons.Rounded.Download, null, Modifier.size(16.dp), tint = Blue)
+        }
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Rounded.Delete, null, Modifier.size(16.dp), tint = Color(0xFFFF3B30))
+            }
+        }
     }
 }
 
@@ -239,8 +366,10 @@ private fun CreateReleaseDialog(
     var tag by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf(true) }
     var prerelease by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var generating by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -252,8 +381,27 @@ private fun CreateReleaseDialog(
                 OutlinedTextField(name, { name = it }, label = { Text("Release title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(body, { body = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth().height(120.dp), maxLines = 5)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(
+                        enabled = !generating,
+                        onClick = {
+                            generating = true
+                            scope.launch {
+                                val commits = GitHubManager.getCommits(context, repoOwner, repoName).take(20)
+                                body = commits.joinToString("\n") { "- ${it.message.lineSequence().firstOrNull().orEmpty()} (${it.sha})" }
+                                generating = false
+                            }
+                        }
+                    ) {
+                        if (generating) CircularProgressIndicator(Modifier.size(14.dp), color = Blue, strokeWidth = 2.dp)
+                        else Text("Generate changelog", color = Blue, fontSize = 12.sp)
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(draft, { draft = it })
+                    Text("Draft", fontSize = 14.sp)
+                    Spacer(Modifier.width(12.dp))
                     Checkbox(prerelease, { prerelease = it })
                     Text("Pre-release", fontSize = 14.sp)
                 }
@@ -268,11 +416,10 @@ private fun CreateReleaseDialog(
                     }
                     loading = true
                     scope.launch {
-                        val success = GitHubManager.createRelease(context, repoOwner, repoName, tag, name, body, prerelease)
+                        val release = GitHubManager.createReleaseDetailed(context, repoOwner, repoName, tag, name, body, prerelease, draft)
                         loading = false
-                        if (success) {
-                            val newRelease = GHRelease(tag, name, body, prerelease, SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date()), emptyList())
-                            onCreated(newRelease)
+                        if (release != null) {
+                            onCreated(release)
                             Toast.makeText(context, "Created", Toast.LENGTH_SHORT).show()
                         } else {
                             Toast.makeText(context, "Failed", Toast.LENGTH_SHORT).show()
@@ -304,6 +451,7 @@ private fun EditReleaseDialog(
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(release.name) }
     var body by remember { mutableStateOf(release.body) }
+    var draft by remember { mutableStateOf(release.draft) }
     var prerelease by remember { mutableStateOf(release.prerelease) }
     var loading by remember { mutableStateOf(false) }
 
@@ -317,6 +465,9 @@ private fun EditReleaseDialog(
                 OutlinedTextField(body, { body = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth().height(120.dp), maxLines = 5)
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(draft, { draft = it })
+                    Text("Draft", fontSize = 14.sp)
+                    Spacer(Modifier.width(12.dp))
                     Checkbox(prerelease, { prerelease = it })
                     Text("Pre-release", fontSize = 14.sp)
                 }
@@ -327,10 +478,20 @@ private fun EditReleaseDialog(
                 onClick = {
                     loading = true
                     scope.launch {
-                        val success = GitHubManager.updateRelease(context, repoOwner, repoName, release.tag, name, body, prerelease)
+                        val updated = GitHubManager.updateReleaseDetailed(
+                            context = context,
+                            owner = repoOwner,
+                            repo = repoName,
+                            tag = release.tag,
+                            name = name,
+                            body = body,
+                            prerelease = prerelease,
+                            draft = draft,
+                            releaseId = release.id
+                        )
                         loading = false
-                        if (success) {
-                            onUpdated(release.copy(name = name, body = body, prerelease = prerelease))
+                        if (updated != null) {
+                            onUpdated(updated)
                             Toast.makeText(context, "Updated", Toast.LENGTH_SHORT).show()
                         } else {
                             Toast.makeText(context, "Failed", Toast.LENGTH_SHORT).show()
@@ -363,5 +524,81 @@ private fun formatBytes(bytes: Long): String {
         bytes >= 1024 * 1024 -> "%.1f MB".format(bytes / (1024.0 * 1024))
         bytes >= 1024 -> "%.1f KB".format(bytes / 1024.0)
         else -> "$bytes B"
+    }
+}
+
+private fun openGitHubUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
+    } catch (_: Exception) {
+        Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun cachePickedReleaseAsset(context: Context, uri: Uri): File? {
+    return try {
+        val name = context.queryDisplayName(uri).sanitizeReleaseAssetName()
+        val file = File(context.cacheDir, "release-upload/${System.currentTimeMillis()}-$name")
+        file.parentFile?.mkdirs()
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            file.outputStream().use { output -> input.copyTo(output) }
+        } ?: return null
+        file
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun Context.queryDisplayName(uri: Uri): String {
+    contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) {
+            val name = cursor.getString(index)
+            if (!name.isNullOrBlank()) return name
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "release-asset.bin"
+}
+
+private fun String.sanitizeReleaseAssetName(): String =
+    replace(Regex("""[\\/:*?"<>|]+"""), "-").trim().ifBlank { "release-asset.bin" }
+
+private fun releaseAssetKind(name: String): String {
+    val lower = name.lowercase(Locale.US)
+    return when {
+        lower.endsWith(".apk") -> "Android APK"
+        lower.endsWith(".aab") -> "Android App Bundle"
+        lower.endsWith(".img") || lower.endsWith(".boot") || lower.endsWith(".dtbo") || lower.endsWith(".vendor_boot") -> "Kernel image"
+        lower.endsWith(".ko") || lower.contains("module") || lower.contains("magisk") -> "Kernel / Magisk module"
+        lower.contains("turnip") || lower.contains("adreno") -> "Turnip / Adreno driver"
+        lower.endsWith(".exe") || lower.endsWith(".msi") -> "Windows build"
+        lower.endsWith(".ipa") -> "iOS app"
+        lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".appimage") -> "Linux package"
+        lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".7z") -> "Archive"
+        lower.endsWith(".sha256") || lower.endsWith(".sig") || lower.endsWith(".asc") -> "Checksum / signature"
+        else -> "Release asset"
+    }
+}
+
+private fun releaseAssetIcon(name: String): ImageVector {
+    val lower = name.lowercase(Locale.US)
+    return when {
+        lower.endsWith(".apk") || lower.endsWith(".aab") -> Icons.Rounded.Android
+        lower.endsWith(".img") || lower.endsWith(".boot") || lower.endsWith(".dtbo") || lower.endsWith(".vendor_boot") -> Icons.Rounded.Memory
+        lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".7z") -> Icons.Rounded.FolderZip
+        lower.endsWith(".exe") || lower.endsWith(".msi") || lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".ipa") -> Icons.Rounded.Apps
+        lower.endsWith(".sha256") || lower.endsWith(".sig") || lower.endsWith(".asc") -> Icons.Rounded.Verified
+        else -> Icons.Rounded.Attachment
+    }
+}
+
+private fun releaseAssetColor(name: String): Color {
+    val lower = name.lowercase(Locale.US)
+    return when {
+        lower.endsWith(".apk") || lower.endsWith(".aab") -> Color(0xFF34C759)
+        lower.endsWith(".img") || lower.endsWith(".boot") || lower.endsWith(".dtbo") || lower.endsWith(".vendor_boot") -> Color(0xFFFF9500)
+        lower.contains("turnip") || lower.contains("adreno") -> Color(0xFFAF52DE)
+        lower.endsWith(".sha256") || lower.endsWith(".sig") || lower.endsWith(".asc") -> Blue
+        else -> TextSecondary
     }
 }

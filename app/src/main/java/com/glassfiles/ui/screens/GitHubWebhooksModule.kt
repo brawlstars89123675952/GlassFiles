@@ -19,12 +19,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.github.GHWebhook
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
+
+private val WEBHOOK_EVENT_PRESETS = listOf(
+    "push", "pull_request", "workflow_run", "issues", "release", "repository_dispatch"
+)
 
 @Composable
 internal fun WebhooksScreen(
@@ -37,12 +42,21 @@ internal fun WebhooksScreen(
 
     var webhooks by remember { mutableStateOf<List<GHWebhook>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    var showCreate by remember { mutableStateOf(false) }
+    var actionInFlight by remember { mutableStateOf(false) }
+    var showEditor by remember { mutableStateOf<GHWebhook?>(null) }
+    var createNew by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<GHWebhook?>(null) }
+    var query by remember { mutableStateOf("") }
 
-    LaunchedEffect(repoOwner, repoName) {
-        webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
-        loading = false
+    fun loadWebhooks() {
+        loading = true
+        scope.launch {
+            webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
+            loading = false
+        }
     }
+
+    LaunchedEffect(repoOwner, repoName) { loadWebhooks() }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar(
@@ -50,7 +64,10 @@ internal fun WebhooksScreen(
             subtitle = "$repoOwner/$repoName",
             onBack = onBack,
             actions = {
-                IconButton(onClick = { showCreate = true }) {
+                IconButton(onClick = { loadWebhooks() }, enabled = !loading) {
+                    Icon(Icons.Rounded.Refresh, null, Modifier.size(20.dp), tint = Blue)
+                }
+                IconButton(onClick = { createNew = true }) {
                     Icon(Icons.Rounded.Add, null, Modifier.size(20.dp), tint = Blue)
                 }
             }
@@ -60,21 +77,55 @@ internal fun WebhooksScreen(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
             }
-        } else if (webhooks.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No webhooks configured", fontSize = 14.sp, color = TextTertiary)
-            }
         } else {
+            val visibleHooks = webhooks.filter { hook ->
+                query.isBlank() ||
+                    hook.url.contains(query, ignoreCase = true) ||
+                    hook.events.any { it.contains(query, ignoreCase = true) } ||
+                    webhookLastResponseLabel(hook).contains(query, ignoreCase = true)
+            }
+
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                items(webhooks) { hook ->
-                    WebhookCard(hook, repoOwner, repoName) {
-                        scope.launch {
-                            GitHubManager.deleteWebhook(context, repoOwner, repoName, hook.id)
-                            webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
+                item { WebhooksSummaryCard(webhooks) }
+                item {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("Search URL, event or status") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = TextSecondary) }
+                    )
+                }
+
+                items(visibleHooks, key = { it.id }) { hook ->
+                    WebhookCard(
+                        hook = hook,
+                        disabled = actionInFlight,
+                        onEdit = { showEditor = hook },
+                        onPing = {
+                            if (!actionInFlight) {
+                                actionInFlight = true
+                                scope.launch {
+                                    val ok = GitHubManager.pingWebhook(context, repoOwner, repoName, hook.id)
+                                    Toast.makeText(context, if (ok) "Ping sent" else "Failed to ping webhook", Toast.LENGTH_SHORT).show()
+                                    webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
+                                    actionInFlight = false
+                                }
+                            }
+                        },
+                        onDelete = { deleteTarget = hook }
+                    )
+                }
+
+                if (visibleHooks.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Text(if (webhooks.isEmpty()) "No webhooks configured" else "No matching webhooks", fontSize = 14.sp, color = TextTertiary)
                         }
                     }
                 }
@@ -82,58 +133,161 @@ internal fun WebhooksScreen(
         }
     }
 
-    if (showCreate) {
-        CreateWebhookDialog(repoOwner, repoName, { showCreate = false }) {
-            showCreate = false
-            scope.launch { webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName) }
+    if (createNew || showEditor != null) {
+        WebhookEditorDialog(
+            webhook = showEditor,
+            onDismiss = {
+                createNew = false
+                showEditor = null
+            },
+            onSave = { hook, url, events, secret, active, contentType, insecureSsl ->
+                if (!actionInFlight) {
+                    actionInFlight = true
+                    scope.launch {
+                        val config = mutableMapOf(
+                            "url" to url,
+                            "content_type" to contentType,
+                            "insecure_ssl" to if (insecureSsl) "1" else "0"
+                        )
+                        if (secret.isNotBlank()) config["secret"] = secret
+                        val ok = if (hook == null) {
+                            GitHubManager.createWebhook(context, repoOwner, repoName, config, events, active)
+                        } else {
+                            GitHubManager.updateWebhook(context, repoOwner, repoName, hook.id, config, events, active)
+                        }
+                        Toast.makeText(context, if (ok) "Webhook saved" else "Failed to save webhook", Toast.LENGTH_SHORT).show()
+                        if (ok) {
+                            createNew = false
+                            showEditor = null
+                            webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
+                        }
+                        actionInFlight = false
+                    }
+                }
+            }
+        )
+    }
+
+    deleteTarget?.let { hook ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            containerColor = SurfaceWhite,
+            title = { Text("Delete webhook", fontWeight = FontWeight.Bold, color = TextPrimary) },
+            text = { Text(hook.url.ifBlank { "Webhook #${hook.id}" }, color = TextSecondary, fontSize = 13.sp) },
+            confirmButton = {
+                TextButton(
+                    enabled = !actionInFlight,
+                    onClick = {
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.deleteWebhook(context, repoOwner, repoName, hook.id)
+                            Toast.makeText(context, if (ok) "Webhook deleted" else "Failed to delete webhook", Toast.LENGTH_SHORT).show()
+                            if (ok) webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
+                            deleteTarget = null
+                            actionInFlight = false
+                        }
+                    }
+                ) { Text("Delete", color = Color(0xFFFF3B30)) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel", color = TextSecondary) } }
+        )
+    }
+}
+
+@Composable
+private fun WebhooksSummaryCard(webhooks: List<GHWebhook>) {
+    val active = webhooks.count { it.active }
+    val inactive = webhooks.size - active
+    val failing = webhooks.count { it.lastResponseCode >= 400 || it.lastResponseStatus.equals("failed", ignoreCase = true) }
+
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.Webhook, null, Modifier.size(20.dp), tint = Blue)
+            Text("Delivery endpoints", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+            Text("${webhooks.size}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            WebhookPill("Active $active", Color(0xFF34C759))
+            WebhookPill("Inactive $inactive", TextTertiary)
+            WebhookPill("Failing $failing", if (failing > 0) Color(0xFFFF3B30) else TextTertiary)
         }
     }
 }
 
 @Composable
-private fun WebhookCard(hook: GHWebhook, owner: String, repo: String, onDelete: () -> Unit) {
+private fun WebhookCard(
+    hook: GHWebhook,
+    disabled: Boolean,
+    onEdit: () -> Unit,
+    onPing: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val responseColor = webhookResponseColor(hook)
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(
                 if (hook.active) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
-                null, Modifier.size(18.dp),
+                null,
+                Modifier.size(18.dp),
                 tint = if (hook.active) Color(0xFF34C759) else TextTertiary
             )
-            Text(hook.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
-            IconButton(onClick = onDelete) {
+            Column(Modifier.weight(1f)) {
+                Text(hook.url.ifBlank { "Webhook #${hook.id}" }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("${hook.contentType.ifBlank { "json" }} · ${if (hook.active) "Active" else "Inactive"}", fontSize = 11.sp, color = TextTertiary)
+            }
+            IconButton(onClick = onPing, enabled = !disabled) {
+                Icon(Icons.Rounded.Send, null, Modifier.size(18.dp), tint = Blue)
+            }
+            IconButton(onClick = onEdit, enabled = !disabled) {
+                Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp), tint = TextSecondary)
+            }
+            IconButton(onClick = onDelete, enabled = !disabled) {
                 Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text(hook.url, fontSize = 12.sp, color = Blue, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-        if (hook.events.isNotEmpty()) {
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            hook.events.take(8).forEach { event -> WebhookPill(event, TextSecondary) }
+            if (hook.events.size > 8) WebhookPill("+${hook.events.size - 8}", TextTertiary)
+            if (hook.insecureSsl == "1") WebhookPill("SSL off", Color(0xFFFF9500))
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(8.dp)).background(responseColor))
+            Text(webhookLastResponseLabel(hook), fontSize = 12.sp, color = responseColor, fontWeight = FontWeight.Medium)
+            if (hook.updatedAt.isNotBlank()) Text("Updated ${hook.updatedAt.take(10)}", fontSize = 11.sp, color = TextTertiary)
+        }
+        if (hook.lastResponseMessage.isNotBlank()) {
             Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                hook.events.take(5).forEach { event ->
-                    Text(event, fontSize = 10.sp, color = TextSecondary, modifier = Modifier.background(SurfaceLight, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
-                }
-                if (hook.events.size > 5) {
-                    Text("+${hook.events.size - 5}", fontSize = 10.sp, color = TextTertiary)
-                }
-            }
+            Text(hook.lastResponseMessage, fontSize = 11.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 @Composable
-private fun CreateWebhookDialog(owner: String, repo: String, onDismiss: () -> Unit, onDone: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var url by remember { mutableStateOf("") }
-    var events by remember { mutableStateOf("push,pull_request") }
-    var saving by remember { mutableStateOf(false) }
+private fun WebhookEditorDialog(
+    webhook: GHWebhook?,
+    onDismiss: () -> Unit,
+    onSave: (webhook: GHWebhook?, url: String, events: List<String>, secret: String, active: Boolean, contentType: String, insecureSsl: Boolean) -> Unit
+) {
+    var url by remember(webhook) { mutableStateOf(webhook?.url ?: "") }
+    var eventsRaw by remember(webhook) { mutableStateOf((webhook?.events ?: listOf("push")).joinToString(",")) }
+    var secret by remember(webhook) { mutableStateOf("") }
+    var active by remember(webhook) { mutableStateOf(webhook?.active ?: true) }
+    var contentType by remember(webhook) { mutableStateOf(webhook?.contentType?.takeIf { it.isNotBlank() } ?: "json") }
+    var insecureSsl by remember(webhook) { mutableStateOf(webhook?.insecureSsl == "1") }
+    val events = eventsRaw.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    val canSave = url.startsWith("http://") || url.startsWith("https://")
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = SurfaceWhite,
-        title = { Text("Create Webhook", fontWeight = FontWeight.Bold, color = TextPrimary) },
+        title = { Text(if (webhook == null) "Add webhook" else "Edit webhook", fontWeight = FontWeight.Bold, color = TextPrimary) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -143,35 +297,91 @@ private fun CreateWebhookDialog(owner: String, repo: String, onDismiss: () -> Un
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    listOf("json", "form").forEach { type ->
+                        WebhookChoiceChip(type, selected = contentType == type) { contentType = type }
+                    }
+                }
                 OutlinedTextField(
-                    value = events,
-                    onValueChange = { events = it },
-                    label = { Text("Events (comma-separated)") },
+                    value = eventsRaw,
+                    onValueChange = { eventsRaw = it },
+                    label = { Text("Events") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
-                Text("Common: push, pull_request, issues, release", fontSize = 11.sp, color = TextTertiary)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    WEBHOOK_EVENT_PRESETS.forEach { event ->
+                        WebhookChoiceChip(event, selected = event in events) {
+                            eventsRaw = if (event in events) {
+                                events.filterNot { it == event }.joinToString(",")
+                            } else {
+                                (events + event).distinct().joinToString(",")
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = secret,
+                    onValueChange = { secret = it },
+                    label = { Text(if (webhook == null) "Secret (optional)" else "New secret (leave blank to keep)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                Text("GitHub never returns existing webhook secrets.", fontSize = 11.sp, color = TextTertiary)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Switch(checked = active, onCheckedChange = { active = it }, colors = SwitchDefaults.colors(checkedThumbColor = Blue))
+                    Text("Active", fontSize = 13.sp, color = TextPrimary)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Checkbox(checked = insecureSsl, onCheckedChange = { insecureSsl = it })
+                    Text("Disable SSL verification", fontSize = 13.sp, color = TextPrimary)
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (url.isBlank() || saving) return@TextButton
-                    saving = true
-                    scope.launch {
-                        val ok = GitHubManager.createWebhook(
-                            context, owner, repo,
-                            config = mapOf("url" to url, "content_type" to "json"),
-                            events = events.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                        )
-                        Toast.makeText(context, if (ok) "Webhook created" else "Failed", Toast.LENGTH_SHORT).show()
-                        saving = false
-                        if (ok) onDone()
-                    }
+                    if (!canSave) return@TextButton
+                    onSave(webhook, url.trim(), events.ifEmpty { listOf("push") }, secret, active, contentType, insecureSsl)
                 },
-                enabled = !saving
-            ) { Text("Create", color = Blue) }
+                enabled = canSave
+            ) { Text("Save", color = Blue) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = TextSecondary) } }
     )
+}
+
+@Composable
+private fun WebhookPill(label: String, color: Color) {
+    Text(
+        label,
+        fontSize = 11.sp,
+        color = color,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+@Composable
+private fun WebhookChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Blue.copy(alpha = 0.14f) else SurfaceLight)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 12.sp, color = if (selected) Blue else TextSecondary, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
+private fun webhookLastResponseLabel(hook: GHWebhook): String {
+    val status = hook.lastResponseStatus.takeIf { it.isNotBlank() && it != "null" }
+    val code = hook.lastResponseCode.takeIf { it > 0 }?.toString()
+    return listOfNotNull(status, code).joinToString(" · ").ifBlank { "No delivery response yet" }
+}
+
+private fun webhookResponseColor(hook: GHWebhook): Color = when {
+    hook.lastResponseCode in 200..299 || hook.lastResponseStatus.equals("ok", ignoreCase = true) -> Color(0xFF34C759)
+    hook.lastResponseCode >= 400 || hook.lastResponseStatus.equals("failed", ignoreCase = true) -> Color(0xFFFF3B30)
+    else -> TextTertiary
 }

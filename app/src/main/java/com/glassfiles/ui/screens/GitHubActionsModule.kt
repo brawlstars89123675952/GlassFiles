@@ -47,6 +47,8 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1599,6 +1601,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
     var loadingArtifacts by remember { mutableStateOf(false) }
     var loadingChecks by remember { mutableStateOf(false) }
     var downloadingAllArtifacts by remember { mutableStateOf(false) }
+    var showPublishRelease by remember { mutableStateOf(false) }
     var detailNotice by remember { mutableStateOf<String?>(null) }
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -2151,6 +2154,12 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                                     if (downloadingAllArtifacts) CircularProgressIndicator(Modifier.size(14.dp), color = Blue, strokeWidth = 2.dp)
                                     else Text("Download all", color = Blue, fontSize = 12.sp)
                                 }
+                                TextButton(
+                                    enabled = artifacts.any { !it.expired },
+                                    onClick = { showPublishRelease = true }
+                                ) {
+                                    Text("Publish release", color = Color(0xFF34C759), fontSize = 12.sp)
+                                }
                             }
                             Spacer(Modifier.height(8.dp))
                         }
@@ -2201,6 +2210,19 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                 }
             }
         }
+    }
+
+    if (showPublishRelease && run != null) {
+        PublishArtifactsReleaseDialog(
+            repo = repo,
+            run = run!!,
+            artifacts = artifacts,
+            onDismiss = { showPublishRelease = false },
+            onPublished = {
+                showPublishRelease = false
+                selectedSection = RunDetailSection.SUMMARY
+            }
+        )
     }
 }
 
@@ -2281,6 +2303,123 @@ private fun FailureDiagnosisCard(
             Chip(Icons.Rounded.Article, "Open failed log", Color(0xFFFF3B30), onOpenFailedLog)
         }
     }
+}
+
+@Composable
+private fun PublishArtifactsReleaseDialog(
+    repo: GHRepo,
+    run: GHWorkflowRun,
+    artifacts: List<GHArtifact>,
+    onDismiss: () -> Unit,
+    onPublished: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val publishableArtifacts = remember(artifacts) { artifacts.filter { !it.expired } }
+    var tag by remember(run.id) { mutableStateOf(defaultReleaseTag(run)) }
+    var name by remember(run.id) { mutableStateOf(defaultReleaseName(run)) }
+    var body by remember(run.id) { mutableStateOf(defaultReleaseBody(run, publishableArtifacts)) }
+    var draft by remember { mutableStateOf(true) }
+    var prerelease by remember { mutableStateOf(false) }
+    var publishing by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { if (!publishing) onDismiss() },
+        title = { Text("Publish artifacts") },
+        text = {
+            Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${publishableArtifacts.size} artifacts from run #${run.runNumber}", fontSize = 12.sp, color = TextSecondary)
+                OutlinedTextField(tag, { tag = it.trim() }, label = { Text("Tag") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text("Release title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(body, { body = it }, label = { Text("Release notes") }, minLines = 5, maxLines = 8, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(draft, { draft = it })
+                    Text("Draft", fontSize = 13.sp, color = TextPrimary)
+                    Spacer(Modifier.width(12.dp))
+                    Checkbox(prerelease, { prerelease = it })
+                    Text("Pre-release", fontSize = 13.sp, color = TextPrimary)
+                }
+                if (progress.isNotBlank()) Text(progress, fontSize = 11.sp, color = TextTertiary)
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !publishing && tag.isNotBlank() && publishableArtifacts.isNotEmpty(),
+                onClick = {
+                    publishing = true
+                    progress = "Creating release..."
+                    scope.launch {
+                        val release = GitHubManager.createReleaseDetailed(
+                            context = context,
+                            owner = repo.owner,
+                            repo = repo.name,
+                            tag = tag,
+                            name = name.ifBlank { tag },
+                            body = body,
+                            prerelease = prerelease,
+                            draft = draft,
+                            targetCommitish = run.branch
+                        ) ?: GitHubManager.getReleaseByTag(context, repo.owner, repo.name, tag)
+
+                        if (release == null || release.id == 0L) {
+                            publishing = false
+                            progress = ""
+                            Toast.makeText(context, "Failed to create release", Toast.LENGTH_SHORT).show()
+                            return@launch
+                        }
+
+                        val dir = File(context.cacheDir, "release-artifacts/${run.id}").apply { mkdirs() }
+                        var uploaded = 0
+                        publishableArtifacts.forEachIndexed { index, artifact ->
+                            progress = "Uploading ${index + 1}/${publishableArtifacts.size}: ${artifact.name}"
+                            val file = File(dir, safeArtifactZipName(artifact))
+                            val downloaded = GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, file)
+                            if (downloaded && GitHubManager.uploadReleaseAssetDetailed(context, repo.owner, repo.name, release.id, file) != null) {
+                                uploaded++
+                            }
+                        }
+                        publishing = false
+                        Toast.makeText(context, "Uploaded $uploaded/${publishableArtifacts.size}", Toast.LENGTH_SHORT).show()
+                        onPublished()
+                    }
+                }
+            ) {
+                if (publishing) CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
+                else Text("Publish", color = Color(0xFF34C759))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !publishing) { Text(Strings.cancel) }
+        }
+    )
+}
+
+private fun defaultReleaseTag(run: GHWorkflowRun): String {
+    val base = run.name.ifBlank { "build" }
+        .replace(Regex("""[^A-Za-z0-9._-]+"""), "-")
+        .trim('-')
+        .lowercase()
+        .ifBlank { "build" }
+    return "$base-${run.runNumber}"
+}
+
+private fun defaultReleaseName(run: GHWorkflowRun): String =
+    "${run.name.ifBlank { "Build" }} #${run.runNumber}"
+
+private fun defaultReleaseBody(run: GHWorkflowRun, artifacts: List<GHArtifact>): String {
+    val lines = mutableListOf<String>()
+    lines += "Published from GitHub Actions run #${run.runNumber}."
+    if (run.branch.isNotBlank()) lines += "Branch: ${run.branch}"
+    if (run.headSha.length >= 7) lines += "Commit: ${run.headSha.take(7)}"
+    if (artifacts.isNotEmpty()) {
+        lines += ""
+        lines += "Artifacts:"
+        artifacts.forEach { artifact ->
+            lines += "- ${artifact.name} (${formatArtifactSize(artifact.sizeInBytes)})"
+        }
+    }
+    return lines.joinToString("\n")
 }
 
 @Composable
