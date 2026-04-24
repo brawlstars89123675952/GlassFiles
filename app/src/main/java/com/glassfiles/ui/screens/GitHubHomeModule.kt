@@ -69,6 +69,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     var searchPublic by remember { mutableStateOf(false) }; var publicResults by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
     var showStarred by remember { mutableStateOf(false) }
     var showOrgs by remember { mutableStateOf(false) }
+    var showPackages by remember { mutableStateOf(false) }
     var reposPage by remember { mutableIntStateOf(1) }; var reposHasMore by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
     LaunchedEffect(query, searchPublic) { if (searchPublic && query.length >= 2) publicResults = GitHubManager.searchRepos(context, query) }
@@ -77,6 +78,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     }
     if (showStarred) { StarredScreen(onBack = { showStarred = false }, onRepoClick = { showStarred = false; onRepoClick(it) }); return }
     if (showOrgs) { OrgsScreen(onBack = { showOrgs = false }, onRepoClick = { showOrgs = false; onRepoClick(it) }); return }
+    if (showPackages && user != null) { PackagesScreen(userLogin = user.login, onBack = { showPackages = false }); return }
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar("GitHub", onBack = onBack, onMinimize = onMinimize, onClose = onClose) {
             IconButton(onClick = onNotifications) { Icon(Icons.Rounded.Notifications, null, Modifier.size(20.dp), tint = Blue) }
@@ -101,6 +103,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     QuickChip(Icons.Rounded.Star, Strings.ghStarredRepos) { showStarred = true }
                     QuickChip(Icons.Rounded.Business, Strings.ghOrganizations) { showOrgs = true }
+                    QuickChip(Icons.Rounded.Archive, "Packages") { showPackages = true }
                     QuickChip(Icons.Rounded.Person, Strings.ghProfile) { if (user != null) onProfile(user.login) }
                 }
             }

@@ -37,6 +37,7 @@ internal fun RepoSettingsScreen(
     onBack: () -> Unit,
     onBranchProtection: () -> Unit = {},
     onCollaborators: () -> Unit = {},
+    onTeams: () -> Unit = {},
     onWebhooks: () -> Unit = {},
     onDiscussions: () -> Unit = {},
     onRulesets: () -> Unit = {},
@@ -264,6 +265,22 @@ internal fun RepoSettingsScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text("Manage collaborators", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                                     Text("Add, remove, or change permissions", fontSize = 12.sp, color = TextTertiary)
+                                }
+                                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
+                            }
+
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                    .background(SurfaceLight)
+                                    .clickable { onTeams() }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.Group, null, Modifier.size(22.dp), tint = Blue)
+                                Column(Modifier.weight(1f)) {
+                                    Text("Manage teams", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                                    Text("Org team access and permissions", fontSize = 12.sp, color = TextTertiary)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
                             }

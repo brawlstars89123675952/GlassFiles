@@ -42,6 +42,7 @@
 | Repo tags | `/repos/{owner}/{repo}/tags` | ✅ | ✅ | Read-only tags list in settings |
 | Branch protection rules | `/repos/{owner}/{repo}/branches/{branch}/protection` | ✅ | ✅ | Required checks/reviews/admins/conversation resolution |
 | Repo collaborators | `/repos/{owner}/{repo}/collaborators` | ✅ | ✅ | List/add/remove/update permission |
+| Repo teams | `/repos/{owner}/{repo}/teams`, `/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}` | ✅ | ✅ | List org repo teams, add/remove teams, update team permission |
 
 ### Branches
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -139,6 +140,52 @@
 | List orgs | `/user/orgs` | ✅ | ✅ | OrgsScreen |
 | List org repos | `/orgs/{org}/repos` | ✅ | ✅ | OrgsScreen |
 
+### Discussions
+| Feature | API Endpoint | Backend | UI | Notes |
+|---------|-------------|---------|-----|-------|
+| List discussions | GraphQL `Repository.discussions` | ✅ | ✅ | DiscussionsScreen with search/category filters |
+| Get discussion | GraphQL `Repository.discussion(number:)` | ✅ | ✅ | Full detail with metadata/body |
+| Create discussion | GraphQL `createDiscussion` | ✅ | ✅ | Category-aware create dialog |
+| Update discussion | GraphQL `updateDiscussion` | ✅ | ✅ | Title/body/category edit dialog |
+| Delete discussion | GraphQL `deleteDiscussion` | ✅ | ✅ | Confirmation dialog |
+| List discussion categories | GraphQL `Repository.discussionCategories` | ✅ | ✅ | Filter chips and create/edit category picker |
+| Discussion comments | GraphQL `Discussion.comments`, `addDiscussionComment` | ✅ | ✅ | Comment list and composer |
+
+### Projects
+| Feature | API Endpoint | Backend | UI | Notes |
+|---------|-------------|---------|-----|-------|
+| List projects | `/repos/{owner}/{repo}/projects` | ✅ | ✅ | Classic projects tab |
+| Get project | `/projects/{id}` | ✅ | ✅ | Classic project detail refresh |
+| Create project | `/repos/{owner}/{repo}/projects` (POST) | ✅ | ✅ | Create classic project dialog |
+| Update project | `/projects/{id}` (PATCH) | ✅ | ✅ | Name/body/state edit dialog |
+| Delete project | `/projects/{id}` (DELETE) | ✅ | ✅ | Confirmation dialog |
+| List project columns | `/projects/{id}/columns` | ✅ | ✅ | Column cards inside detail |
+| List project cards | `/projects/columns/{id}/cards` | ✅ | ✅ | Cards grouped by column |
+| Move project card | `/projects/columns/cards/{id}/moves` (POST) | ✅ | ✅ | Move note cards between columns |
+| Projects V2 overview | GraphQL `Repository.projectsV2` | ✅ | ⚠️ | Read-only list with item counts/open state |
+
+### Packages
+| Feature | API Endpoint | Backend | UI | Notes |
+|---------|-------------|---------|-----|-------|
+| List user packages | `/users/{username}/packages` | ✅ | ✅ | Packages screen with owner/type/search filters |
+| List org packages | `/orgs/{org}/packages` | ✅ | ✅ | Org selector from current user orgs |
+| Get package | `/users/{username}/packages/{package_type}/{package_name}` or org equivalent | ✅ | ✅ | Package detail header |
+| Delete package | `/users/{username}/packages/{package_type}/{package_name}` or org equivalent (DELETE) | ✅ | ✅ | Confirmation dialog |
+| List package versions | `.../versions` | ✅ | ✅ | Version list with tags |
+| Delete package version | `.../versions/{package_version_id}` (DELETE) | ✅ | ✅ | Confirmation dialog |
+
+### Security
+| Feature | API Endpoint | Backend | UI | Notes |
+|---------|-------------|---------|-----|-------|
+| List security advisories | `/repos/{owner}/{repo}/security-advisories` | ✅ | ✅ | Advisories tab with filters/search |
+| Enable Dependabot alerts | `/repos/{owner}/{repo}/vulnerability-alerts` (PUT) | ✅ | ✅ | Security settings toggle |
+| Disable Dependabot alerts | `/repos/{owner}/{repo}/vulnerability-alerts` (DELETE) | ✅ | ✅ | Security settings toggle |
+| Dependabot security updates | `/repos/{owner}/{repo}/automated-security-fixes` | ✅ | ✅ | Read/toggle enable/disable |
+| Private vulnerability reporting | `/repos/{owner}/{repo}/private-vulnerability-reporting` | ✅ | ✅ | Read/toggle enable/disable |
+| List code scanning alerts | `/repos/{owner}/{repo}/code-scanning/alerts` | ✅ | ✅ | Implemented with filters/detail |
+| List secret scanning alerts | `/repos/{owner}/{repo}/secret-scanning/alerts` | ✅ | ✅ | Implemented with filters/detail |
+| List Dependabot alerts | `/repos/{owner}/{repo}/dependabot/alerts` | ✅ | ✅ | Implemented with mobile filters/search |
+
 ### User Settings (Advanced)
 | Feature | API Endpoint | Backend | UI | Notes |
 |---------|-------------|---------|-----|-------|
@@ -180,7 +227,6 @@
 | Transfer repo | `/repos/{owner}/{repo}/transfer` (POST) | Low | |
 | Rename default branch | `/repos/{owner}/{repo}/branches/{branch}/rename` (POST) | Low | |
 | Required signatures | `/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures` | Low | |
-| Repo teams | `/repos/{owner}/{repo}/teams` | Low | Org repos only |
 | Repo invites | `/repos/{owner}/{repo}/invitations` | Low | |
 | Repo traffic | `/repos/{owner}/{repo}/traffic/views` | Low | Analytics |
 | Repo clones | `/repos/{owner}/{repo}/traffic/clones` | Low | Analytics |
@@ -254,51 +300,6 @@
 | List runner groups | `/repos/{owner}/{repo}/actions/runner-groups` | Low | Enterprise only |
 | Get workflow usage | `/repos/{owner}/{repo}/actions/workflows/{id}/timing` | Low | |
 
-### Discussions
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| List discussions | `/repos/{owner}/{repo}/discussions` | Low | Newer feature |
-| Get discussion | `/repos/{owner}/{repo}/discussions/{number}` | Low | |
-| Create discussion | `/repos/{owner}/{repo}/discussions` (POST) | Low | |
-| Update discussion | `/repos/{owner}/{repo}/discussions/{number}` (PATCH) | Low | |
-| Delete discussion | `/repos/{owner}/{repo}/discussions/{number}` (DELETE) | Low | |
-| List discussion categories | `/repos/{owner}/{repo}/discussions/categories` | Low | |
-| Discussion comments | `/repos/{owner}/{repo}/discussions/{number}/comments` | Low | |
-
-### Projects (Classic & V2)
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| List projects | `/repos/{owner}/{repo}/projects` | Low | Classic projects |
-| Get project | `/projects/{id}` | Low | |
-| Create project | `/repos/{owner}/{repo}/projects` (POST) | Low | |
-| Update project | `/projects/{id}` (PATCH) | Low | |
-| Delete project | `/projects/{id}` (DELETE) | Low | |
-| List project columns | `/projects/{id}/columns` | Low | |
-| List project cards | `/projects/columns/{id}/cards` | Low | |
-| Move project card | `/projects/columns/cards/{id}/moves` (POST) | Low | |
-| Projects V2 (GraphQL) | GraphQL API | Low | Requires GraphQL |
-
-### Packages
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| List packages | `/users/{username}/packages` or `/orgs/{org}/packages` | Low | GitHub Packages |
-| Get package | `/users/{username}/packages/{package_type}/{package_name}` | Low | |
-| Delete package | `/users/{username}/packages/{package_type}/{package_name}` (DELETE) | Low | |
-| List package versions | `.../versions` | Low | |
-
-### Security
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| List security advisories | `/repos/{owner}/{repo}/security-advisories` | Low | |
-| Enable Dependabot alerts | `/repos/{owner}/{repo}/vulnerability-alerts` (PUT) | Low | |
-| Disable Dependabot alerts | `/repos/{owner}/{repo}/vulnerability-alerts` (DELETE) | Low | |
-| List code scanning alerts | `/repos/{owner}/{repo}/code-scanning/alerts` | Low | ✅ Implemented with filters/detail |
-| Get code scanning alert | `/repos/{owner}/{repo}/code-scanning/alerts/{id}` | Low | |
-| List secret scanning alerts | `/repos/{owner}/{repo}/secret-scanning/alerts` | Low | ✅ Implemented with filters/detail |
-| Get secret scanning alert | `/repos/{owner}/{repo}/secret-scanning/alerts/{id}` | Low | |
-| List Dependabot alerts | `/repos/{owner}/{repo}/dependabot/alerts` | Low | ✅ Implemented with mobile filters/search |
-| Repo security analysis | `/repos/{owner}/{repo}/community/profile` | Low | Community health |
-
 ### Webhooks
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
@@ -367,7 +368,7 @@
 |----------|------------|---------|---------|----------|
 | Authentication & User | 12 | 0 | 0 | 100% |
 | Repositories (Basic) | 18 | 0 | 0 | 100% |
-| Repositories (Advanced) | 0 | 0 | 20+ | 0% |
+| Repositories (Advanced) | 1 | 0 | 19+ | 5% |
 | Branches | 4 | 0 | 5 | 44% |
 | Commits | 3 | 0 | 2 | 60% |
 | Issues (Basic) | 11 | 0 | 0 | 100% |
@@ -381,10 +382,10 @@
 | Organizations | 2 | 0 | 0 | 100% |
 | User Settings | 20+ | 0 | 0 | 100% |
 | Git Data | 0 | 0 | 10+ | 0% |
-| Discussions | 0 | 0 | 6 | 0% |
-| Projects | 0 | 0 | 8 | 0% |
-| Packages | 0 | 0 | 4 | 0% |
-| Security | 3 | 0 | 6+ | 33% |
+| Discussions | 7 | 0 | 0 | 100% |
+| Projects | 8 | 1 | 0 | 89% |
+| Packages | 6 | 0 | 0 | 100% |
+| Security | 8 | 0 | 3 | 73% |
 | Webhooks | 7 | 0 | 4 | 64% |
 | Repository Rules | 3 | 0 | 3 | 50% |
 
@@ -402,35 +403,29 @@
 - ✅ Gists
 - ✅ Notifications (basic)
 - ✅ Organizations
+- ✅ Discussions
+- ✅ Packages
 - ✅ User settings (comprehensive)
+- ✅ Security alerts and controls
 
 **Partially Implemented / In Progress:**
 - ⚠️ Commits (diff viewing, but no compare)
 - ⚠️ GitHub Actions (missing advanced features)
 - ⚠️ Issues Advanced (timeline, lock/unlock, reactions and comment edit/delete implemented; remaining gaps are issue events and deeper timeline event actions)
 - ⚠️ Notifications (missing thread subscription)
+- ⚠️ Projects V2 (read-only overview implemented; mutations/items/field editing still future work)
 
 **Not Implemented / Early Coverage — Major Gaps:**
-- ❌ Repository teams
 - ⚠️ Advanced PR features (review comments, check runs, reviewers, review history and merge methods implemented; remaining gaps are review mutation/detail and check suites)
 - ⚠️ Advanced issue features (timeline, lock/unlock, reactions, edit/delete comments implemented; remaining gaps are issue events and deeper timeline event actions)
-- ❌ Discussions
-- ❌ Projects (classic & V2)
 - ⚠️ Webhooks (list/create/update/delete/ping plus delivery history/redelivery implemented; remaining gaps are advanced config/test helpers)
-- ⚠️ Security features (Dependabot, code scanning and secret scanning alerts implemented; advisory management and enable/disable controls still missing)
-- ❌ Packages
+- ⚠️ Security features (alerts, advisories and controls implemented; remaining gaps are single-alert fetch APIs and community health)
 - ⚠️ Repository rulesets (list/detail/rule suites implemented; create/update/delete still missing)
 - ❌ Advanced search (commits, issues, topics)
 
 ### Recommendations for Next Implementation
 
-**High Priority (would add significant value):**
-1. **Repository Teams** — Org repo team permissions
-
-**Medium Priority:**
-2. **Discussions** — If the app targets communities
-3. **Projects** — If project management is needed
-
 **Low Priority (nice to have):**
-4. **Security Tab** — advisories and enable/disable controls
-5. **Packages** — GitHub Packages integration
+1. **Projects V2 mutations/items** — Full new Projects editing model
+2. **Advanced search** — commits, issues, topics
+3. **Repository rulesets mutations** — create/update/delete rulesets

@@ -628,3 +628,159 @@
   - выполнен `git diff --check`
   - серверные GitHub Actions/workflow не запускались
   - локальная Android compile-проверка не запускалась повторно: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`
+
+### Repository teams pass
+- Реализован следующий high-priority блок из `GITHUB_API_ANALYSIS.md`: Repository Teams для org repositories.
+- В `GitHubManager.kt` добавлено:
+  - `getRepoTeams`
+  - `getOrgTeams`
+  - `addRepoTeam`
+  - `updateRepoTeamPermission`
+  - `removeRepoTeam`
+  - модели `GHRepoTeam` и `GHOrgTeam`
+- Добавлен новый экран `GitHubTeamsModule.kt`:
+  - список teams, имеющих доступ к репозиторию
+  - summary-card по количеству teams и permission levels
+  - поиск по team name/slug/permission
+  - добавление org team к repo через real org teams API
+  - изменение team permission: read/triage/write/maintain/admin
+  - удаление team access с confirmation dialog
+- В `GitHubRepoSettingsModule.kt` добавлен пункт `Manage teams` рядом с collaborators.
+- В `GitHubRepoModule.kt` подключена навигация на `RepoTeamsScreen`.
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Repo teams перенесены из missing в implemented
+  - Repositories Advanced coverage поднят с 0% до 5%
+  - следующий recommended block переключен на Discussions / Projects
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Android compile-проверка не запускалась: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`
+
+### Discussions GraphQL pass
+- Реализован следующий блок по очереди после Repository Teams: repository Discussions.
+- Важно: старый REST-path `/repos/{owner}/{repo}/discussions` заменен на официальный GitHub GraphQL API для Discussions.
+- В `GitHubManager.kt` добавлено:
+  - общий private GraphQL helper через `/graphql`
+  - `getDiscussionCategories`
+  - `getDiscussions`
+  - `getDiscussionDetail`
+  - `createDiscussion`
+  - `updateDiscussion`
+  - `deleteDiscussion`
+  - `getDiscussionComments`
+  - `addDiscussionComment`
+  - модели `GHDiscussionCategory` и расширенная `GHDiscussion`
+- `GitHubDiscussionsModule.kt` переписан как полноценный flow:
+  - summary-card по discussions/categories
+  - поиск по title/body/author
+  - фильтр по discussion category
+  - detail screen с body, category, answered/locked/upvotes/comments metadata
+  - create discussion dialog с category picker
+  - edit discussion dialog для title/body/category
+  - delete discussion confirmation
+  - comments list и composer для добавления comment
+  - open discussion on GitHub
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Discussions перенесены в fully implemented
+  - Discussions coverage поднят с 0% до 100%
+  - следующий high-priority block переключен на Projects
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Android compile-проверка не запускалась: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`
+
+### Projects pass
+- Реализован следующий high-priority блок после Discussions: repository Projects.
+- Важно:
+  - Classic Projects закрыты по основным REST endpoints из матрицы.
+  - Projects V2 добавлены как read-only overview через GraphQL, потому что полноценное редактирование V2 требует отдельной item/field/mutation модели.
+- В `GitHubManager.kt` добавлено:
+  - `getRepoProjects`
+  - `getProject`
+  - `createRepoProject`
+  - `updateProject`
+  - `deleteProject`
+  - `getProjectColumns`
+  - `createProjectColumn`
+  - `getProjectCards`
+  - `createProjectCard`
+  - `moveProjectCard`
+  - `deleteProjectCard`
+  - `getRepoProjectsV2`
+  - модели `GHProject`, `GHProjectColumn`, `GHProjectCard`, `GHProjectV2`
+- Добавлен новый `GitHubProjectsModule.kt`:
+  - repo tab `Projects`
+  - summary по Classic/V2 projects
+  - поиск
+  - переключение Classic / V2
+  - создание classic project
+  - detail classic project с columns/cards
+  - edit/delete classic project
+  - create column
+  - create note card
+  - move card между columns
+  - delete note card
+  - V2 cards с title/description/items/open/public и open on GitHub
+- В `GitHubRepoModule.kt` добавлена вкладка `PROJECTS`.
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Projects classic перенесены в implemented
+  - Projects V2 overview отмечен как partial
+  - Projects coverage поднят с 0% до 89%
+  - следующий practical block переключен на Security Tab / Packages / Projects V2 mutations
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Android compile-проверка не запускалась: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`
+
+### Security advisories / controls pass
+- Реализован следующий practical block из матрицы: Security Tab polish.
+- В `GitHubManager.kt` добавлено:
+  - `getRepositorySecurityAdvisories`
+  - `getRepositorySecuritySettings`
+  - `setAutomatedSecurityFixes`
+  - `setVulnerabilityAlerts`
+  - `setPrivateVulnerabilityReporting`
+  - модели `GHRepositorySecurityAdvisory`, `GHAdvisoryVulnerability`, `GHRepositorySecuritySettings`
+- `GitHubSecurityModule.kt` доработан:
+  - добавлена вкладка `Advisories`
+  - добавлена вкладка `Settings`
+  - advisories получили summary, severity/state filters, search по GHSA/CVE/summary/package/CWE
+  - advisory cards показывают severity/state/CVSS/CWE, description и affected package ranges
+  - security settings показывают toggles:
+    - dependency graph/vulnerability alerts
+    - Dependabot security updates
+    - private vulnerability reporting
+  - toggles обновляют состояние через GitHub API и перечитывают settings
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - security advisories перенесены в implemented
+  - vulnerability alerts enable/disable перенесены в implemented
+  - Dependabot security updates и private vulnerability reporting добавлены как implemented controls
+  - Security coverage поднят с 33% до 73%
+  - следующий practical block переключен на Packages
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Android compile-проверка не запускалась: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`
+
+### Packages pass
+- Реализован следующий practical block после Security: GitHub Packages.
+- В `GitHubManager.kt` добавлено:
+  - `getUserPackages`
+  - `getOrgPackages`
+  - `getPackage`
+  - `deletePackage`
+  - `getPackageVersions`
+  - `deletePackageVersion`
+  - модели `GHPackage` и `GHPackageVersion`
+- Добавлен новый экран `GitHubPackagesModule.kt`:
+  - entry point из GitHub home quick actions
+  - выбор владельца: текущий user или orgs пользователя
+  - фильтр package type: all/container/docker/npm/maven/nuget/rubygems
+  - поиск по package name/type/repository
+  - package detail с metadata и versions
+  - отображение tags у package versions
+  - удаление package и package version через confirmation dialogs
+  - open on GitHub для package/version
+- В `GITHUB_API_ANALYSIS.md` обновлено покрытие:
+  - Packages перенесены в fully implemented
+  - Packages coverage поднят с 0% до 100%
+  - следующий practical block переключен на Projects V2 mutations/items или Advanced search
+- Проверка:
+  - выполнен `git diff --check`
+  - локальная Android compile-проверка не запускалась: в окружении нет Android SDK / `ANDROID_HOME` / `local.properties`

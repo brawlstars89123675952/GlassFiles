@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.github.GHCodeScanningAlert
 import com.glassfiles.data.github.GHDependabotAlert
+import com.glassfiles.data.github.GHRepositorySecurityAdvisory
+import com.glassfiles.data.github.GHRepositorySecuritySettings
 import com.glassfiles.data.github.GHRuleSuite
 import com.glassfiles.data.github.GHRuleset
 import com.glassfiles.data.github.GHRulesetBypassActor
@@ -38,8 +40,8 @@ import kotlinx.coroutines.launch
 
 private val RULESET_FILTERS = listOf("all", "active", "evaluate", "disabled")
 private val ALERT_SEVERITIES = listOf("all", "critical", "high", "medium", "low")
-private val ALERT_STATES = listOf("open", "fixed", "resolved", "dismissed", "all")
-private val SECURITY_TABS = listOf("Dependabot", "Code", "Secrets")
+private val ALERT_STATES = listOf("open", "fixed", "resolved", "dismissed", "published", "draft", "closed", "all")
+private val SECURITY_TABS = listOf("Dependabot", "Code", "Secrets", "Advisories", "Settings")
 
 @Composable
 internal fun RulesetsScreen(
@@ -367,6 +369,8 @@ internal fun SecurityScreen(
     var alerts by remember { mutableStateOf<List<GHDependabotAlert>>(emptyList()) }
     var codeAlerts by remember { mutableStateOf<List<GHCodeScanningAlert>>(emptyList()) }
     var secretAlerts by remember { mutableStateOf<List<GHSecretScanningAlert>>(emptyList()) }
+    var advisories by remember { mutableStateOf<List<GHRepositorySecurityAdvisory>>(emptyList()) }
+    var settings by remember { mutableStateOf<GHRepositorySecuritySettings?>(null) }
     var loading by remember { mutableStateOf(true) }
     var query by remember { mutableStateOf("") }
     var severityFilter by remember { mutableStateOf("all") }
@@ -374,6 +378,7 @@ internal fun SecurityScreen(
     var selectedTab by remember { mutableStateOf("Dependabot") }
     var selectedCodeAlert by remember { mutableStateOf<GHCodeScanningAlert?>(null) }
     var selectedSecretAlert by remember { mutableStateOf<GHSecretScanningAlert?>(null) }
+    var settingsActionInFlight by remember { mutableStateOf(false) }
 
     fun loadAlerts() {
         loading = true
@@ -381,6 +386,8 @@ internal fun SecurityScreen(
             when (selectedTab) {
                 "Code" -> codeAlerts = GitHubManager.getCodeScanningAlerts(context, repoOwner, repoName)
                 "Secrets" -> secretAlerts = GitHubManager.getSecretScanningAlerts(context, repoOwner, repoName)
+                "Advisories" -> advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
+                "Settings" -> settings = GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName)
                 else -> alerts = GitHubManager.getDependabotAlerts(context, repoOwner, repoName)
             }
             loading = false
@@ -392,7 +399,7 @@ internal fun SecurityScreen(
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar(
             title = "Security",
-            subtitle = "$repoOwner/$repoName · $selectedTab",
+            subtitle = "$repoOwner/$repoName - $selectedTab",
             onBack = onBack,
             actions = {
                 IconButton(onClick = { loadAlerts() }, enabled = !loading) {
@@ -427,10 +434,39 @@ internal fun SecurityScreen(
                     when (selectedTab) {
                         "Code" -> CodeScanningSummaryCard(codeAlerts)
                         "Secrets" -> SecretScanningSummaryCard(secretAlerts)
+                        "Advisories" -> AdvisorySummaryCard(advisories)
+                        "Settings" -> SecuritySettingsCard(
+                            settings = settings,
+                            actionInFlight = settingsActionInFlight,
+                            onToggleAutomated = { enabled ->
+                                settingsActionInFlight = true
+                                scope.launch {
+                                    GitHubManager.setAutomatedSecurityFixes(context, repoOwner, repoName, enabled)
+                                    settings = GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName)
+                                    settingsActionInFlight = false
+                                }
+                            },
+                            onToggleVulnerabilityAlerts = { enabled ->
+                                settingsActionInFlight = true
+                                scope.launch {
+                                    GitHubManager.setVulnerabilityAlerts(context, repoOwner, repoName, enabled)
+                                    settings = GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName)
+                                    settingsActionInFlight = false
+                                }
+                            },
+                            onTogglePrivateReporting = { enabled ->
+                                settingsActionInFlight = true
+                                scope.launch {
+                                    GitHubManager.setPrivateVulnerabilityReporting(context, repoOwner, repoName, enabled)
+                                    settings = GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName)
+                                    settingsActionInFlight = false
+                                }
+                            }
+                        )
                         else -> SecuritySummaryCard(alerts)
                     }
                 }
-                item {
+                if (selectedTab != "Settings") item {
                     OutlinedTextField(
                         value = query,
                         onValueChange = { query = it },
@@ -440,7 +476,7 @@ internal fun SecurityScreen(
                         leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = TextSecondary) }
                     )
                 }
-                item {
+                if (selectedTab != "Settings") item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         ALERT_STATES.forEach { state ->
                             GitHubSmallChoice(label = state.replaceFirstChar { it.uppercase() }, selected = stateFilter == state) {
@@ -449,7 +485,7 @@ internal fun SecurityScreen(
                         }
                     }
                 }
-                if (selectedTab != "Secrets") item {
+                if (selectedTab != "Secrets" && selectedTab != "Settings") item {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         ALERT_SEVERITIES.forEach { severity ->
                             GitHubSmallChoice(label = severity.replaceFirstChar { it.uppercase() }, selected = severityFilter == severity) {
@@ -459,6 +495,24 @@ internal fun SecurityScreen(
                     }
                 }
                 when (selectedTab) {
+                    "Settings" -> {
+                        item { EmptySecurityResult(false, "", "Security settings changes require repository admin permissions") }
+                    }
+                    "Advisories" -> {
+                        val visibleAdvisories = advisories.filter { advisory ->
+                            (severityFilter == "all" || advisory.severity.equals(severityFilter, ignoreCase = true)) &&
+                                (stateFilter == "all" || advisory.state.equals(stateFilter, ignoreCase = true)) &&
+                                advisoryMatches(advisory, query)
+                        }
+                        items(visibleAdvisories, key = { it.ghsaId.ifBlank { it.url } }) { advisory ->
+                            RepositoryAdvisoryCard(advisory) {
+                                openGitHubSecurityUrl(context, advisory.htmlUrl.ifBlank { advisory.url })
+                            }
+                        }
+                        if (visibleAdvisories.isEmpty()) {
+                            item { EmptySecurityResult(advisories.isEmpty(), "No repository security advisories", "No matching advisories") }
+                        }
+                    }
                     "Code" -> {
                         val visibleAlerts = codeAlerts.filter { alert ->
                             (severityFilter == "all" || alert.severity.equals(severityFilter, ignoreCase = true)) &&
@@ -576,6 +630,94 @@ private fun SecretScanningSummaryCard(alerts: List<GHSecretScanningAlert>) {
 }
 
 @Composable
+private fun AdvisorySummaryCard(advisories: List<GHRepositorySecurityAdvisory>) {
+    val open = advisories.count { it.state.equals("draft", true) || it.state.equals("published", true) }
+    val highRisk = advisories.count { it.severity.equals("critical", true) || it.severity.equals("high", true) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.GppMaybe, null, Modifier.size(20.dp), tint = if (highRisk > 0) Color(0xFFFF3B30) else Blue)
+            Text("Security advisories", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+            Text("$open active", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            SecurityPill("Critical ${advisories.count { it.severity.equals("critical", true) }}", Color(0xFFFF3B30))
+            SecurityPill("High ${advisories.count { it.severity.equals("high", true) }}", Color(0xFFFF3B30))
+            SecurityPill("Published ${advisories.count { it.state.equals("published", true) }}", Color(0xFF34C759))
+            SecurityPill("Draft ${advisories.count { it.state.equals("draft", true) }}", Color(0xFFFF9500))
+        }
+    }
+}
+
+@Composable
+private fun SecuritySettingsCard(
+    settings: GHRepositorySecuritySettings?,
+    actionInFlight: Boolean,
+    onToggleAutomated: (Boolean) -> Unit,
+    onToggleVulnerabilityAlerts: (Boolean) -> Unit,
+    onTogglePrivateReporting: (Boolean) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.AdminPanelSettings, null, Modifier.size(20.dp), tint = Blue)
+            Column(Modifier.weight(1f)) {
+                Text("Security controls", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text("Repository admin permissions required", fontSize = 11.sp, color = TextTertiary)
+            }
+        }
+        if (settings == null) {
+            Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        } else {
+            SecurityToggleRow(
+                title = "Dependency graph alerts",
+                subtitle = "Enable vulnerable dependency alerts",
+                checked = settings.vulnerabilityAlerts,
+                enabled = !actionInFlight,
+                onToggle = onToggleVulnerabilityAlerts
+            )
+            SecurityToggleRow(
+                title = "Dependabot security updates",
+                subtitle = if (settings.automatedSecurityFixesPaused) "Enabled but paused" else "Automatic security update pull requests",
+                checked = settings.automatedSecurityFixes,
+                enabled = !actionInFlight,
+                onToggle = onToggleAutomated
+            )
+            SecurityToggleRow(
+                title = "Private vulnerability reporting",
+                subtitle = "Allow private vulnerability reports",
+                checked = settings.privateVulnerabilityReporting,
+                enabled = !actionInFlight,
+                onToggle = onTogglePrivateReporting
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null, Modifier.size(20.dp), tint = if (checked) Color(0xFF34C759) else TextSecondary)
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+            Text(subtitle, fontSize = 12.sp, color = TextTertiary)
+        }
+        Switch(checked = checked, onCheckedChange = onToggle, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = Blue))
+    }
+}
+
+@Composable
 private fun AlertCard(alert: GHDependabotAlert, onOpen: () -> Unit) {
     val severityColor = alertSeverityColor(alert.severity)
     Column(
@@ -609,7 +751,49 @@ private fun AlertCard(alert: GHDependabotAlert, onOpen: () -> Unit) {
         )
         if (detailLines.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            Text(detailLines.joinToString(" · "), fontSize = 11.sp, color = TextTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(detailLines.joinToString(" - "), fontSize = 11.sp, color = TextTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+@Composable
+private fun RepositoryAdvisoryCard(advisory: GHRepositorySecurityAdvisory, onOpen: () -> Unit) {
+    val severityColor = alertSeverityColor(advisory.severity)
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.GppMaybe, null, Modifier.size(20.dp), tint = severityColor)
+            Column(Modifier.weight(1f)) {
+                Text(advisory.summary.ifBlank { advisory.ghsaId.ifBlank { "Repository advisory" } }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(cleanJoin(listOf(advisory.ghsaId, advisory.cveId)), fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = onOpen, enabled = advisory.htmlUrl.isNotBlank() || advisory.url.isNotBlank()) {
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = Blue)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            SecurityPill(advisory.severity.ifBlank { "unknown" }, severityColor)
+            SecurityPill(advisory.state.ifBlank { "unknown" }, alertStateColor(advisory.state))
+            if (advisory.cvssScore > 0.0) SecurityPill("CVSS ${"%.1f".format(advisory.cvssScore)}", severityColor)
+            advisory.cweIds.take(2).forEach { SecurityPill(it, TextSecondary) }
+        }
+        if (advisory.description.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(advisory.description, fontSize = 13.sp, color = TextPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        if (advisory.vulnerabilities.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            advisory.vulnerabilities.take(3).forEach { vulnerability ->
+                Text(
+                    cleanJoin(listOf(vulnerability.ecosystem, vulnerability.packageName, vulnerability.vulnerableRange, vulnerability.patchedVersions.takeIf { it.isNotBlank() }?.let { "patched $it" } ?: "")),
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -685,7 +869,7 @@ private fun SecretScanningAlertCard(alert: GHSecretScanningAlert, onOpen: () -> 
         )
         if (dates.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            Text(dates.joinToString(" · "), fontSize = 11.sp, color = TextTertiary)
+            Text(dates.joinToString(" - "), fontSize = 11.sp, color = TextTertiary)
         }
     }
 }
@@ -811,11 +995,12 @@ private fun alertStateColor(state: String): Color = when (state.lowercase()) {
 }
 
 private fun cleanJoin(values: List<String>): String =
-    values.filter { it.isNotBlank() && it != "null" }.joinToString(" · ").ifBlank { "Repository" }
+    values.filter { it.isNotBlank() && it != "null" }.joinToString(" - ").ifBlank { "Repository" }
 
 private fun securitySearchLabel(tab: String): String = when (tab) {
     "Code" -> "Search rule, tool, path or ref"
     "Secrets" -> "Search secret type, state or resolution"
+    "Advisories" -> "Search GHSA, CVE, summary or package"
     else -> "Search package, advisory or manifest"
 }
 
@@ -850,6 +1035,22 @@ private fun secretAlertMatches(alert: GHSecretScanningAlert, query: String): Boo
         alert.state.contains(q, ignoreCase = true) ||
         alert.resolution.contains(q, ignoreCase = true) ||
         alert.validity.contains(q, ignoreCase = true)
+}
+
+private fun advisoryMatches(advisory: GHRepositorySecurityAdvisory, query: String): Boolean {
+    val q = query.trim()
+    return q.isBlank() ||
+        advisory.ghsaId.contains(q, ignoreCase = true) ||
+        advisory.cveId.contains(q, ignoreCase = true) ||
+        advisory.summary.contains(q, ignoreCase = true) ||
+        advisory.description.contains(q, ignoreCase = true) ||
+        advisory.cweIds.any { it.contains(q, ignoreCase = true) } ||
+        advisory.vulnerabilities.any {
+            it.packageName.contains(q, ignoreCase = true) ||
+                it.ecosystem.contains(q, ignoreCase = true) ||
+                it.vulnerableRange.contains(q, ignoreCase = true) ||
+                it.patchedVersions.contains(q, ignoreCase = true)
+        }
 }
 
 private fun GHCodeScanningAlert.pathWithLine(): String =

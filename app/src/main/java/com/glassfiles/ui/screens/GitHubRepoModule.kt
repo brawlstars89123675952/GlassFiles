@@ -39,7 +39,7 @@ import java.io.File
 
 // Compact mode — propagates through all sub-screens automatically
 
-internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, README, CODE_SEARCH }
+internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, PROJECTS, README, CODE_SEARCH }
 
 @Composable
 internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -> Unit)? = null) {
@@ -66,6 +66,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var showRepoSettings by remember { mutableStateOf(false) }
     var showBranchProtection by remember { mutableStateOf(false) }
     var showCollaborators by remember { mutableStateOf(false) }
+    var showTeams by remember { mutableStateOf(false) }
     var showCompare by remember { mutableStateOf(false) }
     var showWebhooks by remember { mutableStateOf(false) }
     var showDiscussions by remember { mutableStateOf(false) }
@@ -85,6 +86,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         RepoTab.PULLS -> { pullsPage = 1; val r = GitHubManager.getPullRequests(context, repo.owner, repo.name, page = 1); pulls = r; pullsHasMore = r.size >= 30 }
         RepoTab.RELEASES -> releases = GitHubManager.getReleases(context, repo.owner, repo.name)
         RepoTab.ACTIONS, RepoTab.BUILDS -> { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name); workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name) }
+        RepoTab.PROJECTS -> { /* loaded inside ProjectsTab */ }
         RepoTab.README -> { readme = GitHubManager.getReadme(context, repo.owner, repo.name); languages = GitHubManager.getLanguages(context, repo.owner, repo.name); contributors = GitHubManager.getContributors(context, repo.owner, repo.name) }
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
     }; loading = false }
@@ -113,9 +115,10 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         return
     }
     if (selectedRunId != null) { WorkflowRunDetailScreen(repo, selectedRunId!!) { selectedRunId = null }; return }
-    if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
+    if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onTeams = { showRepoSettings = false; showTeams = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
     if (showBranchProtection) { BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) ; return }
     if (showCollaborators) { CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false }; return }
+    if (showTeams) { RepoTeamsScreen(repoOwner = repo.owner, repoName = repo.name) { showTeams = false }; return }
     if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name, initialBase = selectedBranch) { showCompare = false }; return }
     if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name) { showWebhooks = false }; return }
     if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name) { showDiscussions = false }; return }
@@ -266,7 +269,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         }
         // Tabs
         Row(Modifier.fillMaxWidth().background(SurfaceWhite).horizontalScroll(rememberScrollState()).padding(horizontal = if (cmp) 6.dp else 12.dp, vertical = if (cmp) 3.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(if (cmp) 4.dp else 6.dp)) {
-            RepoTab.entries.forEach { tab -> val sel = selectedTab == tab; val label = when (tab) { RepoTab.FILES -> Strings.ghGistFiles; RepoTab.COMMITS -> Strings.ghCommits; RepoTab.ISSUES -> "Issues"; RepoTab.PULLS -> Strings.ghPulls; RepoTab.RELEASES -> Strings.ghReleases; RepoTab.ACTIONS -> Strings.ghActions; RepoTab.BUILDS -> "Сборки"; RepoTab.README -> Strings.ghReadme; RepoTab.CODE_SEARCH -> Strings.ghSearchCode }
+            RepoTab.entries.forEach { tab -> val sel = selectedTab == tab; val label = when (tab) { RepoTab.FILES -> Strings.ghGistFiles; RepoTab.COMMITS -> Strings.ghCommits; RepoTab.ISSUES -> "Issues"; RepoTab.PULLS -> Strings.ghPulls; RepoTab.RELEASES -> Strings.ghReleases; RepoTab.ACTIONS -> Strings.ghActions; RepoTab.BUILDS -> "Сборки"; RepoTab.PROJECTS -> "Projects"; RepoTab.README -> Strings.ghReadme; RepoTab.CODE_SEARCH -> Strings.ghSearchCode }
                 Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) Blue.copy(0.12f) else Color.Transparent).border(1.dp, if (sel) Blue.copy(0.3f) else SeparatorColor, RoundedCornerShape(6.dp)).clickable { selectedTab = tab; repoQuery = "" }.padding(horizontal = if (cmp) 6.dp else 10.dp, vertical = if (cmp) 3.dp else 6.dp)) { Text(label, fontSize = if (cmp) 10.sp else 12.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) Blue else TextSecondary) }
             }
         }
@@ -332,6 +335,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
                     workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
                 }
             }
+            RepoTab.PROJECTS -> ProjectsTab(repo)
             RepoTab.README -> ReadmeTab(readme, languages, contributors)
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
