@@ -839,6 +839,20 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/actions/workflows/$workflowId/dispatches", "POST", body).let { it.code == 204 || it.success }
     }
 
+    suspend fun dispatchWorkflowDetailed(context: Context, owner: String, repo: String, workflowId: Long, branch: String, inputs: Map<String, String> = emptyMap()): GHActionResult {
+        val body = JSONObject().apply {
+            put("ref", branch)
+            if (inputs.isNotEmpty()) {
+                val inputsObj = JSONObject()
+                inputs.forEach { (k, v) -> inputsObj.put(k, v) }
+                put("inputs", inputsObj)
+            }
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/actions/workflows/$workflowId/dispatches", "POST", body)
+        val success = r.code == 204 || r.success
+        return GHActionResult(success, r.code, if (success) "" else apiErrorMessage(r))
+    }
+
     suspend fun dispatchWorkflow(context: Context, owner: String, repo: String, workflowId: String, ref: String, inputs: Map<String, String> = emptyMap()): Boolean {
         val body = JSONObject().apply {
             put("ref", ref)
@@ -2450,6 +2464,34 @@ object GitHubManager {
     )
 
     data class ApiResult(val success: Boolean, val body: String, val code: Int)
+
+    private fun apiErrorMessage(result: ApiResult): String {
+        val fallback = if (result.code > 0) "HTTP ${result.code}" else "Network error"
+        if (result.body.isBlank()) return fallback
+        return try {
+            val json = JSONObject(result.body)
+            val message = json.optString("message").takeIf { it.isNotBlank() }
+            val errors = json.optJSONArray("errors")
+            val details = if (errors != null) {
+                (0 until errors.length()).mapNotNull { index ->
+                    val item = errors.opt(index)
+                    when (item) {
+                        is JSONObject -> listOf(
+                            item.optString("field"),
+                            item.optString("code"),
+                            item.optString("message")
+                        ).filter { it.isNotBlank() && it != "null" }.joinToString(" ")
+                        else -> item?.toString()
+                    }?.takeIf { it.isNotBlank() && it != "null" }
+                }.take(3).joinToString("; ")
+            } else {
+                ""
+            }
+            listOfNotNull(message, details.takeIf { it.isNotBlank() }).joinToString(": ").ifBlank { fallback }
+        } catch (_: Exception) {
+            result.body.trim().take(220).ifBlank { fallback }
+        }
+    }
 }
 
 data class GHUser(val login: String, val name: String, val avatarUrl: String, val bio: String,
@@ -2458,6 +2500,8 @@ data class GHUser(val login: String, val name: String, val avatarUrl: String, va
 data class GHRepo(val name: String, val fullName: String, val description: String, val language: String,
     val stars: Int, val forks: Int, val isPrivate: Boolean, val isFork: Boolean, val defaultBranch: String,
     val updatedAt: String, val owner: String, val htmlUrl: String = "")
+
+data class GHActionResult(val success: Boolean, val code: Int, val message: String)
 
 data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String)
 

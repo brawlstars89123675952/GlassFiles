@@ -213,6 +213,9 @@ internal fun ActionsTab(
     val successCount = remember(liveRuns) { liveRuns.count { it.conclusion == "success" } }
     val failedCount = remember(liveRuns) { liveRuns.count { it.conclusion == "failure" } }
     val latestRun = remember(liveRuns) { liveRuns.firstOrNull() }
+    val missingRequiredInputs = remember(dispatchSchema, dispatchInputValues) {
+        missingDispatchInputs(dispatchSchema, dispatchInputValues)
+    }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         ActionsOverviewHeader(
@@ -230,6 +233,7 @@ internal fun ActionsTab(
             onBranchChange = { selectedBranch = it },
             dispatchSchema = dispatchSchema,
             dispatchInputValues = dispatchInputValues,
+            missingRequiredInputs = missingRequiredInputs,
             onDispatchInputChange = { key, value -> dispatchInputValues = dispatchInputValues + (key to value) },
             onToggleWorkflowState = { workflow ->
                 scope.launch {
@@ -245,26 +249,46 @@ internal fun ActionsTab(
             dispatching = dispatching,
             onDispatch = {
                 val workflowId = selectedWorkflowId
+                val schema = dispatchSchema
                 if (workflowId == null) {
                     Toast.makeText(context, Strings.ghNoWorkflows, Toast.LENGTH_SHORT).show()
-                } else if (dispatchSchema == null) {
+                } else if (schema == null) {
                     Toast.makeText(context, "Manual launch unavailable", Toast.LENGTH_SHORT).show()
                 } else if (selectedBranch.isBlank()) {
                     Toast.makeText(context, "Branch required", Toast.LENGTH_SHORT).show()
+                } else if (missingRequiredInputs.isNotEmpty()) {
+                    Toast.makeText(context, "Required inputs missing: ${missingRequiredInputs.joinToString(", ")}", Toast.LENGTH_LONG).show()
                 } else {
                     dispatching = true
                     scope.launch {
                         try {
-                            val ok = GitHubManager.dispatchWorkflow(
+                            val knownRunIds = GitHubManager
+                                .getWorkflowRuns(context, repo.owner, repo.name, workflowId, perPage = 10)
+                                .map { it.id }
+                                .toSet()
+                            val dispatchInputs = schema.inputs.associate { input ->
+                                input.key to dispatchInputValue(input, dispatchInputValues)
+                            }.filterValues { it.isNotBlank() }
+                            val result = GitHubManager.dispatchWorkflowDetailed(
                                 context = context,
                                 owner = repo.owner,
                                 repo = repo.name,
                                 workflowId = workflowId,
                                 branch = selectedBranch,
-                                inputs = dispatchInputValues.filterValues { it.isNotBlank() }
+                                inputs = dispatchInputs
                             )
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            if (ok) refreshOverview()
+                            Toast.makeText(context, if (result.success) Strings.done else result.message.ifBlank { Strings.error }, Toast.LENGTH_LONG).show()
+                            if (result.success) {
+                                val newRun = findNewActionsDispatchRun(
+                                    context = context,
+                                    repo = repo,
+                                    workflowId = workflowId,
+                                    branch = selectedBranch,
+                                    knownRunIds = knownRunIds
+                                )
+                                refreshOverview()
+                                if (newRun != null) onRunClick(newRun)
+                            }
                         } finally {
                             dispatching = false
                         }
@@ -279,6 +303,29 @@ internal fun ActionsTab(
             onOpenLatestRun = { latestRun?.let(onRunClick) }
         )
     }
+}
+
+private suspend fun findNewActionsDispatchRun(
+    context: android.content.Context,
+    repo: GHRepo,
+    workflowId: Long,
+    branch: String,
+    knownRunIds: Set<Long>
+): GHWorkflowRun? {
+    repeat(10) {
+        delay(1500)
+        val runs = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name, workflowId, perPage = 10)
+        val dispatchRuns = runs.filter { candidate ->
+            val newRun = candidate.id !in knownRunIds
+            val dispatchRun = candidate.event == "workflow_dispatch"
+            newRun && dispatchRun
+        }
+        val run = dispatchRuns.firstOrNull { candidate ->
+            candidate.branch.isBlank() || branch.isBlank() || candidate.branch == branch
+        } ?: dispatchRuns.firstOrNull()
+        if (run != null) return run
+    }
+    return null
 }
 
 @Composable
@@ -519,6 +566,7 @@ private fun ActionsOverviewHeader(
     onBranchChange: (String) -> Unit,
     dispatchSchema: GHWorkflowDispatchSchema?,
     dispatchInputValues: Map<String, String>,
+    missingRequiredInputs: List<String>,
     onDispatchInputChange: (String, String) -> Unit,
     onToggleWorkflowState: (GHWorkflow) -> Unit,
     dispatching: Boolean,
@@ -604,6 +652,11 @@ private fun ActionsOverviewHeader(
                         Text(if (selectedWorkflow.state == "active") "Disable" else "Enable", color = if (selectedWorkflow.state == "active") Color(0xFFFF3B30) else Blue, fontSize = 12.sp)
                     }
                 }
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    buildKindBadges("${selectedWorkflow.name} ${selectedWorkflow.path}").forEach { (label, color) ->
+                        MiniActionsBadge(label, color)
+                    }
+                }
             }
 
             OutlinedTextField(
@@ -629,6 +682,7 @@ private fun ActionsOverviewHeader(
             DynamicDispatchInputs(
                 schema = dispatchSchema,
                 values = dispatchInputValues,
+                missingRequiredInputs = missingRequiredInputs,
                 onValueChange = onDispatchInputChange
             )
 
@@ -643,7 +697,7 @@ private fun ActionsOverviewHeader(
                         Chip(Icons.Rounded.Article, "Latest #${latestRun.runNumber}") { onOpenLatestRun() }
                     }
                 }
-                TextButton(onClick = onDispatch, enabled = !dispatching && workflows.isNotEmpty() && dispatchSchema != null) {
+                TextButton(onClick = onDispatch, enabled = !dispatching && workflows.isNotEmpty() && dispatchSchema != null && missingRequiredInputs.isEmpty()) {
                     if (dispatching) {
                         CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
                     } else {
@@ -739,7 +793,7 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
                 onDownload = {
                     busyArtifact = artifact.id
                     scope.launch {
-                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${artifact.name}.zip")
+                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${safeArtifactZipName(artifact)}")
                         val ok = GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, dest)
                         Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
                         busyArtifact = null
@@ -1076,6 +1130,7 @@ private fun ArtifactRow(artifact: GHArtifact, busy: Boolean, onDownload: () -> U
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                artifactKindBadges(artifact).forEach { (label, color) -> MiniActionsBadge(label, color) }
                 MiniActionsBadge(formatArtifactSize(artifact.sizeInBytes), TextSecondary)
                 if (artifact.expired) MiniActionsBadge("expired", Color(0xFFFF3B30))
                 if (artifact.workflowRunId > 0) MiniActionsBadge("#${artifact.workflowRunId}", Blue)
@@ -1130,6 +1185,7 @@ private fun EmptyActionsText(text: String) {
 private fun DynamicDispatchInputs(
     schema: GHWorkflowDispatchSchema?,
     values: Map<String, String>,
+    missingRequiredInputs: List<String>,
     onValueChange: (String, String) -> Unit
 ) {
     val inputs = schema?.inputs.orEmpty()
@@ -1142,6 +1198,13 @@ private fun DynamicDispatchInputs(
         return
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (missingRequiredInputs.isNotEmpty()) {
+            Text(
+                "Required inputs missing: ${missingRequiredInputs.joinToString(", ")}",
+                fontSize = 11.sp,
+                color = Color(0xFFFF9500)
+            )
+        }
         inputs.forEach { input ->
             WorkflowDispatchInputField(
                 input = input,
@@ -1159,6 +1222,7 @@ private fun WorkflowDispatchInputField(
     onValueChange: (String) -> Unit
 ) {
     val choices = dispatchInputChoices(input)
+    val missingRequired = input.required && dispatchInputValue(input, mapOf(input.key to value)).isBlank()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(input.key, fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
@@ -1187,6 +1251,9 @@ private fun WorkflowDispatchInputField(
                 singleLine = input.type.lowercase() != "environment"
             )
         }
+        if (missingRequired) {
+            Text("Required value", fontSize = 10.sp, color = Color(0xFFFF9500))
+        }
     }
 }
 
@@ -1195,6 +1262,14 @@ private fun dispatchInputChoices(input: GHWorkflowDispatchInput): List<String> =
     input.type.equals("boolean", ignoreCase = true) -> listOf("true", "false")
     else -> emptyList()
 }
+
+private fun missingDispatchInputs(schema: GHWorkflowDispatchSchema?, values: Map<String, String>): List<String> =
+    schema?.inputs.orEmpty()
+        .filter { it.required && dispatchInputValue(it, values).isBlank() }
+        .map { it.key }
+
+private fun dispatchInputValue(input: GHWorkflowDispatchInput, values: Map<String, String>): String =
+    values[input.key].orEmpty().ifBlank { input.defaultValue }.trim()
 
 @Composable
 private fun ModernRunCard(
@@ -1243,7 +1318,10 @@ private fun ModernRunCard(
                     Text(run.displayTitle, fontSize = 12.sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(4.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    buildKindBadges("${run.name} ${run.displayTitle}").forEach { (label, color) ->
+                        MiniActionsBadge(label, color)
+                    }
                     MiniActionsBadge("#${run.runNumber}", TextSecondary)
                     if (run.runAttempt > 1) MiniActionsBadge("attempt ${run.runAttempt}", Color(0xFFFF9500))
                     MiniActionsBadge(run.branch.ifBlank { "unknown" }, Blue)
@@ -1440,6 +1518,12 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
             failedOk && activeOk && searchOk
         }
     }
+    val firstFailedJob = remember(jobs) { jobs.firstOrNull { it.conclusion == "failure" } }
+    val firstFailedStep = remember(firstFailedJob) { firstFailedJob?.steps?.firstOrNull { isFailedStep(it) } }
+    val firstFailedLog = firstFailedJob?.let { jobLogs[it.id] }.orEmpty()
+    val failureDiagnostics = remember(firstFailedJob?.id, firstFailedStep?.number, firstFailedLog) {
+        buildFailureDiagnostics(firstFailedJob, firstFailedStep, firstFailedLog)
+    }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
         GHTopBar(run?.let { "${it.name} #${it.runNumber}" } ?: "Run #$runId", onBack = onBack) {
@@ -1497,6 +1581,9 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                     val failed = jobs.firstOrNull { it.conclusion == "failure" }
                     if (failed != null) {
                         expandedJobId = failed.id
+                        failed.steps.firstOrNull { isFailedStep(it) }?.let { step ->
+                            expandedStepKey = "${failed.id}:${step.number}"
+                        }
                         ensureJobLogsLoaded(scope, context, repo, failed, jobLogs, jobStepLogs, force = true) { loadingJobId = it }
                     }
                 }
@@ -1544,6 +1631,23 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                             onSelect = {
                                 selectedAttempt = it
                                 scope.launch { refreshAll() }
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+                firstFailedJob?.let { failedJob ->
+                    item {
+                        FailureDiagnosisCard(
+                            job = failedJob,
+                            step = firstFailedStep,
+                            diagnostics = failureDiagnostics,
+                            logLoaded = jobLogs[failedJob.id] != null,
+                            loading = loadingJobId == failedJob.id,
+                            onOpenFailedLog = {
+                                expandedJobId = failedJob.id
+                                firstFailedStep?.let { step -> expandedStepKey = "${failedJob.id}:${step.number}" }
+                                ensureJobLogsLoaded(scope, context, repo, failedJob, jobLogs, jobStepLogs, force = true) { loadingJobId = it }
                             }
                         )
                         Spacer(Modifier.height(8.dp))
@@ -1784,7 +1888,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                                 Modifier.weight(1f).clickable(enabled = !artifact.expired && downloading != artifact.id) {
                                     downloading = artifact.id
                                     scope.launch {
-                                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${artifact.name}.zip")
+                                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${safeArtifactZipName(artifact)}")
                                         val ok = GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, dest)
                                         Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
                                         downloading = null
@@ -1796,10 +1900,11 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                                 Icon(Icons.Rounded.Article, null, Modifier.size(20.dp), tint = if (artifact.expired) TextTertiary else Blue)
                                 Column(Modifier.weight(1f)) {
                                     Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Text(formatArtifactSize(artifact.sizeInBytes), fontSize = 11.sp, color = TextSecondary)
-                                        if (artifact.expired) Text(Strings.ghExpired, fontSize = 11.sp, color = Color(0xFFFF3B30))
-                                        else Text(artifact.createdAt.take(10), fontSize = 11.sp, color = TextTertiary)
+                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        artifactKindBadges(artifact).forEach { (label, color) -> MiniActionsBadge(label, color) }
+                                        MiniActionsBadge(formatArtifactSize(artifact.sizeInBytes), TextSecondary)
+                                        if (artifact.expired) MiniActionsBadge(Strings.ghExpired, Color(0xFFFF3B30))
+                                        else MiniActionsBadge(artifact.createdAt.take(10), TextTertiary)
                                     }
                                 }
                             }
@@ -1855,6 +1960,48 @@ private fun WorkflowRunDetailHeader(run: GHWorkflowRun, nowMs: Long) {
             if (run.event.isNotBlank()) MiniActionsBadge(run.event, Color(0xFFBF5AF2))
             if (run.headSha.length >= 7) MiniActionsBadge(run.headSha.take(7), TextSecondary)
             if (run.headRepository.isNotBlank()) MiniActionsBadge(run.headRepository, TextSecondary)
+        }
+    }
+}
+
+@Composable
+private fun FailureDiagnosisCard(
+    job: GHJob,
+    step: GHStep?,
+    diagnostics: List<String>,
+    logLoaded: Boolean,
+    loading: Boolean,
+    onOpenFailedLog: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFFFF3B30).copy(alpha = 0.08f)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.Error, null, tint = Color(0xFFFF3B30), modifier = Modifier.size(18.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Failed build", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Text(job.name, fontSize = 12.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            TextButton(onClick = onOpenFailedLog, enabled = !loading) {
+                if (loading) CircularProgressIndicator(Modifier.size(14.dp), color = Color(0xFFFF3B30), strokeWidth = 2.dp)
+                else Text("Open failed log", color = Color(0xFFFF3B30), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        step?.let {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MiniActionsBadge("step ${it.number}", Color(0xFFFF3B30))
+                MiniActionsBadge(it.name, TextSecondary)
+            }
+        }
+        if (!logLoaded) {
+            Text("Load the failed log to see likely causes.", fontSize = 11.sp, color = TextTertiary)
+        } else if (diagnostics.isEmpty()) {
+            Text("No known pattern detected. Check the failed step output.", fontSize = 11.sp, color = TextTertiary)
+        } else {
+            diagnostics.take(3).forEach { message ->
+                Text(message, fontSize = 11.sp, color = TextSecondary, lineHeight = 15.sp)
+            }
         }
     }
 }
@@ -2088,6 +2235,56 @@ private fun isTemporaryLiveLogUnavailable(job: GHJob, log: String): Boolean {
         "not found" in normalized
 }
 
+private fun isFailedStep(step: GHStep): Boolean =
+    displayStepStatus(step) in setOf("failed", "timed out", "startup failure", "action required")
+
+private fun buildFailureDiagnostics(job: GHJob?, step: GHStep?, log: String): List<String> {
+    if (job == null) return emptyList()
+    val body = log.lowercase()
+    val messages = linkedSetOf<String>()
+    fun addIf(patterns: List<String>, message: String) {
+        if (patterns.any { it in body }) messages += message
+    }
+
+    addIf(
+        listOf("no such file or directory", "cannot stat", "not found"),
+        "Missing file/path. For kernel builds, check defconfig, device tree path, toolchain path, and artifact paths."
+    )
+    addIf(
+        listOf("defconfig", "can't find default configuration", "can't find default config"),
+        "Kernel defconfig was not found or does not match the selected device/branch."
+    )
+    addIf(
+        listOf("clang: command not found", "gcc: command not found", "aarch64-linux-android", "toolchain", "cross_compile"),
+        "Toolchain problem. Check compiler input, CROSS_COMPILE/CLANG path, and setup step."
+    )
+    addIf(
+        listOf("no space left on device", "disk quota exceeded"),
+        "Runner storage is full. Clean build outputs/cache or use a larger/self-hosted runner."
+    )
+    addIf(
+        listOf("permission denied", "operation not permitted"),
+        "Permission problem. Check executable bits, script permissions, or protected paths."
+    )
+    addIf(
+        listOf("repository not found", "authentication failed", "could not read from remote repository", "permission to"),
+        "Repository/auth problem. Check token permissions, private submodules, and checkout credentials."
+    )
+    addIf(
+        listOf("upload-artifact", "no files were found with the provided path", "path does not exist"),
+        "Artifact upload did not find output files. The build may have failed before packaging or the artifact path is wrong."
+    )
+    addIf(
+        listOf("exit code 1", "process completed with exit code", "make: ***"),
+        "Command failed in this step. Open the failed log and inspect the lines just above the exit code."
+    )
+
+    if (messages.isEmpty() && step != null) {
+        messages += "Failed step: ${step.name}. Open the log and inspect the last error block."
+    }
+    return messages.toList()
+}
+
 private fun splitLogsBySteps(job: GHJob, raw: String): Map<Int, String> {
     if (raw.isBlank()) return emptyMap()
     val lines = raw.lines()
@@ -2272,6 +2469,44 @@ private fun formatArtifactSize(bytes: Long): String {
         bytes >= kb -> String.format(Locale.US, "%.1f KB", bytes / kb)
         else -> "$bytes B"
     }
+}
+
+private fun safeArtifactZipName(artifact: GHArtifact): String {
+    val safeName = artifact.name
+        .replace(Regex("""[\\/:*?"<>|]+"""), "_")
+        .trim()
+        .ifBlank { "artifact-${artifact.id}" }
+    return "$safeName.zip"
+}
+
+private fun artifactKindBadges(artifact: GHArtifact): List<Pair<String, Color>> =
+    buildKindBadges(artifact.name)
+
+private fun buildKindBadges(text: String): List<Pair<String, Color>> {
+    val name = text.lowercase()
+    val labels = mutableListOf<Pair<String, Color>>()
+    if (listOf("kernel", "anykernel", "boot", "dtbo", "vendor_boot", "image.gz", "ak3").any { it in name }) {
+        labels += "Kernel" to Color(0xFF34C759)
+    }
+    if (listOf("magisk", "magisk-module", "magisk_module", "ksu", "kernelsu", "apatch").any { it in name }) {
+        labels += "Magisk" to Color(0xFFFF9500)
+    }
+    if (listOf("driver", "turnip", "adreno", "vulkan", "mesa").any { it in name }) {
+        labels += "Driver" to Color(0xFFBF5AF2)
+    }
+    if (listOf("apk", "aab", "android").any { it in name }) {
+        labels += "Android" to Blue
+    }
+    if (listOf("ipa", "ios", "xcarchive").any { it in name }) {
+        labels += "iOS" to Color(0xFF5AC8FA)
+    }
+    if (listOf("exe", "msi", "windows", "win64", "win32").any { it in name }) {
+        labels += "Windows" to Color(0xFF0078D4)
+    }
+    if (listOf("appimage", "deb", "rpm", "linux").any { it in name }) {
+        labels += "Linux" to Color(0xFF8E8E93)
+    }
+    return labels
 }
 
 private val ISO_FMT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
