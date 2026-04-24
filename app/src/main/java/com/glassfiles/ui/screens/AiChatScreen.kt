@@ -329,7 +329,7 @@ private fun AiSessionList(sessions: List<ChatSession>, onNew: () -> Unit, onOpen
         } else {
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(filtered) { session ->
-                    val color = session.providerType?.let { providerColor(it) } ?: Accent
+                    val color = session.providerType?.let { AiProviderType.fromProviderStorageKey(it) }?.let { providerColor(it) } ?: Accent
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Card).clickable { onOpen(session) }.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically,
