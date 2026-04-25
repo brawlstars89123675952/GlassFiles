@@ -1,6 +1,7 @@
 package com.glassfiles.ui.screens
 
 import android.content.Intent
+import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
@@ -43,8 +44,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import org.json.JSONObject
 
 // Compact mode — propagates through all sub-screens automatically
 
@@ -53,10 +60,16 @@ internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, 
 private const val README_RENDER_TAG = "ReadmeRender"
 private const val README_MAX_RENDER_BYTES = 500 * 1024
 private const val README_FETCH_TIMEOUT_MS = 10_000L
+private const val README_TOTAL_TIMEOUT_MS = 15_000L
 private const val README_IMAGE_TIMEOUT_MS = 5_000L
 private const val README_MAX_CODE_LINES = 1_000
 private const val README_MAX_TABLE_ROWS = 50
 private const val README_MAX_LINE_CHARS = 4_000
+
+// Regression test repos (must not freeze):
+// - d2phap/imageglass (large with HTML and images)
+// - microsoft/vscode (large general)
+// - public-apis/public-apis (huge table)
 
 @Composable
 internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -> Unit)? = null) {
@@ -66,6 +79,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var currentPath by remember { mutableStateOf("") }; var commits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHIssue>>(emptyList()) }; var pulls by remember { mutableStateOf<List<GHPullRequest>>(emptyList()) }
     var releases by remember { mutableStateOf<List<GHRelease>>(emptyList()) }; var readme by remember { mutableStateOf<String?>(null) }
+    var readmeBlocks by remember { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
     var readmeError by remember { mutableStateOf<String?>(null) }
     var readmeReloadNonce by remember { mutableIntStateOf(0) }
     var workflowRuns by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }; var selectedRunId by remember { mutableStateOf<Long?>(null) }
@@ -109,30 +123,60 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         RepoTab.PROJECTS -> { /* loaded inside ProjectsTab */ }
         RepoTab.README -> {
             readmeError = null
-            val fetchStart = System.currentTimeMillis()
-            var fetchFailure: Throwable? = null
-            val fetched = runCatching {
-                withTimeoutOrNull(README_FETCH_TIMEOUT_MS) {
-                    withContext(Dispatchers.IO) {
-                        GitHubManager.getReadme(context, repo.owner, repo.name)
+            readme = null
+            readmeBlocks = null
+            languages = emptyMap()
+            contributors = emptyList()
+            val loadStart = System.currentTimeMillis()
+            val loadResult = runCatching {
+                withTimeout(README_TOTAL_TIMEOUT_MS) readmeLoad@{
+                    Log.d(README_RENDER_TAG, "fetch start ${repo.owner}/${repo.name}")
+                    val fetched = withTimeout(README_FETCH_TIMEOUT_MS) {
+                        fetchReadmeForRender(context, repo.owner, repo.name)
                     }
+                    val markdownBytes = fetched.toByteArray().size
+                    Log.d(README_RENDER_TAG, "fetch complete, size=$markdownBytes bytes ${repo.owner}/${repo.name}")
+                    if (fetched.isBlank()) {
+                        readme = ""
+                        readmeBlocks = emptyList()
+                        return@readmeLoad
+                    }
+                    if (markdownBytes > README_MAX_RENDER_BYTES) {
+                        readme = fetched
+                        readmeBlocks = emptyList()
+                        readmeError = "README is too large to render safely (${ghFmtSize(markdownBytes.toLong())})."
+                        Log.w(README_RENDER_TAG, "parse skipped large README ${repo.owner}/${repo.name} bytes=$markdownBytes")
+                        return@readmeLoad
+                    }
+                    Log.d(README_RENDER_TAG, "parse start ${repo.owner}/${repo.name}")
+                    val parsed = withContext(Dispatchers.Default) { parseReadmeBlocks(fetched, repo) }
+                    Log.d(README_RENDER_TAG, "parse complete, blocks=${parsed.size} ${repo.owner}/${repo.name}")
+                    readme = fetched
+                    readmeBlocks = parsed
                 }
-            }.getOrElse {
-                fetchFailure = it
-                null
             }
-            val fetchMs = System.currentTimeMillis() - fetchStart
-            Log.d(README_RENDER_TAG, "fetch ${repo.owner}/${repo.name} ${fetchMs}ms chars=${fetched?.length ?: -1}")
-            fetchFailure?.let { Log.e(README_RENDER_TAG, "fetch failed ${repo.owner}/${repo.name}", it) }
-            if (fetched == null) {
+            val loadMs = System.currentTimeMillis() - loadStart
+            loadResult.onFailure { throwable ->
                 readme = null
-                readmeError = if (fetchFailure == null) "README load timed out" else "README load failed"
+                readmeBlocks = emptyList()
+                readmeError = "README load timed out or failed"
                 languages = emptyMap()
                 contributors = emptyList()
-            } else {
-                readme = fetched
-                languages = runCatching { withContext(Dispatchers.IO) { GitHubManager.getLanguages(context, repo.owner, repo.name) } }.getOrDefault(emptyMap())
-                contributors = runCatching { withContext(Dispatchers.IO) { GitHubManager.getContributors(context, repo.owner, repo.name) } }.getOrDefault(emptyList())
+                Log.e(README_RENDER_TAG, "README guarded load failed ${repo.owner}/${repo.name} ${loadMs}ms", throwable)
+            }.onSuccess {
+                Log.d(README_RENDER_TAG, "README guarded load complete ${repo.owner}/${repo.name} ${loadMs}ms")
+                if (!readme.isNullOrBlank() && readmeError == null) {
+                    scope.launch {
+                        languages = withTimeoutOrNull(3_000L) {
+                            withContext(Dispatchers.IO) { GitHubManager.getLanguages(context, repo.owner, repo.name) }
+                        }.orEmpty()
+                    }
+                    scope.launch {
+                        contributors = withTimeoutOrNull(3_000L) {
+                            withContext(Dispatchers.IO) { GitHubManager.getContributors(context, repo.owner, repo.name) }
+                        }.orEmpty()
+                    }
+                }
             }
         }
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
@@ -383,7 +427,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
                 }
             }
             RepoTab.PROJECTS -> ProjectsTab(repo)
-            RepoTab.README -> ReadmeTab(readme, readmeError, languages, contributors, repo) { readmeReloadNonce++ }
+            RepoTab.README -> ReadmeTab(readme, readmeBlocks, readmeError, languages, contributors, repo) { readmeReloadNonce++ }
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
     }
@@ -908,74 +952,95 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
     } } }
 }
 
+private suspend fun fetchReadmeForRender(context: Context, owner: String, repo: String): String = withContext(Dispatchers.IO) {
+    val encodedOwner = owner.encodeGithubPathPart()
+    val encodedRepo = repo.encodeGithubPathPart()
+    val url = "https://api.github.com/repos/$encodedOwner/$encodedRepo/readme"
+    val token = GitHubManager.getToken(context)
+    val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        setRequestProperty("Accept", "application/vnd.github+json")
+        setRequestProperty("User-Agent", "GlassFiles")
+        setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+        if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+        connectTimeout = README_FETCH_TIMEOUT_MS.toInt()
+        readTimeout = README_FETCH_TIMEOUT_MS.toInt()
+    }
+    try {
+        val code = connection.responseCode
+        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (code !in 200..299) {
+            Log.w(README_RENDER_TAG, "fetch HTTP $code $owner/$repo body=${body.take(160)}")
+            return@withContext ""
+        }
+        val content = JSONObject(body).optString("content", "")
+        if (content.isBlank()) ""
+        else String(android.util.Base64.decode(content.replace("\n", ""), android.util.Base64.DEFAULT))
+    } finally {
+        connection.disconnect()
+    }
+}
+
+private fun String.encodeGithubPathPart(): String =
+    URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
+
 @Composable
-internal fun ReadmeTab(readme: String?, error: String?, languages: Map<String, Long>, contributors: List<GHContributor>, repo: GHRepo, onRetry: () -> Unit) { val total = languages.values.sum().toFloat().coerceAtLeast(1f)
+private fun ReadmeTab(readme: String?, blocks: List<ReadmeRenderBlock>?, error: String?, languages: Map<String, Long>, contributors: List<GHContributor>, repo: GHRepo, onRetry: () -> Unit) {
+    val total = languages.values.sum().toFloat().coerceAtLeast(1f)
+    var rawView by remember(readme) { mutableStateOf(false) }
+    var visibleCount by remember(readme) { mutableIntStateOf(250) }
+    var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
+    val safeBlocks = blocks.orEmpty()
+    val shownBlocks = safeBlocks.take(visibleCount)
+
+    if (!readme.isNullOrBlank() && error == null && !rawView) {
+        LaunchedEffect(readme, safeBlocks.size) {
+            Log.d(README_RENDER_TAG, "render start ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+        }
+        SideEffect {
+            if (!renderCompleteLogged) {
+                Log.d(README_RENDER_TAG, "render complete ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+                renderCompleteLogged = true
+            }
+        }
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
         if (languages.isNotEmpty()) item { Text(Strings.ghLanguages, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))) { languages.forEach { (l, b) -> Box(Modifier.weight(b / total).fillMaxHeight().background(langColor(l))) } }; Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { languages.forEach { (l, b) -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { Box(Modifier.size(8.dp).clip(CircleShape).background(langColor(l))); Text("$l ${"%.1f".format(b / total * 100)}%", fontSize = 11.sp, color = TextSecondary) } } }; Spacer(Modifier.height(16.dp)) }
         if (contributors.isNotEmpty()) item { Text(Strings.ghContributors, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { contributors.forEach { c -> Column(horizontalAlignment = Alignment.CenterHorizontally) { AsyncImage(c.avatarUrl, c.login, Modifier.size(36.dp).clip(CircleShape)); Text(c.login, fontSize = 10.sp, color = TextSecondary, maxLines = 1); Text("${c.contributions}", fontSize = 9.sp, color = TextTertiary) } } }; Spacer(Modifier.height(16.dp)) }
-        item { Text(Strings.ghReadme, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
-            if (error != null) ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
-            else if (readme.isNullOrBlank()) Text(Strings.ghNoReadme, fontSize = 14.sp, color = TextTertiary)
-            else Box(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) { ReadmeMarkdownBlock(readme, repo) }
+        item {
+            Text(Strings.ghReadme, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(Modifier.height(8.dp))
         }
-    }
-}
-
-@Composable
-private fun ReadmeMarkdownBlock(markdown: String, repo: GHRepo) {
-    val context = LocalContext.current
-    var blocks by remember(markdown, repo.owner, repo.name, repo.defaultBranch) { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
-    var error by remember(markdown, repo.owner, repo.name, repo.defaultBranch) { mutableStateOf<String?>(null) }
-    var rawView by remember(markdown) { mutableStateOf(false) }
-    var visibleCount by remember(markdown) { mutableIntStateOf(250) }
-    val markdownBytes = remember(markdown) { markdown.toByteArray().size }
-
-    LaunchedEffect(markdown, repo.owner, repo.name, repo.defaultBranch) {
-        blocks = null
-        error = null
-        rawView = false
-        visibleCount = 250
-        if (markdownBytes > README_MAX_RENDER_BYTES) {
-            Log.w(README_RENDER_TAG, "skip large README ${repo.owner}/${repo.name} bytes=$markdownBytes")
-            error = "README is too large to render safely (${ghFmtSize(markdownBytes.toLong())})."
-            return@LaunchedEffect
-        }
-        val parseStart = System.currentTimeMillis()
-        runCatching {
-            withContext(Dispatchers.Default) { parseReadmeBlocks(markdown, repo) }
-        }.onSuccess { parsed ->
-            val parseMs = System.currentTimeMillis() - parseStart
-            Log.d(README_RENDER_TAG, "parse ${repo.owner}/${repo.name} ${parseMs}ms blocks=${parsed.size} bytes=$markdownBytes")
-            blocks = parsed
-        }.onFailure { throwable ->
-            val parseMs = System.currentTimeMillis() - parseStart
-            Log.e(README_RENDER_TAG, "parse failed ${repo.owner}/${repo.name} ${parseMs}ms", throwable)
-            error = "Failed to render README"
-        }
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
-            rawView -> ReadmeRawBlock(markdown)
-            error != null -> ReadmeErrorCard(error!!, markdown, repo, onViewRaw = { rawView = true })
-            blocks == null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                Text("Rendering README…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            error != null -> item {
+                ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
+            }
+            readme.isNullOrBlank() -> item {
+                Text(Strings.ghNoReadme, fontSize = 14.sp, color = TextTertiary)
+            }
+            rawView -> item {
+                Box(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) { ReadmeRawBlock(readme.orEmpty()) }
+            }
+            shownBlocks.isEmpty() -> item {
+                ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
             }
             else -> {
-                val safeBlocks = blocks.orEmpty()
-                val shown = safeBlocks.take(visibleCount)
-                val renderStart = remember(shown.size) { System.currentTimeMillis() }
-                LaunchedEffect(shown.size) {
-                    Log.d(README_RENDER_TAG, "render scheduled ${repo.owner}/${repo.name} blocks=${shown.size}/${safeBlocks.size} after=${System.currentTimeMillis() - renderStart}ms")
+                items(shownBlocks) { block ->
+                    Box(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
+                        ReadmeBlockView(block)
+                    }
+                    Spacer(Modifier.height(8.dp))
                 }
-                shown.forEach { block -> ReadmeBlockView(block) }
                 if (visibleCount < safeBlocks.size) {
-                    TextButton(onClick = { visibleCount += 250 }) {
-                        Text("Expand more README content (${safeBlocks.size - visibleCount} hidden)", color = MaterialTheme.colorScheme.primary)
+                    item {
+                        TextButton(onClick = { visibleCount += 250 }) {
+                            Text("Expand more README content (${safeBlocks.size - visibleCount} hidden)", color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
@@ -1082,17 +1147,20 @@ private fun ReadmeImage(block: ReadmeRenderBlock.Image) {
     val context = LocalContext.current
     var failed by remember(block.url) { mutableStateOf(false) }
     var loaded by remember(block.url) { mutableStateOf(false) }
+    val animatedGif = remember(block.url) { block.url.substringBefore('?').endsWith(".gif", ignoreCase = true) }
     LaunchedEffect(block.url) {
         failed = false
         loaded = false
         delay(README_IMAGE_TIMEOUT_MS)
-        if (!loaded) {
+        if (!loaded && !animatedGif) {
             Log.w(README_RENDER_TAG, "image timeout ${block.url}")
             failed = true
         }
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        if (failed) {
+        if (animatedGif) {
+            ReadmeLinkCard(block.alt.ifBlank { "Animated image skipped" }, block.url)
+        } else if (failed) {
             Text(block.alt.ifBlank { "Image unavailable" }, fontSize = 12.sp, color = TextTertiary)
         } else {
             AsyncImage(
@@ -1257,11 +1325,16 @@ private sealed class ReadmeRenderBlock {
     data class Link(val text: String, val url: String) : ReadmeRenderBlock()
 }
 
-private fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRenderBlock> {
+private suspend fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRenderBlock> {
     val blocks = mutableListOf<ReadmeRenderBlock>()
     val lines = markdown.replace("\r\n", "\n").lines()
     var i = 0
+    var guard = 0
     while (i < lines.size) {
+        if (guard++ > lines.size + 1_000) {
+            throw IllegalStateException("README parser made no forward progress near line $i")
+        }
+        if (guard % 100 == 0) yield()
         val line = lines[i].trim()
         when {
             line.isBlank() -> i++
@@ -1337,6 +1410,7 @@ private fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRender
             }
             else -> {
                 val paragraph = mutableListOf<String>()
+                val paragraphStart = i
                 while (i < lines.size) {
                     val current = lines[i].trim()
                     if (current.isBlank() || current.startsWith("#") || current.startsWith("```") || current.startsWith("~~~") ||
@@ -1346,7 +1420,12 @@ private fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRender
                     paragraph += stripReadmeHtml(current)
                     i++
                 }
-                paragraph.joinToString(" ").trim().takeIf { it.isNotBlank() }?.let { blocks += ReadmeRenderBlock.Paragraph(it) }
+                if (i == paragraphStart) {
+                    stripReadmeHtml(line).takeIf { it.isNotBlank() }?.let { blocks += ReadmeRenderBlock.Paragraph(it) }
+                    i++
+                } else {
+                    paragraph.joinToString(" ").trim().takeIf { it.isNotBlank() }?.let { blocks += ReadmeRenderBlock.Paragraph(it) }
+                }
             }
         }
     }
