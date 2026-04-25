@@ -67,20 +67,25 @@ fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -
 @Composable
 internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Unit, onMinimize: (() -> Unit)? = null, onClose: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val compact = LocalGHCompact.current
-    val shape = if (compact) RoundedCornerShape(0.dp) else RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
-    Row(Modifier.fillMaxWidth().background(SurfaceWhite, shape).padding(
-        top = if (compact) 4.dp else 48.dp, start = if (compact) 2.dp else 4.dp,
-        end = if (compact) 4.dp else 8.dp, bottom = if (compact) 4.dp else 14.dp
-    ), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onBack, modifier = Modifier.size(if (compact) 32.dp else 48.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(if (compact) 16.dp else 22.dp), tint = Blue)
+    val colors = MaterialTheme.colorScheme
+    Column(Modifier.fillMaxWidth().background(colors.surface)) {
+        Row(Modifier.fillMaxWidth().padding(
+            top = if (compact) 4.dp else 48.dp,
+            start = if (compact) 8.dp else 16.dp,
+            end = if (compact) 8.dp else 16.dp,
+            bottom = if (compact) 4.dp else 14.dp
+        ), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.size(if (compact) 32.dp else 48.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(if (compact) 16.dp else 22.dp), tint = Blue)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = if (compact) 15.sp else 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle != null && !compact) Text(subtitle, fontSize = 13.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (onMinimize != null && !compact) IconButton(onClick = onMinimize) { Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(20.dp), tint = Blue) }
+            if (onClose != null && !compact) IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = Color(0xFFFF3B30)) }
+            actions()
         }
-        Column(Modifier.weight(1f)) {
-            Text(title, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = if (compact) 15.sp else 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null && !compact) Text(subtitle, fontSize = 13.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (onMinimize != null && !compact) IconButton(onClick = onMinimize) { Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(20.dp), tint = Blue) }
-        if (onClose != null && !compact) IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = Color(0xFFFF3B30)) }
-        actions()
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outlineVariant.copy(alpha = 0.10f)))
     }
 }

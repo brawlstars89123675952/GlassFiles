@@ -1064,3 +1064,10 @@
 - Active repo tabs, branch chip, commit author/hash accents, and touched Actions status accents were moved away from `Blue`/hardcoded tints to `MaterialTheme.colorScheme.primary`, `error`, and `onSurfaceVariant`.
 - Log preview surfaces touched by the polish pass now use `surfaceVariant` / `onSurface` instead of hardcoded dark-only colors.
 - Reason: the previous gradient/shadow implementation created muddy grey card stains in Light theme and allowed user accent hue changes to leak orange into GitHub active states.
+
+### GitHub top toolbar edge cleanup
+- Fixed visible cropped-corner artifacts on GitHub top bars by using Option A edge-to-edge layout.
+- `GHTopBar()` no longer paints a rounded outer toolbar background; it now fills full width with `MaterialTheme.colorScheme.surface`.
+- Toolbar content keeps internal horizontal padding, while the outer bar touches both screen edges cleanly.
+- Repo branch/action row, tab row, and search row now use full-width surface backgrounds with internal content padding.
+- Added theme-aware 1dp bottom hairline using `outlineVariant` alpha to separate the top area from content without rounded edge artifacts.
