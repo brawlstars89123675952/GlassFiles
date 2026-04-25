@@ -93,8 +93,7 @@ fun ProfileScreen(
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
             item {
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(SurfaceWhite).padding(20.dp),
+                    Modifier.fillMaxWidth().ghGlassCard(20.dp).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     AsyncImage(
@@ -142,7 +141,7 @@ fun ProfileScreen(
             item { Spacer(Modifier.height(16.dp)) }
 
             item {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     StatCard("Repositories", "${profile!!.publicRepos}", Modifier.weight(1f))
                     StatCard("Followers", "${profile!!.followers}", Modifier.weight(1f))
                     StatCard("Following", "${profile!!.following}", Modifier.weight(1f))
@@ -174,12 +173,10 @@ fun ProfileScreen(
 @Composable
 private fun StatCard(title: String, value: String, modifier: Modifier = Modifier) {
     Column(
-        modifier = modifier.clip(RoundedCornerShape(12.dp))
-            .background(SurfaceWhite)
-            .padding(12.dp),
+        modifier = modifier.ghGlassCard(14.dp).padding(horizontal = 12.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(value, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-        Text(title, fontSize = 11.sp, color = TextSecondary)
+        Text(value, fontSize = 28.sp, fontWeight = FontWeight.Light, color = TextPrimary, lineHeight = 30.sp)
+        Text(title.uppercase(), fontSize = 10.sp, color = TextSecondary, fontWeight = FontWeight.Medium, letterSpacing = 0.7.sp, maxLines = 1)
     }
 }

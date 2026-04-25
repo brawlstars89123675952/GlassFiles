@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -12,9 +13,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -2538,8 +2541,7 @@ private fun MatrixJobGroupHeader(
     Column(
         Modifier.fillMaxWidth()
             .padding(bottom = 8.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceWhite)
+            .ghGlassCard(14.dp)
             .clickable(onClick = onToggle)
             .padding(12.dp)
     ) {
@@ -2580,128 +2582,169 @@ private fun WorkflowJobCard(
     val status = displayJobStatus(job)
     val jColor = jobStatusColor(status)
     val jobElapsed = calcJobDuration(job, nowMs)
-    Column(
-        Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp)
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp),
+        verticalAlignment = Alignment.Stretch
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(jobStatusIcon(status), null, Modifier.size(18.dp), tint = jColor)
-            Text(job.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(jobElapsed, fontSize = 10.sp, color = if (isJobActive(job)) Blue else TextTertiary)
-        }
-
-        Spacer(Modifier.height(6.dp))
-        job.steps.forEach { step ->
-            val sColor = stepStatusColor(step)
-            val stepKey = "${job.id}:${step.number}"
-            val stepLog = jobStepLogs[job.id]?.get(step.number)
-            Column(Modifier.fillMaxWidth()) {
-                Row(
-                    Modifier.fillMaxWidth().clickable {
-                        onExpandedStepChange(if (expandedStepKey == stepKey) null else stepKey)
-                        if (jobLogs[job.id] == null) {
-                            ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
-                        }
-                    }.padding(start = 8.dp, top = 3.dp, bottom = 3.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Icon(Icons.Rounded.Check, null, Modifier.size(12.dp), tint = sColor)
-                    Text(step.name, fontSize = 12.sp, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Text(displayStepStatus(step), fontSize = 10.sp, color = stepStatusColor(step))
+        Box(
+            Modifier.width(3.dp).fillMaxHeight().background(
+                when (status) {
+                    "failed", "failure", "timed_out", "action_required" -> Color(0xFFFF3B30)
+                    "running", "in_progress" -> Blue
+                    else -> Color.Transparent
                 }
-                if (expandedStepKey == stepKey) {
-                    val liveMessage = when (displayStepStatus(step)) {
-                        "queued" -> "Log not available yet."
-                        "running" -> "Waiting for live log..."
-                        else -> "No log output for this step."
-                    }
-                    val shownStepLog = compactLogForDisplay(stepLog ?: liveMessage)
-                    Box(
-                        Modifier.fillMaxWidth().padding(start = 24.dp, top = 4.dp, bottom = 6.dp)
-                            .clip(RoundedCornerShape(8.dp)).background(Color(0xFF0D1117)).padding(8.dp)
+            )
+        )
+        Column(Modifier.weight(1f).padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(jobStatusIcon(status), null, Modifier.size(18.dp), tint = jColor)
+                Text(job.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(jobElapsed, fontSize = 10.sp, color = if (isJobActive(job)) Blue else TextTertiary, fontFamily = FontFamily.Monospace, letterSpacing = 0.4.sp)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            job.steps.forEach { step ->
+                val stepStatus = displayStepStatus(step)
+                val sColor = stepStatusColor(step)
+                val stepKey = "${job.id}:${step.number}"
+                val stepLog = jobStepLogs[job.id]?.get(step.number)
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).clickable {
+                            onExpandedStepChange(if (expandedStepKey == stepKey) null else stepKey)
+                            if (jobLogs[job.id] == null) {
+                                ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
+                            }
+                        }.padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        if (jobLogs[job.id] == null || loadingJobId == job.id) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
-                        } else {
-                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                                item {
-                                    Text(
-                                        shownStepLog,
-                                        fontSize = 9.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFFC9D1D9),
-                                        lineHeight = 13.sp
-                                    )
+                        StepStatusMark(stepStatus, sColor)
+                        Text(step.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        StepStatusPill(stepStatus, sColor)
+                    }
+                    if (expandedStepKey == stepKey) {
+                        val liveMessage = when (stepStatus) {
+                            "queued" -> "Log not available yet."
+                            "running" -> "Waiting for live log..."
+                            else -> "No log output for this step."
+                        }
+                        val shownStepLog = compactLogForDisplay(stepLog ?: liveMessage)
+                        Box(
+                            Modifier.fillMaxWidth().padding(start = 28.dp, top = 4.dp, bottom = 8.dp)
+                                .clip(RoundedCornerShape(9.dp)).background(Color(0xFF0D1117)).padding(8.dp)
+                        ) {
+                            if (jobLogs[job.id] == null || loadingJobId == job.id) {
+                                CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
+                            } else {
+                                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                                    item {
+                                        Text(
+                                            shownStepLog,
+                                            fontSize = 9.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFFC9D1D9),
+                                            lineHeight = 13.sp
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            Chip(
-                if (expandedJobId == job.id) Icons.Rounded.FilterList else Icons.Rounded.Article,
-                if (expandedJobId == job.id) "Hide full log" else "Show full log"
-            ) {
-                if (expandedJobId == job.id) {
-                    onExpandedJobChange(null)
-                } else {
-                    onExpandedJobChange(job.id)
-                    ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
-                }
-            }
-            if (jobLogs[job.id] != null) {
-                Chip(Icons.Rounded.ContentCopy, "Copy full log") {
-                    val clip = android.content.ClipData.newPlainText("logs", jobLogs[job.id])
-                    (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
-                    Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
-                }
-                Chip(Icons.Rounded.Article, "Save log") {
-                    val dest = File(
-                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                        "GlassFiles_Git/${safeLogFileName(job)}.log"
-                    )
-                    val ok = saveTextFile(dest, jobLogs[job.id].orEmpty())
-                    Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
-                }
-            }
-            Chip(Icons.Rounded.Refresh, "Rerun job") {
-                scope.launch {
-                    val ok = GitHubManager.rerunJob(context, repo.owner, repo.name, job.id)
-                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                    onRefreshRun()
-                }
-            }
-            if (loadingJobId == job.id) {
-                CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
-            }
-        }
-
-        if (expandedJobId == job.id && jobLogs[job.id] != null) {
             Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0D1117)).padding(10.dp)
-            ) {
-                LazyColumn(Modifier.fillMaxWidth()) {
-                    item {
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                            Text(
-                                compactLogForDisplay(jobLogs[job.id]!!),
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color(0xFFC9D1D9),
-                                lineHeight = 13.sp
-                            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Chip(
+                    if (expandedJobId == job.id) Icons.Rounded.FilterList else Icons.Rounded.Article,
+                    if (expandedJobId == job.id) "Hide full log" else "Show full log"
+                ) {
+                    if (expandedJobId == job.id) {
+                        onExpandedJobChange(null)
+                    } else {
+                        onExpandedJobChange(job.id)
+                        ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
+                    }
+                }
+                if (jobLogs[job.id] != null) {
+                    Chip(Icons.Rounded.ContentCopy, "Copy full log") {
+                        val clip = android.content.ClipData.newPlainText("logs", jobLogs[job.id])
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                        Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
+                    }
+                    Chip(Icons.Rounded.Article, "Save log") {
+                        val dest = File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                            "GlassFiles_Git/${safeLogFileName(job)}.log"
+                        )
+                        val ok = saveTextFile(dest, jobLogs[job.id].orEmpty())
+                        Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
+                    }
+                }
+                Chip(Icons.Rounded.Refresh, "Rerun job") {
+                    scope.launch {
+                        val ok = GitHubManager.rerunJob(context, repo.owner, repo.name, job.id)
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        onRefreshRun()
+                    }
+                }
+                if (loadingJobId == job.id) {
+                    CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
+                }
+            }
+
+            if (expandedJobId == job.id && jobLogs[job.id] != null) {
+                Spacer(Modifier.height(8.dp))
+                Box(
+                    Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0D1117)).padding(10.dp)
+                ) {
+                    LazyColumn(Modifier.fillMaxWidth()) {
+                        item {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                Text(
+                                    compactLogForDisplay(jobLogs[job.id]!!),
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFFC9D1D9),
+                                    lineHeight = 13.sp
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun StepStatusMark(status: String, color: Color) {
+    when (status) {
+        "success" -> Icon(Icons.Rounded.CheckCircle, null, Modifier.size(14.dp), tint = color)
+        "failed", "timed out", "action required", "startup failure" -> Icon(Icons.Rounded.Error, null, Modifier.size(14.dp), tint = color)
+        "cancelled", "skipped" -> Icon(Icons.Rounded.Cancel, null, Modifier.size(14.dp), tint = color)
+        else -> Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+        }
+    }
+}
+
+@Composable
+private fun StepStatusPill(status: String, color: Color) {
+    Text(
+        status.uppercase(),
+        fontSize = 9.sp,
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+        letterSpacing = 0.6.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(color.copy(alpha = 0.12f))
+            .border(1.dp, color.copy(alpha = 0.35f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp)
+    )
 }
 
 private fun displayCheckStatus(checkRun: GHCheckRun): String {

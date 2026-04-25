@@ -1017,3 +1017,25 @@
 - Проверка:
   - выполнен `git diff --check`
   - локальную Android compile-проверку не запускал по просьбе пользователя
+
+### GitHub visual polish pass
+- Выполнен UI-only polish pass по GitHub module без изменений API/data/request logic.
+- Общий визуальный паттерн:
+  - добавлен `Modifier.ghGlassCard()` для GitHub cards: dark glass surface, subtle vertical depth, low-alpha border, soft accent shadow.
+  - green/accent оставлен для primary/success states, gray используется для secondary metadata.
+- `GitHubProfileModule.kt`:
+  - profile hero и stat cards получили единый glass treatment.
+  - Repositories/Followers/Following теперь читаются через numeric hierarchy: крупное легкое число + маленький uppercase label.
+- `GitHubSharedUiModule.kt`:
+  - repo cards получили более явную hierarchy: icon tile, medium title, muted description, monospace counters.
+- `GitHubRepoModule.kt`:
+  - file browser rows получили folder/file icon variation, compact metadata, monospace file sizes.
+  - commits получили hash avatar fallback, monospace short SHA, compact author/date metadata.
+  - issues и PR rows получили left status bar, state dot/icon, uppercase status labels and better scanning rhythm.
+- `GitHubActionsModule.kt`:
+  - matrix job groups and job cards use the shared glass recipe.
+  - job rows получили status-aware left accent bar, monospace duration, compact step rows.
+  - step statuses теперь rendered as icon/dot + bordered low-alpha pill instead of plain colored text.
+- Проверка:
+  - выполнен `git diff --check`
+  - локальную Android compile-проверку не запускал по просьбе пользователя

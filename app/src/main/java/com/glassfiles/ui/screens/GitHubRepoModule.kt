@@ -359,10 +359,15 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
 internal fun FilesTab(contents: List<GHContent>, onDirClick: (GHContent) -> Unit, onFileClick: (GHContent) -> Unit, onEdit: (GHContent) -> Unit, onDelete: (GHContent) -> Unit, onDownload: (GHContent) -> Unit) {
     var expanded by remember { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(contents) { item -> Column {
-        Row(Modifier.fillMaxWidth().clickable { if (item.type == "dir") onDirClick(item) else expanded = if (expanded == item.path) null else item.path }.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(if (item.type == "dir") Icons.Rounded.Folder else Icons.Rounded.InsertDriveFile, null, Modifier.size(22.dp), tint = if (item.type == "dir") FolderBlue else TextSecondary)
-            Text(item.name, fontSize = 14.sp, color = TextPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (item.type != "dir" && item.size > 0) Text(ghFmtSize(item.size), fontSize = 11.sp, color = TextTertiary)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp).clip(RoundedCornerShape(12.dp)).clickable { if (item.type == "dir") onDirClick(item) else expanded = if (expanded == item.path) null else item.path }.padding(horizontal = 12.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background((if (item.type == "dir") FolderBlue else fileTint(item.name)).copy(alpha = if (item.type == "dir") 0.14f else 0.10f)), contentAlignment = Alignment.Center) {
+                Icon(if (item.type == "dir") Icons.Rounded.Folder else fileIcon(item.name), null, Modifier.size(if (item.type == "dir") 21.dp else 18.dp), tint = if (item.type == "dir") FolderBlue else fileTint(item.name))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(item.path.substringBeforeLast("/", "").ifBlank { if (item.type == "dir") "folder" else "file" }, fontSize = 10.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (item.type != "dir" && item.size > 0) Text(ghFmtSize(item.size), fontSize = 11.sp, color = TextTertiary, fontFamily = FontFamily.Monospace)
         }
         AnimatedVisibility(expanded == item.path && item.type != "dir") { Row(Modifier.fillMaxWidth().padding(start = 50.dp, end = 16.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(Icons.Rounded.Visibility, "View") { onFileClick(item) }; Chip(Icons.Rounded.Edit, Strings.ghEditFile) { onEdit(item) }; Chip(Icons.Rounded.Download, Strings.ghDownloadFile) { onDownload(item) }; Chip(Icons.Rounded.Delete, Strings.ghDeleteFile, Color(0xFFFF3B30)) { onDelete(item) }
@@ -373,22 +378,62 @@ internal fun FilesTab(contents: List<GHContent>, onDirClick: (GHContent) -> Unit
 
 @Composable internal fun Chip(icon: ImageVector, label: String, tint: Color = Blue, onClick: () -> Unit) { Row(Modifier.clip(RoundedCornerShape(6.dp)).background(tint.copy(0.08f)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) { Icon(icon, null, Modifier.size(12.dp), tint = tint); Text(label, fontSize = 10.sp, color = tint, fontWeight = FontWeight.Medium) } }
 
+private fun fileIcon(name: String): ImageVector = when (name.substringAfterLast(".", "").lowercase()) {
+    "kt", "java", "js", "ts", "tsx", "jsx", "py", "rb", "go", "rs", "swift", "c", "cpp", "h", "html", "css", "json", "xml", "yml", "yaml" -> Icons.Rounded.Code
+    "md", "markdown", "txt" -> Icons.Rounded.Article
+    "png", "jpg", "jpeg", "gif", "webp", "svg" -> Icons.Rounded.Image
+    "zip", "apk", "jar", "tar", "gz" -> Icons.Rounded.Archive
+    else -> Icons.Rounded.InsertDriveFile
+}
+
+private fun fileTint(name: String): Color = when (name.substringAfterLast(".", "").lowercase()) {
+    "kt" -> Color(0xFFA97BFF)
+    "java" -> Color(0xFFB07219)
+    "js", "jsx" -> Color(0xFFF1E05A)
+    "ts", "tsx" -> Color(0xFF3178C6)
+    "md", "markdown" -> Blue
+    "png", "jpg", "jpeg", "gif", "webp", "svg" -> Color(0xFF34C759)
+    else -> TextSecondary
+}
+
 @Composable
 internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, onClick: (GHCommit) -> Unit) { LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(commits) { c ->
-    Row(Modifier.fillMaxWidth().clickable { onClick(c) }.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(32.dp).clip(CircleShape).background(Blue.copy(0.1f)), contentAlignment = Alignment.Center) { Text(c.sha.take(2), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Blue) }
-        Column(Modifier.weight(1f)) { Text(c.message.lines().first(), fontSize = 14.sp, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text(c.author, fontSize = 11.sp, color = Blue); Text(c.sha, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextTertiary); Text(c.date.take(10), fontSize = 11.sp, color = TextTertiary) } }
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).ghGlassCard(14.dp).clickable { onClick(c) }.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
+        if (c.avatarUrl.isNotBlank()) AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
+        else Box(Modifier.size(34.dp).clip(CircleShape).background(Blue.copy(0.12f)), contentAlignment = Alignment.Center) { Text(c.sha.take(2).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Blue, letterSpacing = 0.6.sp) }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(c.message.lines().firstOrNull().orEmpty(), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Text(c.author.ifBlank { "unknown" }, fontSize = 11.sp, color = Blue, fontWeight = FontWeight.Medium)
+                Text(c.sha.take(7), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextTertiary, letterSpacing = 0.5.sp)
+                Text(c.date.take(10), fontSize = 11.sp, color = TextTertiary)
+            }
+        }
         Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
-    }; Box(Modifier.fillMaxWidth().padding(start = 58.dp).height(0.5.dp).background(SeparatorColor))
+    }
 }; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
 
 @Composable
 internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -> Unit, onClick: (GHIssue) -> Unit) { LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(issues) { issue ->
-    Row(Modifier.fillMaxWidth().clickable { onClick(issue) }.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-        Icon(if (issue.isPR) Icons.Rounded.CallMerge else if (issue.state == "open") Icons.Rounded.RadioButtonUnchecked else Icons.Rounded.CheckCircle, null, Modifier.size(20.dp), tint = if (issue.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93))
-        Column(Modifier.weight(1f)) { Text(issue.title, fontSize = 14.sp, color = TextPrimary, maxLines = 2); Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { Text("#${issue.number}", fontSize = 11.sp, color = TextTertiary); Text(issue.author, fontSize = 11.sp, color = Blue); if (issue.comments > 0) Text("${issue.comments} comments", fontSize = 11.sp, color = TextTertiary) } }
-        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
-    }; Box(Modifier.fillMaxWidth().padding(start = 46.dp).height(0.5.dp).background(SeparatorColor))
+    val stateColor = if (issue.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onClick(issue) }, verticalAlignment = Alignment.Stretch) {
+        Box(Modifier.width(3.dp).fillMaxHeight().background(stateColor))
+        Row(Modifier.weight(1f).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+            Box(Modifier.size(26.dp).clip(CircleShape).background(stateColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(issue.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 2, lineHeight = 18.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("#${issue.number}", fontSize = 11.sp, color = TextTertiary, fontFamily = FontFamily.Monospace)
+                    Text(issue.author, fontSize = 11.sp, color = Blue, fontWeight = FontWeight.Medium)
+                    Text(if (issue.isPR) "PR" else issue.state.uppercase(), fontSize = 10.sp, color = stateColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                    if (issue.comments > 0) Text("${issue.comments} comments", fontSize = 11.sp, color = TextTertiary)
+                }
+            }
+            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
+        }
+    }
 }; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
 
 @Composable
@@ -406,53 +451,57 @@ internal fun PullsTab(
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
         items(pulls) { pr ->
-            Column(Modifier.fillMaxWidth().clickable { onOpenDetail(pr) }.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-                    Icon(
-                        Icons.Rounded.CallMerge, null, Modifier.size(20.dp),
-                        tint = when {
-                            pr.merged -> Color(0xFF8957E5)
-                            pr.state == "open" -> Color(0xFF34C759)
-                            else -> Color(0xFF8E8E93)
+            val prColor = when {
+                pr.merged -> Color(0xFF8957E5)
+                pr.state == "open" -> Color(0xFF34C759)
+                else -> Color(0xFF8E8E93)
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onOpenDetail(pr) }, verticalAlignment = Alignment.Stretch) {
+                Box(Modifier.width(3.dp).fillMaxHeight().background(prColor))
+                Column(Modifier.weight(1f).padding(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(prColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.CallMerge, null, Modifier.size(16.dp), tint = prColor)
                         }
-                    )
-                    Column(Modifier.weight(1f)) {
-                        Text(pr.title, fontSize = 14.sp, color = TextPrimary, maxLines = 2)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("#${pr.number}", fontSize = 11.sp, color = TextTertiary)
-                            Text("${pr.head} → ${pr.base}", fontSize = 11.sp, color = Blue)
-                            Text(pr.author, fontSize = 11.sp, color = TextSecondary)
-                            if (pr.draft) Text("Draft", fontSize = 11.sp, color = TextTertiary)
-                            if (pr.reviewComments > 0) Text("${pr.reviewComments} review comments", fontSize = 11.sp, color = TextTertiary)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(pr.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, lineHeight = 18.sp, maxLines = 2)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                                Text("#${pr.number}", fontSize = 11.sp, color = TextTertiary, fontFamily = FontFamily.Monospace)
+                                Text("${pr.head} → ${pr.base}", fontSize = 11.sp, color = Blue, fontFamily = FontFamily.Monospace)
+                                Text(pr.author, fontSize = 11.sp, color = TextSecondary)
+                                Text(if (pr.merged) "MERGED" else pr.state.uppercase(), fontSize = 10.sp, color = prColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                                if (pr.draft) Text("DRAFT", fontSize = 10.sp, color = TextTertiary, letterSpacing = 0.6.sp)
+                                if (pr.reviewComments > 0) Text("${pr.reviewComments} review comments", fontSize = 11.sp, color = TextTertiary)
+                            }
                         }
-                        if (pr.body.isNotBlank()) {
-                            Text(
-                                pr.body.replace("\n", " ").take(140),
-                                fontSize = 11.sp,
-                                color = TextTertiary,
-                                maxLines = 2,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Chip(Icons.Rounded.Visibility, "Details", Blue) { onOpenDetail(pr) }
-                            Chip(Icons.Rounded.Article, "Files") { onFilesClick(pr.number) }
-                            Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
-                            Chip(Icons.Rounded.FactCheck, "Checks") { checkRunTarget = pr }
-                            if (pr.state == "open" && !pr.merged && !pr.draft) {
-                                Chip(Icons.Rounded.CallMerge, Strings.ghMerge, Color(0xFF34C759)) {
-                                    scope.launch {
-                                        val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
-                                        Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show()
-                                        if (ok) onRefresh()
-                                    }
+                    }
+                    if (pr.body.isNotBlank()) {
+                        Text(
+                            pr.body.replace("\n", " ").take(140),
+                            fontSize = 11.sp,
+                            color = TextTertiary,
+                            maxLines = 2,
+                            lineHeight = 16.sp,
+                            modifier = Modifier.padding(top = 8.dp, start = 38.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 38.dp).horizontalScroll(rememberScrollState())) {
+                        Chip(Icons.Rounded.Visibility, "Details", Blue) { onOpenDetail(pr) }
+                        Chip(Icons.Rounded.Article, "Files") { onFilesClick(pr.number) }
+                        Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
+                        Chip(Icons.Rounded.FactCheck, "Checks") { checkRunTarget = pr }
+                        if (pr.state == "open" && !pr.merged && !pr.draft) {
+                            Chip(Icons.Rounded.CallMerge, Strings.ghMerge, Color(0xFF34C759)) {
+                                scope.launch {
+                                    val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
+                                    Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show()
+                                    if (ok) onRefresh()
                                 }
                             }
                         }
                     }
                 }
-                Box(Modifier.fillMaxWidth().padding(top = 10.dp).height(0.5.dp).background(SeparatorColor))
             }
         }
     }
