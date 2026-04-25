@@ -2579,10 +2579,7 @@ private fun WorkflowJobCard(
     val status = displayJobStatus(job)
     val jColor = jobStatusColor(status)
     val jobElapsed = calcJobDuration(job, nowMs)
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp),
-        verticalAlignment = Alignment.Stretch
-    ) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp)) {
         Box(
             Modifier.width(3.dp).fillMaxHeight().background(
                 when (status) {

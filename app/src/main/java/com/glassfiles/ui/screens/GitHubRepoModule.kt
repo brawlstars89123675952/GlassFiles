@@ -416,7 +416,7 @@ internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: (
 @Composable
 internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -> Unit, onClick: (GHIssue) -> Unit) { LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(issues) { issue ->
     val stateColor = if (issue.state == "open") Color(0xFF34C759) else Color(0xFF8E8E93)
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onClick(issue) }, verticalAlignment = Alignment.Stretch) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onClick(issue) }) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(stateColor))
         Row(Modifier.weight(1f).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
             Box(Modifier.size(26.dp).clip(CircleShape).background(stateColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
@@ -456,7 +456,7 @@ internal fun PullsTab(
                 pr.state == "open" -> Color(0xFF34C759)
                 else -> Color(0xFF8E8E93)
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onOpenDetail(pr) }, verticalAlignment = Alignment.Stretch) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onOpenDetail(pr) }) {
                 Box(Modifier.width(3.dp).fillMaxHeight().background(prColor))
                 Column(Modifier.weight(1f).padding(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
