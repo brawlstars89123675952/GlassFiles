@@ -3,6 +3,7 @@ package com.glassfiles.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
@@ -34,15 +35,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.*
 import com.glassfiles.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 // Compact mode — propagates through all sub-screens automatically
 
 internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, PROJECTS, README, CODE_SEARCH }
+
+private const val README_RENDER_TAG = "ReadmeRender"
+private const val README_MAX_RENDER_BYTES = 500 * 1024
+private const val README_FETCH_TIMEOUT_MS = 10_000L
+private const val README_IMAGE_TIMEOUT_MS = 5_000L
+private const val README_MAX_CODE_LINES = 1_000
+private const val README_MAX_TABLE_ROWS = 50
+private const val README_MAX_LINE_CHARS = 4_000
 
 @Composable
 internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -> Unit)? = null) {
@@ -52,6 +66,8 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var currentPath by remember { mutableStateOf("") }; var commits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHIssue>>(emptyList()) }; var pulls by remember { mutableStateOf<List<GHPullRequest>>(emptyList()) }
     var releases by remember { mutableStateOf<List<GHRelease>>(emptyList()) }; var readme by remember { mutableStateOf<String?>(null) }
+    var readmeError by remember { mutableStateOf<String?>(null) }
+    var readmeReloadNonce by remember { mutableIntStateOf(0) }
     var workflowRuns by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }; var selectedRunId by remember { mutableStateOf<Long?>(null) }
     var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }; var showDispatch by remember { mutableStateOf(false) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
@@ -83,7 +99,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
     var pullsPage by remember { mutableIntStateOf(1) }; var pullsHasMore by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) { isStarred = GitHubManager.isStarred(context, repo.owner, repo.name); isWatching = GitHubManager.isWatching(context, repo.owner, repo.name); branches = GitHubManager.getBranches(context, repo.owner, repo.name) }
-    LaunchedEffect(selectedTab, currentPath, selectedBranch) { loading = true; when (selectedTab) {
+    LaunchedEffect(selectedTab, currentPath, selectedBranch, readmeReloadNonce) { loading = true; when (selectedTab) {
         RepoTab.FILES -> contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch)
         RepoTab.COMMITS -> { commitsPage = 1; val r = GitHubManager.getCommits(context, repo.owner, repo.name, 1); commits = r; commitsHasMore = r.size >= 30 }
         RepoTab.ISSUES -> { issuesPage = 1; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = 1); issues = r; issuesHasMore = r.size >= 30 }
@@ -91,7 +107,34 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
         RepoTab.RELEASES -> releases = GitHubManager.getReleases(context, repo.owner, repo.name)
         RepoTab.ACTIONS, RepoTab.BUILDS -> { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name); workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name) }
         RepoTab.PROJECTS -> { /* loaded inside ProjectsTab */ }
-        RepoTab.README -> { readme = GitHubManager.getReadme(context, repo.owner, repo.name); languages = GitHubManager.getLanguages(context, repo.owner, repo.name); contributors = GitHubManager.getContributors(context, repo.owner, repo.name) }
+        RepoTab.README -> {
+            readmeError = null
+            val fetchStart = System.currentTimeMillis()
+            var fetchFailure: Throwable? = null
+            val fetched = runCatching {
+                withTimeoutOrNull(README_FETCH_TIMEOUT_MS) {
+                    withContext(Dispatchers.IO) {
+                        GitHubManager.getReadme(context, repo.owner, repo.name)
+                    }
+                }
+            }.getOrElse {
+                fetchFailure = it
+                null
+            }
+            val fetchMs = System.currentTimeMillis() - fetchStart
+            Log.d(README_RENDER_TAG, "fetch ${repo.owner}/${repo.name} ${fetchMs}ms chars=${fetched?.length ?: -1}")
+            fetchFailure?.let { Log.e(README_RENDER_TAG, "fetch failed ${repo.owner}/${repo.name}", it) }
+            if (fetched == null) {
+                readme = null
+                readmeError = if (fetchFailure == null) "README load timed out" else "README load failed"
+                languages = emptyMap()
+                contributors = emptyList()
+            } else {
+                readme = fetched
+                languages = runCatching { withContext(Dispatchers.IO) { GitHubManager.getLanguages(context, repo.owner, repo.name) } }.getOrDefault(emptyMap())
+                contributors = runCatching { withContext(Dispatchers.IO) { GitHubManager.getContributors(context, repo.owner, repo.name) } }.getOrDefault(emptyList())
+            }
+        }
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
     }; loading = false }
 
@@ -340,7 +383,7 @@ internal fun RepoDetailScreen(repo: GHRepo, onBack: () -> Unit, onMinimize: () -
                 }
             }
             RepoTab.PROJECTS -> ProjectsTab(repo)
-            RepoTab.README -> ReadmeTab(readme, languages, contributors, repo)
+            RepoTab.README -> ReadmeTab(readme, readmeError, languages, contributors, repo) { readmeReloadNonce++ }
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
     }
@@ -866,7 +909,7 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
 }
 
 @Composable
-internal fun ReadmeTab(readme: String?, languages: Map<String, Long>, contributors: List<GHContributor>, repo: GHRepo) { val total = languages.values.sum().toFloat().coerceAtLeast(1f)
+internal fun ReadmeTab(readme: String?, error: String?, languages: Map<String, Long>, contributors: List<GHContributor>, repo: GHRepo, onRetry: () -> Unit) { val total = languages.values.sum().toFloat().coerceAtLeast(1f)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
         if (languages.isNotEmpty()) item { Text(Strings.ghLanguages, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))) { languages.forEach { (l, b) -> Box(Modifier.weight(b / total).fillMaxHeight().background(langColor(l))) } }; Spacer(Modifier.height(8.dp))
@@ -874,7 +917,8 @@ internal fun ReadmeTab(readme: String?, languages: Map<String, Long>, contributo
         if (contributors.isNotEmpty()) item { Text(Strings.ghContributors, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { contributors.forEach { c -> Column(horizontalAlignment = Alignment.CenterHorizontally) { AsyncImage(c.avatarUrl, c.login, Modifier.size(36.dp).clip(CircleShape)); Text(c.login, fontSize = 10.sp, color = TextSecondary, maxLines = 1); Text("${c.contributions}", fontSize = 9.sp, color = TextTertiary) } } }; Spacer(Modifier.height(16.dp)) }
         item { Text(Strings.ghReadme, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary); Spacer(Modifier.height(8.dp))
-            if (readme.isNullOrBlank()) Text(Strings.ghNoReadme, fontSize = 14.sp, color = TextTertiary)
+            if (error != null) ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
+            else if (readme.isNullOrBlank()) Text(Strings.ghNoReadme, fontSize = 14.sp, color = TextTertiary)
             else Box(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) { ReadmeMarkdownBlock(readme, repo) }
         }
     }
@@ -882,9 +926,60 @@ internal fun ReadmeTab(readme: String?, languages: Map<String, Long>, contributo
 
 @Composable
 private fun ReadmeMarkdownBlock(markdown: String, repo: GHRepo) {
-    val blocks = remember(markdown, repo.owner, repo.name, repo.defaultBranch) { parseReadmeBlocks(markdown, repo) }
+    val context = LocalContext.current
+    var blocks by remember(markdown, repo.owner, repo.name, repo.defaultBranch) { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
+    var error by remember(markdown, repo.owner, repo.name, repo.defaultBranch) { mutableStateOf<String?>(null) }
+    var rawView by remember(markdown) { mutableStateOf(false) }
+    var visibleCount by remember(markdown) { mutableIntStateOf(250) }
+    val markdownBytes = remember(markdown) { markdown.toByteArray().size }
+
+    LaunchedEffect(markdown, repo.owner, repo.name, repo.defaultBranch) {
+        blocks = null
+        error = null
+        rawView = false
+        visibleCount = 250
+        if (markdownBytes > README_MAX_RENDER_BYTES) {
+            Log.w(README_RENDER_TAG, "skip large README ${repo.owner}/${repo.name} bytes=$markdownBytes")
+            error = "README is too large to render safely (${ghFmtSize(markdownBytes.toLong())})."
+            return@LaunchedEffect
+        }
+        val parseStart = System.currentTimeMillis()
+        runCatching {
+            withContext(Dispatchers.Default) { parseReadmeBlocks(markdown, repo) }
+        }.onSuccess { parsed ->
+            val parseMs = System.currentTimeMillis() - parseStart
+            Log.d(README_RENDER_TAG, "parse ${repo.owner}/${repo.name} ${parseMs}ms blocks=${parsed.size} bytes=$markdownBytes")
+            blocks = parsed
+        }.onFailure { throwable ->
+            val parseMs = System.currentTimeMillis() - parseStart
+            Log.e(README_RENDER_TAG, "parse failed ${repo.owner}/${repo.name} ${parseMs}ms", throwable)
+            error = "Failed to render README"
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        blocks.forEach { block -> ReadmeBlockView(block) }
+        when {
+            rawView -> ReadmeRawBlock(markdown)
+            error != null -> ReadmeErrorCard(error!!, markdown, repo, onViewRaw = { rawView = true })
+            blocks == null -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                Text("Rendering README…", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            else -> {
+                val safeBlocks = blocks.orEmpty()
+                val shown = safeBlocks.take(visibleCount)
+                val renderStart = remember(shown.size) { System.currentTimeMillis() }
+                LaunchedEffect(shown.size) {
+                    Log.d(README_RENDER_TAG, "render scheduled ${repo.owner}/${repo.name} blocks=${shown.size}/${safeBlocks.size} after=${System.currentTimeMillis() - renderStart}ms")
+                }
+                shown.forEach { block -> ReadmeBlockView(block) }
+                if (visibleCount < safeBlocks.size) {
+                    TextButton(onClick = { visibleCount += 250 }) {
+                        Text("Expand more README content (${safeBlocks.size - visibleCount} hidden)", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -921,6 +1016,41 @@ private fun ReadmeBlockView(block: ReadmeRenderBlock) {
 }
 
 @Composable
+private fun ReadmeErrorCard(message: String, raw: String, repo: GHRepo, onViewRaw: (() -> Unit)? = null, onRetry: (() -> Unit)? = null) {
+    val context = LocalContext.current
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(message, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+        Text("README rendering was stopped to keep the app responsive.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            if (onRetry != null) Chip(Icons.Rounded.Refresh, "Retry", MaterialTheme.colorScheme.primary, onRetry)
+            if (raw.isNotBlank() && onViewRaw != null) Chip(Icons.Rounded.Article, "View raw", MaterialTheme.colorScheme.primary, onViewRaw)
+            Chip(Icons.Rounded.OpenInNew, "Open in browser", MaterialTheme.colorScheme.primary) { context.openReadmeUrl(readmeBrowserUrl(repo)) }
+        }
+    }
+}
+
+@Composable
+private fun ReadmeRawBlock(markdown: String) {
+    val preview = remember(markdown) { markdown.lineSequence().take(500).joinToString("\n") { it.take(README_MAX_LINE_CHARS) } }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(10.dp)) {
+        Text(
+            preview,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface,
+            lineHeight = 15.sp
+        )
+        if (markdown.lines().size > 500) {
+            Spacer(Modifier.height(8.dp))
+            Text("Raw preview truncated to first 500 lines.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
 private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val annotated = readmeInlineAnnotated(text)
@@ -949,16 +1079,35 @@ private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolea
 
 @Composable
 private fun ReadmeImage(block: ReadmeRenderBlock.Image) {
+    val context = LocalContext.current
     var failed by remember(block.url) { mutableStateOf(false) }
+    var loaded by remember(block.url) { mutableStateOf(false) }
+    LaunchedEffect(block.url) {
+        failed = false
+        loaded = false
+        delay(README_IMAGE_TIMEOUT_MS)
+        if (!loaded) {
+            Log.w(README_RENDER_TAG, "image timeout ${block.url}")
+            failed = true
+        }
+    }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         if (failed) {
             Text(block.alt.ifBlank { "Image unavailable" }, fontSize = 12.sp, color = TextTertiary)
         } else {
             AsyncImage(
-                model = block.url,
+                model = ImageRequest.Builder(context)
+                    .data(block.url)
+                    .size(2048, 2048)
+                    .crossfade(false)
+                    .build(),
                 contentDescription = block.alt,
                 modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight),
-                onError = { failed = true }
+                onSuccess = { loaded = true },
+                onError = {
+                    loaded = true
+                    failed = true
+                }
             )
         }
     }
@@ -967,9 +1116,15 @@ private fun ReadmeImage(block: ReadmeRenderBlock.Image) {
 @Composable
 private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF161B22)).border(0.5.dp, SeparatorColor, RoundedCornerShape(10.dp))) {
+    var expanded by remember(block.code) { mutableStateOf(false) }
+    val lines = remember(block.code, expanded) {
+        val allLines = block.code.lines()
+        if (expanded || allLines.size <= README_MAX_CODE_LINES) allLines else allLines.take(120)
+    }
+    val totalLines = remember(block.code) { block.code.lines().size }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).border(0.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(block.language.ifBlank { "code" }, fontSize = 11.sp, color = TextTertiary, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text("${block.language.ifBlank { "code" }} · $totalLines lines", fontSize = 11.sp, color = TextTertiary, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             IconButton(modifier = Modifier.size(30.dp), onClick = {
                 val clip = android.content.ClipData.newPlainText("readme-code", block.code)
                 (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
@@ -979,9 +1134,10 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
             }
         }
         Column(Modifier.horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            block.code.lines().forEach { line ->
-                Text(line.ifEmpty { " " }, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFE6EDF3), lineHeight = 17.sp)
+            lines.forEach { line ->
+                Text(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface, lineHeight = 17.sp)
             }
+            if (!expanded && totalLines > README_MAX_CODE_LINES) TextButton(onClick = { expanded = true }) { Text("Expand large code block", color = MaterialTheme.colorScheme.primary) }
         }
     }
 }
@@ -989,9 +1145,11 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
 @Composable
 private fun ReadmeTable(rows: List<List<String>>) {
     if (rows.isEmpty()) return
+    var expanded by remember(rows) { mutableStateOf(false) }
+    val visibleRows = if (expanded || rows.size <= README_MAX_TABLE_ROWS) rows else rows.take(README_MAX_TABLE_ROWS)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).clip(RoundedCornerShape(10.dp)).border(0.5.dp, SeparatorColor, RoundedCornerShape(10.dp))) {
         Column {
-            rows.forEachIndexed { rowIndex, row ->
+            visibleRows.forEachIndexed { rowIndex, row ->
                 Row(Modifier.background(if (rowIndex == 0) SurfaceLight else SurfaceWhite)) {
                     row.forEach { cell ->
                         Text(
@@ -1004,7 +1162,12 @@ private fun ReadmeTable(rows: List<List<String>>) {
                         )
                     }
                 }
-                if (rowIndex != rows.lastIndex) Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
+                if (rowIndex != visibleRows.lastIndex) Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
+            }
+            if (!expanded && rows.size > README_MAX_TABLE_ROWS) {
+                TextButton(onClick = { expanded = true }) {
+                    Text("Expand large table (${rows.size - README_MAX_TABLE_ROWS} rows hidden)", color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
@@ -1108,7 +1271,7 @@ private fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRender
                 val code = mutableListOf<String>()
                 i++
                 while (i < lines.size && !lines[i].trimStart().startsWith(fence)) {
-                    code += lines[i].trimEnd()
+                    code += lines[i].trimEnd().take(README_MAX_LINE_CHARS)
                     i++
                 }
                 if (i < lines.size) i++
@@ -1243,6 +1406,12 @@ private fun stripReadmeHtml(text: String): String =
         .replace(Regex("<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", RegexOption.IGNORE_CASE), "[$2]($1)")
         .replace(Regex("<[^>]+>"), "")
         .trim()
+        .let { readmeSafeText(it) }
+
+private fun readmeSafeText(text: String): String =
+    text.lineSequence().joinToString("\n") { line ->
+        if (line.length <= README_MAX_LINE_CHARS) line else line.take(README_MAX_LINE_CHARS) + "…"
+    }
 
 private fun readmeResolveUrl(raw: String, repo: GHRepo): String {
     val url = raw.trim()
@@ -1252,6 +1421,9 @@ private fun readmeResolveUrl(raw: String, repo: GHRepo): String {
     if (url.startsWith("/")) return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}$url"
     return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}/$url"
 }
+
+private fun readmeBrowserUrl(repo: GHRepo): String =
+    "https://github.com/${repo.owner}/${repo.name}#readme"
 
 private fun android.content.Context.openReadmeUrl(url: String) {
     if (url.isBlank() || url.startsWith("#")) return

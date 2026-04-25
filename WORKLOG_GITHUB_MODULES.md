@@ -1071,3 +1071,16 @@
 - Toolbar content keeps internal horizontal padding, while the outer bar touches both screen edges cleanly.
 - Repo branch/action row, tab row, and search row now use full-width surface backgrounds with internal content padding.
 - Added theme-aware 1dp bottom hairline using `outlineVariant` alpha to separate the top area from content without rounded edge artifacts.
+
+### README freeze safeguard pass
+- Fixed likely freeze culprit in external repository README view: markdown parsing was happening synchronously inside composition via `remember { parseReadmeBlocks(...) }`.
+- README parsing now runs off the main thread on `Dispatchers.Default`, with Logcat timing under tag `ReadmeRender`.
+- README fetch in `RepoTab.README` now runs on `Dispatchers.IO` with a 10 second timeout wrapper and fetch timing logs.
+- Rendering safeguards added:
+  - README render cap at 500 KB with browser fallback.
+  - parser/render fallback card with `Retry`, `View raw`, and `Open in browser`.
+  - embedded image requests are constrained to 2048px and fail visually after 5 seconds.
+  - code blocks larger than 1000 lines and tables larger than 50 rows render as previews with expand controls.
+  - long README lines are truncated before text layout to avoid massive single-line Compose stalls.
+  - README content renders incrementally in batches instead of composing every parsed block at once.
+- Root cause identified: heavy markdown parsing/render preparation on the Compose main thread, amplified by huge tables/code/list READMEs from third-party repos.
