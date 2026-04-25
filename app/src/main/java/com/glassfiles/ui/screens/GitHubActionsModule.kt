@@ -692,10 +692,10 @@ private fun ActionsOverviewHeader(
                 .padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            StatCard(Modifier.weight(1f), "Total", totalRuns.toString(), Icons.Rounded.Timeline, Blue)
-            StatCard(Modifier.weight(1f), "Active", activeCount.toString(), Icons.Rounded.FlashOn, Blue)
-            StatCard(Modifier.weight(1f), "Success", successCount.toString(), Icons.Rounded.CheckCircle, Green)
-            StatCard(Modifier.weight(1f), "Failed", failedCount.toString(), Icons.Rounded.Error, Red)
+            StatCard("Total", totalRuns.toString(), Icons.Rounded.Timeline, Blue, modifier = Modifier.weight(1f))
+            StatCard("Active", activeCount.toString(), Icons.Rounded.FlashOn, Blue, modifier = Modifier.weight(1f))
+            StatCard("Success", successCount.toString(), Icons.Rounded.CheckCircle, Green, modifier = Modifier.weight(1f))
+            StatCard("Failed", failedCount.toString(), Icons.Rounded.Error, Red, modifier = Modifier.weight(1f))
         }
 
         Spacer(Modifier.height(8.dp))
@@ -883,11 +883,11 @@ private fun InputGroup(label: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun StatCard(
-    modifier: Modifier = Modifier,
     label: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    color: Color
+    color: Color,
+    modifier: Modifier = Modifier
 ) {
     val colors = MaterialTheme.colorScheme
     Column(
