@@ -189,7 +189,7 @@ internal fun RulesetsScreen(
 
 @Composable
 private fun RulesetsSummaryCard(rulesets: List<GHRuleset>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = Blue)
             Text("Repository rules", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -208,7 +208,7 @@ private fun RulesetsSummaryCard(rulesets: List<GHRuleset>) {
 private fun RulesetCard(ruleset: GHRuleset, onDetails: () -> Unit, onOpen: () -> Unit) {
     val enforcementColor = rulesetColor(ruleset.enforcement)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = enforcementColor)
@@ -440,7 +440,7 @@ private fun RulesetEditorDialog(
 @Composable
 private fun RulesetDetailSummaryCard(detail: GHRulesetDetail) {
     val color = rulesetColor(detail.enforcement)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = color)
             Column(Modifier.weight(1f)) {
@@ -459,7 +459,7 @@ private fun RulesetDetailSummaryCard(detail: GHRulesetDetail) {
 
 @Composable
 private fun RulesetConditionsCard(detail: GHRulesetDetail) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Conditions", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         if (detail.refNameIncludes.isEmpty() && detail.refNameExcludes.isEmpty()) {
             Text("No ref name conditions returned", fontSize = 12.sp, color = TextTertiary)
@@ -472,7 +472,7 @@ private fun RulesetConditionsCard(detail: GHRulesetDetail) {
 
 @Composable
 private fun RulesetRulesCard(rules: List<GHRulesetRule>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Rules", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         if (rules.isEmpty()) {
             Text("No rules returned", fontSize = 12.sp, color = TextTertiary)
@@ -492,7 +492,7 @@ private fun RulesetRulesCard(rules: List<GHRulesetRule>) {
 
 @Composable
 private fun RulesetBypassActorsCard(actors: List<GHRulesetBypassActor>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Bypass actors", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         if (actors.isEmpty()) {
             Text("No bypass actors", fontSize = 12.sp, color = TextTertiary)
@@ -511,7 +511,7 @@ private fun RulesetBypassActorsCard(actors: List<GHRulesetBypassActor>) {
 
 @Composable
 private fun RuleSuitesCard(suites: List<GHRuleSuite>, onOpen: (GHRuleSuite) -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Recent rule suites", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         if (suites.isEmpty()) {
             Text("No rule suites returned", fontSize = 12.sp, color = TextTertiary)
@@ -891,7 +891,7 @@ internal fun SecurityScreen(
 private fun SecuritySummaryCard(alerts: List<GHDependabotAlert>) {
     val open = alerts.count { it.state.equals("open", true) }
     val criticalHigh = alerts.count { it.severity.equals("critical", true) || it.severity.equals("high", true) }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Security, null, Modifier.size(20.dp), tint = if (criticalHigh > 0) Color(0xFFFF3B30) else Blue)
             Text("Dependabot alerts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -911,7 +911,7 @@ private fun SecuritySummaryCard(alerts: List<GHDependabotAlert>) {
 private fun CodeScanningSummaryCard(alerts: List<GHCodeScanningAlert>) {
     val open = alerts.count { it.state.equals("open", true) }
     val highRisk = alerts.count { it.severity.equals("critical", true) || it.severity.equals("high", true) || it.severity.equals("error", true) }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.BugReport, null, Modifier.size(20.dp), tint = if (highRisk > 0) Color(0xFFFF3B30) else Blue)
             Text("Code scanning alerts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -931,7 +931,7 @@ private fun CodeScanningSummaryCard(alerts: List<GHCodeScanningAlert>) {
 private fun SecretScanningSummaryCard(alerts: List<GHSecretScanningAlert>) {
     val open = alerts.count { it.state.equals("open", true) }
     val public = alerts.count { it.public }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.VpnKey, null, Modifier.size(20.dp), tint = if (open > 0) Color(0xFFFF3B30) else Blue)
             Text("Secret scanning alerts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -950,7 +950,7 @@ private fun SecretScanningSummaryCard(alerts: List<GHSecretScanningAlert>) {
 private fun AdvisorySummaryCard(advisories: List<GHRepositorySecurityAdvisory>) {
     val open = advisories.count { it.state.equals("draft", true) || it.state.equals("published", true) }
     val highRisk = advisories.count { it.severity.equals("critical", true) || it.severity.equals("high", true) }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.GppMaybe, null, Modifier.size(20.dp), tint = if (highRisk > 0) Color(0xFFFF3B30) else Blue)
             Text("Security advisories", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -974,7 +974,7 @@ private fun SecuritySettingsCard(
     onToggleVulnerabilityAlerts: (Boolean) -> Unit,
     onTogglePrivateReporting: (Boolean) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.AdminPanelSettings, null, Modifier.size(20.dp), tint = Blue)
             Column(Modifier.weight(1f)) {
@@ -1020,7 +1020,7 @@ private fun CommunityProfileCard(profile: GHCommunityProfile?, onOpenDocs: () ->
         health >= 50 -> Color(0xFFFF9500)
         else -> Color(0xFFFF3B30)
     }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.FactCheck, null, Modifier.size(20.dp), tint = healthColor)
             Column(Modifier.weight(1f)) {
@@ -1052,7 +1052,7 @@ private fun CommunityProfileCard(profile: GHCommunityProfile?, onOpenDocs: () ->
 
 @Composable
 private fun CommunityChecklistCard(profile: GHCommunityProfile?) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Community checklist", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         val files = profile?.files.orEmpty()
         if (profile == null) {
@@ -1104,7 +1104,7 @@ private fun SecurityToggleRow(
 private fun AlertCard(alert: GHDependabotAlert, onDetails: () -> Unit, onOpen: () -> Unit) {
     val severityColor = alertSeverityColor(alert.severity)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Security, null, Modifier.size(20.dp), tint = severityColor)
@@ -1146,7 +1146,7 @@ private fun AlertCard(alert: GHDependabotAlert, onDetails: () -> Unit, onOpen: (
 private fun RepositoryAdvisoryCard(advisory: GHRepositorySecurityAdvisory, onDetails: () -> Unit, onOpen: () -> Unit) {
     val severityColor = alertSeverityColor(advisory.severity)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.GppMaybe, null, Modifier.size(20.dp), tint = severityColor)
@@ -1191,7 +1191,7 @@ private fun RepositoryAdvisoryCard(advisory: GHRepositorySecurityAdvisory, onDet
 private fun CodeScanningAlertCard(alert: GHCodeScanningAlert, onOpen: () -> Unit, onDetails: () -> Unit) {
     val severityColor = alertSeverityColor(alert.severity)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.BugReport, null, Modifier.size(20.dp), tint = severityColor)
@@ -1229,7 +1229,7 @@ private fun CodeScanningAlertCard(alert: GHCodeScanningAlert, onOpen: () -> Unit
 private fun SecretScanningAlertCard(alert: GHSecretScanningAlert, onOpen: () -> Unit, onDetails: () -> Unit) {
     val stateColor = alertStateColor(alert.state)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.VpnKey, null, Modifier.size(20.dp), tint = stateColor)

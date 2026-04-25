@@ -666,8 +666,7 @@ private fun ActionsOverviewHeader(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(SurfaceWhite)
+                .ghGlassCard(14.dp)
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
@@ -791,8 +790,7 @@ private fun StatCard(label: String, value: String, icon: androidx.compose.ui.gra
     Column(
         Modifier
             .width(96.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(SurfaceWhite)
+            .ghGlassCard(14.dp)
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -800,7 +798,7 @@ private fun StatCard(label: String, value: String, icon: androidx.compose.ui.gra
             Icon(icon, null, tint = color, modifier = Modifier.size(16.dp))
             Text(label, fontSize = 11.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(value, fontSize = 18.sp, color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text(value, fontSize = 20.sp, color = TextPrimary, fontWeight = FontWeight.Light, fontFamily = FontFamily.Monospace)
     }
 }
 
@@ -1435,8 +1433,7 @@ private fun ModernRunCard(
         Modifier
             .fillMaxWidth()
             .padding(bottom = 10.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceWhite)
+            .ghGlassCard(16.dp)
             .clickable(onClick = onRunClick)
             .padding(14.dp)
     ) {
@@ -2196,7 +2193,7 @@ private fun WorkflowRunDetailHeader(run: GHWorkflowRun, nowMs: Long) {
     val statusColor = runStatusColor(run)
     val elapsed = calcRunDuration(run, nowMs)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(SurfaceWhite).padding(14.dp),
+        Modifier.fillMaxWidth().ghGlassCard(16.dp).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2397,7 +2394,7 @@ private fun defaultReleaseBody(run: GHWorkflowRun, artifacts: List<GHArtifact>):
 
 @Composable
 private fun WorkflowUsageCard(usage: GHActionsUsage) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Timeline, null, tint = Blue, modifier = Modifier.size(18.dp))
             Text("Usage", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
@@ -2413,7 +2410,7 @@ private fun WorkflowUsageCard(usage: GHActionsUsage) {
 
 @Composable
 private fun AttemptSelector(maxAttempt: Int, selectedAttempt: Int, onSelect: (Int) -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Attempts", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (1..maxAttempt).forEach { attempt ->
@@ -2425,7 +2422,7 @@ private fun AttemptSelector(maxAttempt: Int, selectedAttempt: Int, onSelect: (In
 
 @Composable
 private fun RunDangerActionsCard(onDeleteLogs: () -> Unit, onDeleteRun: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Run management", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Chip(Icons.Rounded.Delete, "Delete logs", Color(0xFFFF9500)) { onDeleteLogs() }
@@ -2439,7 +2436,7 @@ private fun PendingDeploymentsCard(
     deployments: List<GHPendingDeployment>,
     onReview: (GHPendingDeployment, Boolean) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Warning, null, tint = Color(0xFFFF9500), modifier = Modifier.size(18.dp))
             Text("Pending deployments", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
@@ -2464,7 +2461,7 @@ private fun PendingDeploymentsCard(
 
 @Composable
 private fun ReviewHistoryCard(reviews: List<GHWorkflowRunReview>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.CheckCircle, null, tint = Blue, modifier = Modifier.size(18.dp))
             Text("Deployment review history", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
@@ -2488,7 +2485,7 @@ private fun CheckRunsCard(
     annotations: Map<Long, List<GHCheckAnnotation>>,
     onLoadAnnotations: (GHCheckRun) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.CheckCircle, null, tint = Blue, modifier = Modifier.size(18.dp))
             Text("Checks and annotations", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)

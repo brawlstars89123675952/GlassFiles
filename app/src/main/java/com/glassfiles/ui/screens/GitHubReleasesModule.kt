@@ -147,8 +147,7 @@ private fun ReleaseCard(
     }
 
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-            .background(SurfaceWhite).padding(16.dp)
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.size(12.dp).clip(CircleShape).background(if (release.prerelease) Color(0xFFFF9500) else Color(0xFF34C759)))

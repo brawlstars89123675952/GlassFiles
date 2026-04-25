@@ -205,7 +205,7 @@ internal fun ProjectsTab(repo: GHRepo) {
 private fun ProjectsSummaryCard(classicProjects: List<GHProject>, v2Projects: List<GHProjectV2>) {
     val openClassic = classicProjects.count { it.state == "open" }
     val openV2 = v2Projects.count { !it.closed }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Dashboard, null, Modifier.size(18.dp), tint = Blue)
             Column(Modifier.weight(1f)) {
@@ -224,7 +224,7 @@ private fun ProjectsSummaryCard(classicProjects: List<GHProject>, v2Projects: Li
 @Composable
 private fun ClassicProjectCard(project: GHProject, onClick: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).clickable(onClick = onClick).padding(14.dp),
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).clickable(onClick = onClick).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -245,7 +245,7 @@ private fun ClassicProjectCard(project: GHProject, onClick: () -> Unit) {
 private fun ProjectV2Card(project: GHProjectV2, onClick: () -> Unit) {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).clickable(onClick = onClick).padding(14.dp),
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).clickable(onClick = onClick).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -556,7 +556,7 @@ private fun ProjectV2DetailScreen(project: GHProjectV2, onBack: () -> Unit) {
 
 @Composable
 private fun ProjectV2Summary(project: GHProjectV2Detail) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Dashboard, null, Modifier.size(20.dp), tint = Blue)
             Column(Modifier.weight(1f)) {
@@ -583,7 +583,7 @@ private fun ProjectV2FieldsCard(
     onEdit: (GHProjectV2Field) -> Unit,
     onDelete: (GHProjectV2Field) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.ViewColumn, null, Modifier.size(18.dp), tint = Blue)
             Text("Fields", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -618,7 +618,7 @@ private fun ProjectV2FieldsCard(
 
 @Composable
 private fun ProjectV2ViewsCard(views: List<GHProjectV2View>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Dashboard, null, Modifier.size(18.dp), tint = Blue)
             Text("Views", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -648,7 +648,7 @@ private fun ProjectV2ViewsCard(views: List<GHProjectV2View>) {
 
 @Composable
 private fun ProjectV2WorkflowsCard(workflows: List<GHProjectV2Workflow>) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = Blue)
             Text("Workflows", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -686,7 +686,7 @@ private fun ProjectV2ItemCard(
     onMoveTop: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(9.dp).clip(CircleShape).background(if (item.archived) TextTertiary else Blue))
             Column(Modifier.weight(1f)) {
@@ -1110,7 +1110,7 @@ private fun ClassicProjectDetail(
 
 @Composable
 private fun ProjectDetailSummary(project: GHProject, columns: List<GHProjectColumn>, cards: Int) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.ViewColumn, null, Modifier.size(20.dp), tint = Blue)
             Column(Modifier.weight(1f)) {
@@ -1136,7 +1136,7 @@ private fun ProjectColumnCard(
     onMoveCard: (GHProjectCard) -> Unit,
     onDeleteCard: (GHProjectCard) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.ViewColumn, null, Modifier.size(18.dp), tint = Blue)
             Text(column.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
@@ -1302,7 +1302,7 @@ private fun CountPill(label: String, count: Int, color: Color, showCount: Boolea
 @Composable
 private fun EmptyProjectsCard(message: String) {
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(28.dp),
+        Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(28.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(message, fontSize = 14.sp, color = TextTertiary)

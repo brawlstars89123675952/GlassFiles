@@ -1039,3 +1039,20 @@
 - Проверка:
   - выполнен `git diff --check`
   - локальную Android compile-проверку не запускал по просьбе пользователя
+
+### GitHub detail polish follow-up
+- Выполнен второй UI-only polish pass по оставшимся заметным GitHub detail screens.
+- `GitHubRepoModule.kt`:
+  - PR detail header, mergeability, metrics, changed files, issue header/meta/body/comments, README card and releases list aligned to the shared glass-card recipe.
+  - PR metrics получили моноширинные числовые значения and compact uppercase labels.
+- `GitHubActionsModule.kt`:
+  - workflow control, stat cards, run cards, run detail header, usage/attempts/danger/deployments/review/check cards aligned with GitHub glass styling.
+- `GitHubProjectsModule.kt`:
+  - project summary, classic/V2 cards, fields/views/workflows/items, classic columns and empty states moved to consistent glass cards.
+- `GitHubSecurityModule.kt`:
+  - rulesets, ruleset detail cards, rule suites, security summaries, community cards and alert rows moved to the same visual system.
+- `GitHubReleasesModule.kt`:
+  - release cards aligned with GitHub glass card styling.
+- Проверка:
+  - выполнен `git diff --check`
+  - локальную Android compile-проверку не запускал по просьбе пользователя
