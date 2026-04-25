@@ -68,43 +68,19 @@ fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -
 internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Unit, onMinimize: (() -> Unit)? = null, onClose: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     val compact = LocalGHCompact.current
     val shape = if (compact) RoundedCornerShape(0.dp) else RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp)
-    Row(
-        Modifier.fillMaxWidth()
-            .background(SurfaceWhite, shape)
-            .padding(
-                top = if (compact) 4.dp else 44.dp,
-                start = if (compact) 8.dp else 14.dp,
-                end = if (compact) 8.dp else 14.dp,
-                bottom = if (compact) 6.dp else 12.dp
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)
-    ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.size(if (compact) 34.dp else 40.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceLight)
-        ) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(if (compact) 16.dp else 20.dp), tint = Blue)
+    Row(Modifier.fillMaxWidth().background(SurfaceWhite, shape).padding(
+        top = if (compact) 4.dp else 48.dp, start = if (compact) 2.dp else 4.dp,
+        end = if (compact) 4.dp else 8.dp, bottom = if (compact) 4.dp else 14.dp
+    ), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onBack, modifier = Modifier.size(if (compact) 32.dp else 48.dp)) {
+            Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(if (compact) 16.dp else 22.dp), tint = Blue)
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(title, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = if (compact) 15.sp else 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (subtitle != null && !compact) Text(subtitle, fontSize = 12.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = if (compact) 15.sp else 24.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle != null && !compact) Text(subtitle, fontSize = 13.sp, color = TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp)
-        ) {
-            actions()
-            if (onMinimize != null && !compact) {
-                IconButton(onClick = onMinimize, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(19.dp), tint = TextSecondary)
-                }
-            }
-            if (onClose != null && !compact) {
-                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Rounded.Close, null, Modifier.size(19.dp), tint = Color(0xFFFF3B30))
-                }
-            }
-        }
+        if (onMinimize != null && !compact) IconButton(onClick = onMinimize) { Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(20.dp), tint = Blue) }
+        if (onClose != null && !compact) IconButton(onClick = onClose) { Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = Color(0xFFFF3B30)) }
+        actions()
     }
 }
