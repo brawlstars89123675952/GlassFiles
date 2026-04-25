@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
@@ -23,7 +24,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -826,107 +829,384 @@ internal fun ReadmeTab(readme: String?, languages: Map<String, Long>, contributo
 
 @Composable
 private fun ReadmeMarkdownBlock(markdown: String, repo: GHRepo) {
-    var inCodeBlock = false
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        markdown.lines().forEach { rawLine ->
-            val line = rawLine.trimEnd()
-            val trimmed = line.trimStart()
-            when {
-                trimmed.startsWith("```") || trimmed.startsWith("~~~") -> {
-                    inCodeBlock = !inCodeBlock
-                    if (inCodeBlock) Spacer(Modifier.height(4.dp))
-                }
-                inCodeBlock -> {
-                    Text(
-                        text = line,
-                        modifier = Modifier.fillMaxWidth().background(SurfaceLight, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = TextPrimary,
-                        lineHeight = 17.sp
-                    )
-                }
-                trimmed.startsWith("# ") -> Text(readmeCleanInline(trimmed.removePrefix("# ")), fontSize = 22.sp, fontWeight = FontWeight.Bold, color = TextPrimary, lineHeight = 27.sp, modifier = Modifier.padding(top = 4.dp, bottom = 3.dp))
-                trimmed.startsWith("## ") -> Text(readmeCleanInline(trimmed.removePrefix("## ")), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary, lineHeight = 23.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
-                trimmed.startsWith("### ") -> Text(readmeCleanInline(trimmed.removePrefix("### ")), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, lineHeight = 20.sp, modifier = Modifier.padding(top = 6.dp, bottom = 1.dp))
-                trimmed.startsWith("#### ") -> Text(readmeCleanInline(trimmed.removePrefix("#### ")), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, lineHeight = 19.sp, modifier = Modifier.padding(top = 5.dp))
-                trimmed.startsWith("- ") || trimmed.startsWith("* ") -> ReadmeBullet(trimmed.drop(2))
-                Regex("^\\d+[.)]\\s+.*").matches(trimmed) -> ReadmeBullet(trimmed.substringAfter(' ').ifBlank { trimmed })
-                trimmed.startsWith("> ") -> Row(Modifier.padding(vertical = 3.dp)) {
-                    Box(Modifier.width(3.dp).height(20.dp).background(SeparatorColor))
-                    Text(readmeInlineAnnotated(trimmed.drop(2)), fontSize = 13.sp, color = TextSecondary, lineHeight = 19.sp, modifier = Modifier.padding(start = 8.dp))
-                }
-                trimmed.startsWith("---") || trimmed.startsWith("***") -> Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(1.dp).background(SeparatorColor))
-                readmeImageUrl(trimmed, repo) != null -> {
-                    val url = readmeImageUrl(trimmed, repo)
-                    AsyncImage(url, null, Modifier.fillMaxWidth().heightIn(max = 220.dp).clip(RoundedCornerShape(8.dp)))
-                }
-                trimmed.isBlank() -> Spacer(Modifier.height(6.dp))
-                else -> Text(readmeInlineAnnotated(trimmed), fontSize = 13.sp, color = TextPrimary, lineHeight = 19.sp)
+    val blocks = remember(markdown, repo.owner, repo.name, repo.defaultBranch) { parseReadmeBlocks(markdown, repo) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        blocks.forEach { block -> ReadmeBlockView(block) }
+    }
+}
+
+@Composable
+private fun ReadmeBlockView(block: ReadmeRenderBlock) {
+    when (block) {
+        is ReadmeRenderBlock.Heading -> {
+            val size = when (block.level) {
+                1 -> 22.sp
+                2 -> 18.sp
+                else -> 15.sp
+            }
+            Text(
+                readmeInlineAnnotated(block.text),
+                fontSize = size,
+                fontWeight = if (block.level <= 2) FontWeight.Bold else FontWeight.SemiBold,
+                color = TextPrimary,
+                lineHeight = (size.value + 5).sp,
+                modifier = Modifier.padding(top = if (block.level == 1) 2.dp else 7.dp)
+            )
+        }
+        is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text)
+        is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked)
+        is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.width(3.dp).heightIn(min = 20.dp).background(SeparatorColor, RoundedCornerShape(2.dp)))
+            ReadmeText(block.text, modifier = Modifier.weight(1f))
+        }
+        is ReadmeRenderBlock.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(0.8.dp).background(SeparatorColor))
+        is ReadmeRenderBlock.Image -> ReadmeImage(block)
+        is ReadmeRenderBlock.Code -> ReadmeCodeBlock(block)
+        is ReadmeRenderBlock.Table -> ReadmeTable(block.rows)
+        is ReadmeRenderBlock.Link -> ReadmeLinkCard(block.text, block.url)
+    }
+}
+
+@Composable
+private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val annotated = readmeInlineAnnotated(text)
+    ClickableText(
+        text = annotated,
+        modifier = modifier,
+        style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = TextPrimary, lineHeight = 20.sp),
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
+        }
+    )
+}
+
+@Composable
+private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val marker = when (checked) {
+            true -> "✓"
+            false -> "□"
+            null -> if (ordered) "1." else "•"
+        }
+        Text(marker, fontSize = 13.sp, color = if (checked == true) Color(0xFF34C759) else TextSecondary, fontWeight = FontWeight.SemiBold)
+        ReadmeText(text, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ReadmeImage(block: ReadmeRenderBlock.Image) {
+    var failed by remember(block.url) { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        if (failed) {
+            Text(block.alt.ifBlank { "Image unavailable" }, fontSize = 12.sp, color = TextTertiary)
+        } else {
+            AsyncImage(
+                model = block.url,
+                contentDescription = block.alt,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight),
+                onError = { failed = true }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
+    val context = LocalContext.current
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF161B22)).border(0.5.dp, SeparatorColor, RoundedCornerShape(10.dp))) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(block.language.ifBlank { "code" }, fontSize = 11.sp, color = TextTertiary, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            IconButton(modifier = Modifier.size(30.dp), onClick = {
+                val clip = android.content.ClipData.newPlainText("readme-code", block.code)
+                (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
+            }) {
+                Icon(Icons.Rounded.ContentCopy, null, Modifier.size(15.dp), tint = TextSecondary)
+            }
+        }
+        Column(Modifier.horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            block.code.lines().forEach { line ->
+                Text(line.ifEmpty { " " }, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFE6EDF3), lineHeight = 17.sp)
             }
         }
     }
 }
 
 @Composable
-private fun ReadmeBullet(text: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 1.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("•", fontSize = 13.sp, color = TextSecondary)
-        Text(readmeInlineAnnotated(text), modifier = Modifier.weight(1f), fontSize = 13.sp, color = TextPrimary, lineHeight = 19.sp)
+private fun ReadmeTable(rows: List<List<String>>) {
+    if (rows.isEmpty()) return
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).clip(RoundedCornerShape(10.dp)).border(0.5.dp, SeparatorColor, RoundedCornerShape(10.dp))) {
+        Column {
+            rows.forEachIndexed { rowIndex, row ->
+                Row(Modifier.background(if (rowIndex == 0) SurfaceLight else SurfaceWhite)) {
+                    row.forEach { cell ->
+                        Text(
+                            readmeInlineAnnotated(cell),
+                            modifier = Modifier.widthIn(min = 92.dp, max = 190.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+                            fontSize = 12.sp,
+                            color = TextPrimary,
+                            lineHeight = 17.sp,
+                            fontWeight = if (rowIndex == 0) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                }
+                if (rowIndex != rows.lastIndex) Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
+            }
+        }
     }
 }
 
-private fun readmeInlineAnnotated(text: String): androidx.compose.ui.text.AnnotatedString =
+@Composable
+private fun ReadmeLinkCard(text: String, url: String) {
+    val context = LocalContext.current
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceLight).clickable { context.openReadmeUrl(url) }.padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(Icons.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = Blue)
+        Column(Modifier.weight(1f)) {
+            Text(text.ifBlank { url }, fontSize = 13.sp, color = Blue, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (text.isNotBlank() && text != url) Text(url, fontSize = 10.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+private fun readmeInlineAnnotated(text: String): AnnotatedString =
     androidx.compose.ui.text.buildAnnotatedString {
         var i = 0
-        while (i < text.length) {
+        val clean = stripReadmeHtml(text)
+        while (i < clean.length) {
             when {
-                text.startsWith("**", i) -> {
-                    val end = text.indexOf("**", i + 2)
+                clean.startsWith("**", i) -> {
+                    val end = clean.indexOf("**", i + 2)
                     if (end > i) {
                         pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold, color = TextPrimary))
-                        append(text.substring(i + 2, end))
+                        append(clean.substring(i + 2, end))
                         pop()
                         i = end + 2
-                    } else append(text[i++])
+                    } else append(clean[i++])
                 }
-                text[i] == '`' -> {
-                    val end = text.indexOf('`', i + 1)
+                clean[i] == '*' -> {
+                    val end = clean.indexOf('*', i + 1)
                     if (end > i) {
-                        pushStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.Monospace, background = SurfaceLight, color = TextPrimary))
-                        append(text.substring(i + 1, end))
+                        pushStyle(androidx.compose.ui.text.SpanStyle(fontStyle = FontStyle.Italic, color = TextPrimary))
+                        append(clean.substring(i + 1, end))
                         pop()
                         i = end + 1
-                    } else append(text[i++])
+                    } else append(clean[i++])
                 }
-                text[i] == '[' -> {
-                    val closeBracket = text.indexOf(']', i)
-                    val openParen = if (closeBracket > 0 && closeBracket + 1 < text.length && text[closeBracket + 1] == '(') closeBracket + 1 else -1
-                    val closeParen = if (openParen > 0) text.indexOf(')', openParen) else -1
+                clean[i] == '`' -> {
+                    val end = clean.indexOf('`', i + 1)
+                    if (end > i) {
+                        pushStyle(androidx.compose.ui.text.SpanStyle(fontFamily = FontFamily.Monospace, background = SurfaceLight, color = TextPrimary))
+                        append(clean.substring(i + 1, end))
+                        pop()
+                        i = end + 1
+                    } else append(clean[i++])
+                }
+                clean[i] == '[' -> {
+                    val closeBracket = clean.indexOf(']', i)
+                    val openParen = if (closeBracket > 0 && closeBracket + 1 < clean.length && clean[closeBracket + 1] == '(') closeBracket + 1 else -1
+                    val closeParen = if (openParen > 0) clean.indexOf(')', openParen) else -1
                     if (closeParen > 0) {
+                        val label = clean.substring(i + 1, closeBracket)
+                        val url = clean.substring(openParen + 1, closeParen).substringBefore(' ').trim()
+                        pushStringAnnotation("URL", url)
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = Blue, fontWeight = FontWeight.Medium))
-                        append(text.substring(i + 1, closeBracket))
+                        append(label)
+                        pop()
                         pop()
                         i = closeParen + 1
-                    } else append(text[i++])
+                    } else append(clean[i++])
                 }
-                else -> append(text[i++])
+                else -> append(clean[i++])
             }
         }
     }
 
-private fun readmeCleanInline(text: String): androidx.compose.ui.text.AnnotatedString =
+private fun readmeCleanInline(text: String): AnnotatedString =
     readmeInlineAnnotated(text.trim().trim('#').trim())
 
-private fun readmeImageUrl(line: String, repo: GHRepo): String? {
-    if (!line.startsWith("![")) return null
-    val openParen = line.indexOf("](")
-    val closeParen = if (openParen >= 0) line.indexOf(')', openParen + 2) else -1
-    if (openParen < 0 || closeParen < 0) return null
-    val raw = line.substring(openParen + 2, closeParen).substringBefore(' ').trim()
-    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw
-    if (raw.startsWith("/")) return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}$raw"
-    return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}/$raw"
+private sealed class ReadmeRenderBlock {
+    data class Heading(val level: Int, val text: String) : ReadmeRenderBlock()
+    data class Paragraph(val text: String) : ReadmeRenderBlock()
+    data class Bullet(val text: String, val ordered: Boolean, val checked: Boolean? = null) : ReadmeRenderBlock()
+    data class Quote(val text: String) : ReadmeRenderBlock()
+    object Rule : ReadmeRenderBlock()
+    data class Image(val url: String, val alt: String) : ReadmeRenderBlock()
+    data class Code(val language: String, val code: String) : ReadmeRenderBlock()
+    data class Table(val rows: List<List<String>>) : ReadmeRenderBlock()
+    data class Link(val text: String, val url: String) : ReadmeRenderBlock()
+}
+
+private fun parseReadmeBlocks(markdown: String, repo: GHRepo): List<ReadmeRenderBlock> {
+    val blocks = mutableListOf<ReadmeRenderBlock>()
+    val lines = markdown.replace("\r\n", "\n").lines()
+    var i = 0
+    while (i < lines.size) {
+        val line = lines[i].trim()
+        when {
+            line.isBlank() -> i++
+            line.startsWith("```") || line.startsWith("~~~") -> {
+                val fence = line.take(3)
+                val language = line.drop(3).trim().take(24)
+                val code = mutableListOf<String>()
+                i++
+                while (i < lines.size && !lines[i].trimStart().startsWith(fence)) {
+                    code += lines[i].trimEnd()
+                    i++
+                }
+                if (i < lines.size) i++
+                blocks += ReadmeRenderBlock.Code(language, code.joinToString("\n"))
+            }
+            readmeMarkdownImages(line, repo).isNotEmpty() -> {
+                blocks += readmeMarkdownImages(line, repo)
+                i++
+            }
+            readmeHtmlImages(line, repo).isNotEmpty() -> {
+                blocks += readmeHtmlImages(line, repo)
+                i++
+            }
+            line.equals("</a>", ignoreCase = true) || line.startsWith("<br", ignoreCase = true) -> i++
+            line.startsWith("<a ", ignoreCase = true) -> {
+                readmeHtmlLink(line)?.let { blocks += ReadmeRenderBlock.Link(it.first, it.second) }
+                i++
+            }
+            line.startsWith("#") -> {
+                val level = line.takeWhile { it == '#' }.length.coerceIn(1, 4)
+                val text = line.drop(level).trim()
+                if (text.isNotBlank()) blocks += ReadmeRenderBlock.Heading(level, stripReadmeHtml(text))
+                i++
+            }
+            line.startsWith(">") -> {
+                blocks += ReadmeRenderBlock.Quote(stripReadmeHtml(line.removePrefix(">").trim()))
+                i++
+            }
+            line == "---" || line == "***" || line == "___" -> {
+                blocks += ReadmeRenderBlock.Rule
+                i++
+            }
+            readmeLooksLikeTable(lines, i) -> {
+                val rows = mutableListOf<List<String>>()
+                rows += readmeTableCells(lines[i])
+                i += 2
+                while (i < lines.size && lines[i].trim().startsWith("|")) {
+                    rows += readmeTableCells(lines[i])
+                    i++
+                }
+                blocks += ReadmeRenderBlock.Table(rows)
+            }
+            line.startsWith("- [ ]", ignoreCase = true) || line.startsWith("* [ ]", ignoreCase = true) -> {
+                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.drop(5).trim()), ordered = false, checked = false)
+                i++
+            }
+            line.startsWith("- [x]", ignoreCase = true) || line.startsWith("* [x]", ignoreCase = true) -> {
+                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.drop(5).trim()), ordered = false, checked = true)
+                i++
+            }
+            line.startsWith("- ") || line.startsWith("* ") -> {
+                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.drop(2).trim()), ordered = false)
+                i++
+            }
+            Regex("^\\d+[.)]\\s+.*").matches(line) -> {
+                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.replaceFirst(Regex("^\\d+[.)]\\s+"), "")), ordered = true)
+                i++
+            }
+            readmeStandaloneMarkdownLink(line) != null -> {
+                val link = readmeStandaloneMarkdownLink(line)!!
+                blocks += ReadmeRenderBlock.Link(link.first, readmeResolveUrl(link.second, repo))
+                i++
+            }
+            else -> {
+                val paragraph = mutableListOf<String>()
+                while (i < lines.size) {
+                    val current = lines[i].trim()
+                    if (current.isBlank() || current.startsWith("#") || current.startsWith("```") || current.startsWith("~~~") ||
+                        current.startsWith("- ") || current.startsWith("* ") || current.startsWith(">") || current.startsWith("|") ||
+                        readmeMarkdownImages(current, repo).isNotEmpty() || readmeHtmlImages(current, repo).isNotEmpty()
+                    ) break
+                    paragraph += stripReadmeHtml(current)
+                    i++
+                }
+                paragraph.joinToString(" ").trim().takeIf { it.isNotBlank() }?.let { blocks += ReadmeRenderBlock.Paragraph(it) }
+            }
+        }
+    }
+    return blocks
+}
+
+private fun readmeMarkdownImages(line: String, repo: GHRepo): List<ReadmeRenderBlock.Image> {
+    val regex = Regex("!\\[([^]]*)]\\(([^)\\s]+)(?:\\s+\"[^\"]*\")?\\)")
+    return regex.findAll(line).mapNotNull { match ->
+        val raw = match.groupValues.getOrNull(2).orEmpty()
+        if (raw.isBlank()) null else ReadmeRenderBlock.Image(readmeResolveUrl(raw, repo), match.groupValues.getOrNull(1).orEmpty())
+    }.toList()
+}
+
+private fun readmeHtmlImages(line: String, repo: GHRepo): List<ReadmeRenderBlock.Image> {
+    val regex = Regex("<img\\b[^>]*src=[\"']([^\"']+)[\"'][^>]*>", RegexOption.IGNORE_CASE)
+    return regex.findAll(line).mapNotNull { match ->
+        val raw = match.groupValues.getOrNull(1).orEmpty()
+        if (raw.isBlank()) null else ReadmeRenderBlock.Image(readmeResolveUrl(raw, repo), readmeHtmlAttr(line, "alt"))
+    }.toList()
+}
+
+private fun readmeHtmlLink(line: String): Pair<String, String>? {
+    val href = readmeHtmlAttr(line, "href")
+    if (href.isBlank()) return null
+    val label = Regex(">([^<]+)<", RegexOption.IGNORE_CASE).find(line)?.groupValues?.getOrNull(1)?.trim().orEmpty()
+    return label.ifBlank { href } to href
+}
+
+private fun readmeHtmlAttr(line: String, attr: String): String =
+    Regex("$attr=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE).find(line)?.groupValues?.getOrNull(1).orEmpty()
+
+private fun readmeStandaloneMarkdownLink(line: String): Pair<String, String>? {
+    val match = Regex("^\\[([^]]+)]\\(([^)\\s]+)(?:\\s+\"[^\"]*\")?\\)$").find(line) ?: return null
+    return match.groupValues[1] to match.groupValues[2]
+}
+
+private fun readmeLooksLikeTable(lines: List<String>, index: Int): Boolean {
+    if (index + 1 >= lines.size) return false
+    val header = lines[index].trim()
+    val divider = lines[index + 1].trim()
+    return header.startsWith("|") && header.endsWith("|") && divider.matches(Regex("^\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?$"))
+}
+
+private fun readmeTableCells(line: String): List<String> =
+    line.trim().trim('|').split('|').map { stripReadmeHtml(it.trim()) }
+
+private fun stripReadmeHtml(text: String): String =
+    text.replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+        .replace(Regex("</?p[^>]*>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("</?div[^>]*>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("</?span[^>]*>", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("</?strong[^>]*>", RegexOption.IGNORE_CASE), "**")
+        .replace(Regex("</?b[^>]*>", RegexOption.IGNORE_CASE), "**")
+        .replace(Regex("</?em[^>]*>", RegexOption.IGNORE_CASE), "*")
+        .replace(Regex("</?i[^>]*>", RegexOption.IGNORE_CASE), "*")
+        .replace(Regex("<a\\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", RegexOption.IGNORE_CASE), "[$2]($1)")
+        .replace(Regex("<[^>]+>"), "")
+        .trim()
+
+private fun readmeResolveUrl(raw: String, repo: GHRepo): String {
+    val url = raw.trim()
+    if (url.startsWith("http://") || url.startsWith("https://")) return url
+    if (url.startsWith("//")) return "https:$url"
+    if (url.startsWith("#")) return url
+    if (url.startsWith("/")) return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}$url"
+    return "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${repo.defaultBranch}/$url"
+}
+
+private fun android.content.Context.openReadmeUrl(url: String) {
+    if (url.isBlank() || url.startsWith("#")) return
+    try {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (_: Exception) {
+        Toast.makeText(this, Strings.error, Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Composable
