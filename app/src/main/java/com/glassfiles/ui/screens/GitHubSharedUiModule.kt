@@ -57,7 +57,7 @@ internal fun Modifier.ghGlassCard(radius: androidx.compose.ui.unit.Dp = 16.dp): 
 }
 
 @Composable
-internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Modifier, showStats: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val icon = when {
         repo.isPrivate -> Icons.Outlined.Lock
@@ -65,9 +65,14 @@ internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Mo
         else -> Icons.Outlined.Folder
     }
     val iconTint = when {
-        repo.isPrivate -> GitHubWarningAmber()
+        repo.isPrivate -> colors.tertiary
         repo.isFork -> colors.onSurfaceVariant
-        else -> colors.primary.copy(alpha = 0.70f)
+        else -> colors.primary
+    }
+    val iconBackground = when {
+        repo.isPrivate -> colors.tertiaryContainer.copy(alpha = 0.55f)
+        repo.isFork -> colors.surfaceVariant
+        else -> colors.primaryContainer.copy(alpha = 0.45f)
     }
     Row(
         modifier
@@ -75,11 +80,11 @@ internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Mo
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .ghGlassCard(14.dp)
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
     ) {
-        Box(Modifier.size(40.dp).background(iconTint.copy(alpha = 0.10f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(iconBackground), contentAlignment = Alignment.Center) {
             Icon(icon, null, Modifier.size(24.dp), tint = iconTint)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -94,9 +99,12 @@ internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Mo
                 overflow = TextOverflow.Ellipsis
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                if (repo.language.isNotBlank()) Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(8.dp).clip(CircleShape).background(langColor(repo.language))); Text(repo.language, fontSize = 11.sp, color = colors.onSurfaceVariant, fontWeight = FontWeight.Medium) }
-                if (repo.stars > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.Star, null, Modifier.size(13.dp), tint = colors.onSurfaceVariant); Text(formatGitHubNumber(repo.stars), fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace) }
-                if (repo.forks > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.CallSplit, null, Modifier.size(13.dp), tint = colors.onSurfaceVariant); Text(formatGitHubNumber(repo.forks), fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace) }
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (repo.language.isBlank()) colors.outline else langColor(repo.language)))
+                    Text(repo.language.ifBlank { "Unknown" }, fontSize = 11.sp, color = colors.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                }
+                if (showStats && repo.stars > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.Star, null, Modifier.size(13.dp), tint = colors.onSurfaceVariant); Text(formatGitHubNumber(repo.stars), fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace) }
+                if (showStats && repo.forks > 0) Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.CallSplit, null, Modifier.size(13.dp), tint = colors.onSurfaceVariant); Text(formatGitHubNumber(repo.forks), fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace) }
                 if (repo.isFork) Text("fork", fontSize = 10.sp, color = colors.onSurfaceVariant)
             }
         }

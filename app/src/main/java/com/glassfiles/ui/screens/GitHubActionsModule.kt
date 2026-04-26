@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -126,8 +127,10 @@ import com.glassfiles.ui.theme.TextPrimary
 import com.glassfiles.ui.theme.TextSecondary
 import com.glassfiles.ui.theme.TextTertiary
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -138,6 +141,11 @@ private enum class ActionsRunFilter { ALL, ACTIVE, QUEUED, FAILED, SUCCESS, CANC
 private enum class RunDetailSection { SUMMARY, JOBS, ARTIFACTS, CHECKS }
 
 private const val ACTIONS_INPUT_PREFS = "github_actions_dispatch_inputs"
+private const val ACTIONS_JOB_LOG_TAG = "ActionsJobLog"
+private const val ACTIONS_JOB_LOG_CACHE_BYTES = 5 * 1024 * 1024
+private const val ACTIONS_JOB_LOG_HARD_CAP_BYTES = 10 * 1024 * 1024
+private const val ACTIONS_JOB_LOG_DISPLAY_BYTES = 512 * 1024
+private const val ACTIONS_STEP_LOG_DISPLAY_BYTES = 384 * 1024
 
 private data class ArtifactGroup(
     val label: String,
@@ -155,6 +163,12 @@ private sealed class JobListItem {
     data class GroupHeader(val group: MatrixJobGroup, val expanded: Boolean) : JobListItem()
     data class JobRow(val job: GHJob) : JobListItem()
 }
+
+private data class JobLogMeta(
+    val cacheFile: File? = null,
+    val warning: String? = null,
+    val tooLarge: Boolean = false
+)
 
 private const val ACTIONS_POLL_DELAY_MS = 5000L
 private const val ACTIONS_BACKOFF_DELAY_MS = 15000L
@@ -178,7 +192,6 @@ internal fun ActionsTab(
     var dispatchSchema by remember { mutableStateOf<GHWorkflowDispatchSchema?>(null) }
     var dispatchInputValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var dispatching by remember { mutableStateOf(false) }
-    var showRunsHistory by remember { mutableStateOf(false) }
 
     suspend fun refreshOverview() {
         refreshing = true
@@ -252,18 +265,6 @@ internal fun ActionsTab(
                 delay(1500)
             }
         }
-    }
-
-    if (showRunsHistory) {
-        ActionsRunsHistoryScreen(
-            repo = repo,
-            workflows = workflows,
-            branches = branches,
-            initialRuns = liveRuns,
-            onBack = { showRunsHistory = false },
-            onRunClick = onRunClick
-        )
-        return
     }
 
     val activeCount = remember(liveRuns) { liveRuns.count { isRunActive(it) } }
@@ -380,10 +381,35 @@ internal fun ActionsTab(
             onRefresh = { scope.launch { refreshOverview() } },
             latestRun = latestRun,
             nowMs = nowMs,
-            onOpenRuns = { showRunsHistory = true },
             onOpenLatestRun = { latestRun?.let(onRunClick) }
         )
     }
+}
+
+@Composable
+internal fun ActionsHistoryTab(
+    runs: List<GHWorkflowRun>,
+    repo: GHRepo,
+    onRunClick: (GHWorkflowRun) -> Unit
+) {
+    val context = LocalContext.current
+    var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }
+    var branches by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(repo.owner, repo.name) {
+        workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
+        branches = GitHubManager.getBranches(context, repo.owner, repo.name)
+    }
+
+    ActionsRunsHistoryScreen(
+        repo = repo,
+        workflows = workflows,
+        branches = branches,
+        initialRuns = runs,
+        showTopBar = false,
+        onBack = {},
+        onRunClick = onRunClick
+    )
 }
 
 private suspend fun findNewActionsDispatchRun(
@@ -415,6 +441,7 @@ private fun ActionsRunsHistoryScreen(
     workflows: List<GHWorkflow>,
     branches: List<String>,
     initialRuns: List<GHWorkflowRun>,
+    showTopBar: Boolean = true,
     onBack: () -> Unit,
     onRunClick: (GHWorkflowRun) -> Unit
 ) {
@@ -502,10 +529,12 @@ private fun ActionsRunsHistoryScreen(
 
     val colors = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
-        GHTopBar("Build history", subtitle = "${visibleRuns.size} workflow runs", onBack = onBack) {
-            IconButton(onClick = { scope.launch { load(reset = true) } }) {
-                if (refreshing) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
-                else Icon(Icons.Rounded.Refresh, null, tint = Blue)
+        if (showTopBar) {
+            GHTopBar("Build history", subtitle = "${visibleRuns.size} workflow runs", onBack = onBack) {
+                IconButton(onClick = { scope.launch { load(reset = true) } }) {
+                    if (refreshing) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
+                    else Icon(Icons.Rounded.Refresh, null, tint = Blue)
+                }
             }
         }
 
@@ -677,7 +706,6 @@ private fun ActionsOverviewHeader(
     onRefresh: () -> Unit,
     latestRun: GHWorkflowRun?,
     nowMs: Long,
-    onOpenRuns: () -> Unit,
     onOpenLatestRun: () -> Unit
 ) {
     Column(
@@ -828,7 +856,6 @@ private fun ActionsOverviewHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    Chip(Icons.Rounded.Timeline, "Open Runs") { onOpenRuns() }
                     if (latestRun != null) {
                         Chip(Icons.Rounded.Article, "Latest #${latestRun.runNumber}") { onOpenLatestRun() }
                     }
@@ -1770,6 +1797,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
     var deletingArtifactId by remember { mutableStateOf<Long?>(null) }
     val jobLogs = remember { mutableStateMapOf<Long, String>() }
     val jobStepLogs = remember { mutableStateMapOf<Long, Map<Int, String>>() }
+    val jobLogMeta = remember { mutableStateMapOf<Long, JobLogMeta>() }
     val checkAnnotations = remember { mutableStateMapOf<Long, List<GHCheckAnnotation>>() }
     var loadingJobId by remember { mutableStateOf<Long?>(null) }
     var expandedJobId by remember { mutableStateOf<Long?>(null) }
@@ -1885,7 +1913,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                             isJobActive(it)
                     }
                     if (expandedLiveJob != null) {
-                        refreshJobLogsNow(context, repo, expandedLiveJob, jobLogs, jobStepLogs)
+                        ensureJobLogsLoaded(scope, context, repo, expandedLiveJob, jobLogs, jobStepLogs, jobLogMeta, force = false) { loadingJobId = it }
                     }
                 }
             } else {
@@ -1924,6 +1952,9 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                 is JobListItem.GroupHeader -> index.takeIf { item.group.jobs.any { job -> job.conclusion == "failure" } && !item.expanded }
             }
         }
+    }
+    val jobItemsStartIndex = remember(maxAttempt, firstFailedJob?.id) {
+        1 + (if (maxAttempt > 1) 1 else 0) + (if (firstFailedJob != null) 1 else 0)
     }
 
     Column(Modifier.fillMaxSize().background(SurfaceLight)) {
@@ -2024,14 +2055,14 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                         failed.steps.firstOrNull { isFailedStep(it) }?.let { step ->
                             expandedStepKey = "${failed.id}:${step.number}"
                         }
-                        ensureJobLogsLoaded(scope, context, repo, failed, jobLogs, jobStepLogs, force = true) { loadingJobId = it }
+                        ensureJobLogsLoaded(scope, context, repo, failed, jobLogs, jobStepLogs, jobLogMeta, force = false) { loadingJobId = it }
                     }
                 }
                 ActionsFilterChip("Running logs", false) {
                     val running = jobs.firstOrNull { isJobActive(it) }
                     if (running != null) {
                         expandedJobId = running.id
-                        ensureJobLogsLoaded(scope, context, repo, running, jobLogs, jobStepLogs, force = true) { loadingJobId = it }
+                        ensureJobLogsLoaded(scope, context, repo, running, jobLogs, jobStepLogs, jobLogMeta, force = false) { loadingJobId = it }
                     }
                 }
             }
@@ -2108,7 +2139,7 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                             onOpenFailedLog = {
                                 expandedJobId = failedJob.id
                                 firstFailedStep?.let { step -> expandedStepKey = "${failedJob.id}:${step.number}" }
-                                ensureJobLogsLoaded(scope, context, repo, failedJob, jobLogs, jobStepLogs, force = true) { loadingJobId = it }
+                                ensureJobLogsLoaded(scope, context, repo, failedJob, jobLogs, jobStepLogs, jobLogMeta, force = false) { loadingJobId = it }
                             }
                         )
                         Spacer(Modifier.height(8.dp))
@@ -2228,10 +2259,12 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                                     job = item.job,
                                     nowMs = nowMs,
                                     repo = repo,
+                                    runHtmlUrl = run?.htmlUrl.orEmpty(),
                                     context = context,
                                     scope = scope,
                                     jobLogs = jobLogs,
                                     jobStepLogs = jobStepLogs,
+                                    jobLogMeta = jobLogMeta,
                                     loadingJobId = loadingJobId,
                                     expandedJobId = expandedJobId,
                                     expandedStepKey = expandedStepKey,
@@ -2335,18 +2368,25 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
             if (selectedSection == RunDetailSection.JOBS && failedJobItemIndexes.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = {
-                        val currentIndex = jobListState.firstVisibleItemIndex
-                        val targetIndex = failedJobItemIndexes.firstOrNull { it > currentIndex } ?: failedJobItemIndexes.first()
-                        (groupedJobItems.getOrNull(targetIndex) as? JobListItem.GroupHeader)?.let { header ->
-                            if (!header.expanded) expandedMatrixGroups[header.group.name] = true
+                        try {
+                            val currentJobIndex = (jobListState.firstVisibleItemIndex - jobItemsStartIndex).coerceAtLeast(-1)
+                            val targetJobIndex = failedJobItemIndexes.firstOrNull { it > currentJobIndex } ?: failedJobItemIndexes.firstOrNull()
+                            if (targetJobIndex == null) return@FloatingActionButton
+                            (groupedJobItems.getOrNull(targetJobIndex) as? JobListItem.GroupHeader)?.let { header ->
+                                if (!header.expanded) expandedMatrixGroups[header.group.name] = true
+                            }
+                            val targetListIndex = (jobItemsStartIndex + targetJobIndex).coerceAtLeast(0)
+                            scope.launch { jobListState.animateScrollToItem(targetListIndex) }
+                        } catch (t: Throwable) {
+                            Log.e(ACTIONS_JOB_LOG_TAG, "failed job FAB scroll failed", t)
+                            Toast.makeText(context, "Cannot jump to failed job", Toast.LENGTH_SHORT).show()
                         }
-                        scope.launch { jobListState.animateScrollToItem(targetIndex) }
                     },
                     containerColor = Red,
                     contentColor = Color.White,
                     modifier = Modifier.align(Alignment.BottomEnd).padding(18.dp).size(48.dp)
                 ) {
-                    Icon(Icons.Rounded.Error, null, Modifier.size(22.dp))
+                    Icon(Icons.Rounded.Error, "Jump to next failed job", Modifier.size(22.dp))
                 }
             }
             }
@@ -2748,10 +2788,12 @@ private fun WorkflowJobCard(
     job: GHJob,
     nowMs: Long,
     repo: GHRepo,
+    runHtmlUrl: String,
     context: Context,
     scope: CoroutineScope,
     jobLogs: MutableMap<Long, String>,
     jobStepLogs: MutableMap<Long, Map<Int, String>>,
+    jobLogMeta: MutableMap<Long, JobLogMeta>,
     loadingJobId: Long?,
     expandedJobId: Long?,
     expandedStepKey: String?,
@@ -2763,6 +2805,12 @@ private fun WorkflowJobCard(
     val status = displayJobStatus(job)
     val jColor = jobStatusColor(status)
     val jobElapsed = calcJobDuration(job, nowMs)
+    val logMeta = jobLogMeta[job.id]
+
+    LaunchedEffect(job.id, job.status) {
+        ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, jobLogMeta, force = false, setLoading = setLoadingJobId)
+    }
+
     Row(Modifier.fillMaxWidth().padding(bottom = 10.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp)) {
         Box(
             Modifier.width(3.dp).fillMaxHeight().background(
@@ -2781,6 +2829,16 @@ private fun WorkflowJobCard(
             }
 
             Spacer(Modifier.height(8.dp))
+            if (loadingJobId == job.id && jobLogs[job.id] == null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(Modifier.size(14.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                    Text("Loading job log...", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             job.steps.forEach { step ->
                 val stepStatus = displayStepStatus(step)
                 val sColor = stepStatusColor(step)
@@ -2790,9 +2848,6 @@ private fun WorkflowJobCard(
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).clickable {
                             onExpandedStepChange(if (expandedStepKey == stepKey) null else stepKey)
-                            if (jobLogs[job.id] == null) {
-                                ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
-                            }
                         }.padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -2807,7 +2862,7 @@ private fun WorkflowJobCard(
                             "running" -> "Waiting for live log..."
                             else -> "No log output for this step."
                         }
-                        val shownStepLog = compactLogForDisplay(stepLog ?: liveMessage)
+                        val shownStepLog = compactLogForDisplay(stepLog ?: logMeta?.warning ?: liveMessage)
                         Box(
                             Modifier.fillMaxWidth().padding(start = 28.dp, top = 4.dp, bottom = 8.dp)
                                 .clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)
@@ -2815,17 +2870,7 @@ private fun WorkflowJobCard(
                             if (jobLogs[job.id] == null || loadingJobId == job.id) {
                                 CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
                             } else {
-                                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
-                                    item {
-                                        Text(
-                                            shownStepLog,
-                                            fontSize = 9.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            lineHeight = 13.sp
-                                        )
-                                    }
-                                }
+                                LogLinesView(shownStepLog, Modifier.fillMaxWidth().heightIn(max = 220.dp))
                             }
                         }
                     }
@@ -2842,22 +2887,33 @@ private fun WorkflowJobCard(
                         onExpandedJobChange(null)
                     } else {
                         onExpandedJobChange(job.id)
-                        ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, force = isJobActive(job), setLoading = setLoadingJobId)
+                        ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, jobLogMeta, force = false, setLoading = setLoadingJobId)
                     }
                 }
                 if (jobLogs[job.id] != null) {
+                    if (logMeta?.warning?.startsWith("Failed to load logs") == true) {
+                        Chip(Icons.Rounded.Refresh, "Retry log") {
+                            ensureJobLogsLoaded(scope, context, repo, job, jobLogs, jobStepLogs, jobLogMeta, force = true, setLoading = setLoadingJobId)
+                        }
+                    }
                     Chip(Icons.Rounded.ContentCopy, "Copy full log") {
                         val clip = android.content.ClipData.newPlainText("logs", jobLogs[job.id])
                         (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
                         Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                     }
                     Chip(Icons.Rounded.Article, "Save log") {
-                        val dest = File(
-                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                            "GlassFiles_Git/${safeLogFileName(job)}.log"
-                        )
-                        val ok = saveTextFile(dest, jobLogs[job.id].orEmpty())
+                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${safeLogFileName(job)}.log")
+                        val ok = runCatching {
+                            logMeta?.cacheFile?.takeIf { it.exists() }?.copyTo(dest, overwrite = true)?.exists()
+                                ?: saveTextFile(dest, jobLogs[job.id].orEmpty())
+                        }.getOrElse {
+                            Log.e(ACTIONS_JOB_LOG_TAG, "save log failed job=${job.id}", it)
+                            false
+                        }
                         Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
+                    }
+                    if (logMeta?.tooLarge == true && runHtmlUrl.isNotBlank()) {
+                        Chip(Icons.Rounded.Article, "Open in browser") { openExternalUrl(context, runHtmlUrl) }
                     }
                 }
                 Chip(Icons.Rounded.Refresh, "Rerun job") {
@@ -2867,9 +2923,6 @@ private fun WorkflowJobCard(
                         onRefreshRun()
                     }
                 }
-                if (loadingJobId == job.id) {
-                    CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                }
             }
 
             if (expandedJobId == job.id && jobLogs[job.id] != null) {
@@ -2878,18 +2931,11 @@ private fun WorkflowJobCard(
                     Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant).padding(10.dp)
                 ) {
-                    LazyColumn(Modifier.fillMaxWidth()) {
-                        item {
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                                Text(
-                                    compactLogForDisplay(jobLogs[job.id]!!),
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    lineHeight = 13.sp
-                                )
-                            }
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        logMeta?.warning?.let {
+                            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error, lineHeight = 15.sp)
                         }
+                        LogLinesView(compactLogForDisplay(jobLogs[job.id]!!), Modifier.fillMaxWidth().heightIn(max = 390.dp))
                     }
                 }
             }
@@ -2923,6 +2969,24 @@ private fun StepStatusPill(status: String, color: Color) {
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f), RoundedCornerShape(999.dp))
             .padding(horizontal = 7.dp, vertical = 3.dp)
     )
+}
+
+@Composable
+private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
+    val lines = remember(log) { log.lineSequence().toList() }
+    LazyColumn(modifier) {
+        items(lines) { line ->
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                Text(
+                    line.ifEmpty { " " },
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 13.sp
+                )
+            }
+        }
+    }
 }
 
 private fun displayCheckStatus(checkRun: GHCheckRun): String {
@@ -3029,56 +3093,81 @@ private fun ensureJobLogsLoaded(
     job: GHJob,
     jobLogs: MutableMap<Long, String>,
     jobStepLogs: MutableMap<Long, Map<Int, String>>,
+    jobLogMeta: MutableMap<Long, JobLogMeta>,
     force: Boolean = false,
     setLoading: (Long?) -> Unit
 ) {
     if (!force && jobLogs.containsKey(job.id)) return
     scope.launch {
         setLoading(job.id)
+        Log.d(ACTIONS_JOB_LOG_TAG, "load start job=${job.id} name=${job.name} force=$force")
         try {
             val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
-            when {
-                !log.startsWith("Error: ") -> {
-                    jobLogs[job.id] = log
-                    jobStepLogs[job.id] = splitLogsBySteps(job, log)
-                }
-                isTemporaryLiveLogUnavailable(job, log) -> {
-                    jobLogs[job.id] = liveLogPlaceholder(job)
-                    jobStepLogs[job.id] = emptyMap()
-                }
-                else -> {
-                    jobLogs[job.id] = log
-                    jobStepLogs[job.id] = emptyMap()
-                }
+            val processed = withContext(Dispatchers.Default) {
+                processJobLog(context, job, log)
             }
+            jobLogs[job.id] = processed.preview
+            jobStepLogs[job.id] = processed.steps
+            jobLogMeta[job.id] = processed.meta
+            Log.d(ACTIONS_JOB_LOG_TAG, "load complete job=${job.id} bytes=${log.toByteArray().size} steps=${processed.steps.size} file=${processed.meta.cacheFile?.absolutePath.orEmpty()}")
+        } catch (t: Throwable) {
+            Log.e(ACTIONS_JOB_LOG_TAG, "load failed job=${job.id}", t)
+            jobLogs[job.id] = "Failed to load logs. ${actionsFriendlyError(t.message)}"
+            jobStepLogs[job.id] = emptyMap()
+            jobLogMeta[job.id] = JobLogMeta(warning = "Failed to load logs. Tap retry to try again.")
         } finally {
             setLoading(null)
         }
     }
 }
 
-private suspend fun refreshJobLogsNow(
-    context: Context,
-    repo: GHRepo,
-    job: GHJob,
-    jobLogs: MutableMap<Long, String>,
-    jobStepLogs: MutableMap<Long, Map<Int, String>>
-) {
-    val log = GitHubManager.getJobLogs(context, repo.owner, repo.name, job.id)
+private data class ProcessedJobLog(
+    val preview: String,
+    val steps: Map<Int, String>,
+    val meta: JobLogMeta
+)
+
+private fun processJobLog(context: Context, job: GHJob, log: String): ProcessedJobLog {
+    val bytes = log.toByteArray().size
+    Log.d(ACTIONS_JOB_LOG_TAG, "parse start job=${job.id} bytes=$bytes")
+
     when {
-        !log.startsWith("Error: ") -> {
-            jobLogs[job.id] = log
-            jobStepLogs[job.id] = splitLogsBySteps(job, log)
-        }
         isTemporaryLiveLogUnavailable(job, log) -> {
-            jobLogs[job.id] = liveLogPlaceholder(job)
-            jobStepLogs[job.id] = emptyMap()
+            return ProcessedJobLog(liveLogPlaceholder(job), emptyMap(), JobLogMeta())
         }
-        else -> {
-            jobLogs[job.id] = log
-            jobStepLogs[job.id] = emptyMap()
+        log.startsWith("Error: ") -> {
+            return ProcessedJobLog(log.take(ACTIONS_JOB_LOG_DISPLAY_BYTES), emptyMap(), JobLogMeta(warning = log))
         }
     }
+
+    val cacheFile = if (bytes > ACTIONS_JOB_LOG_CACHE_BYTES) {
+        writeJobLogCacheFile(context, job, log)
+    } else {
+        null
+    }
+
+    val tooLarge = bytes > ACTIONS_JOB_LOG_HARD_CAP_BYTES
+    val parseSource = if (tooLarge) {
+        log.take(ACTIONS_JOB_LOG_HARD_CAP_BYTES)
+    } else {
+        log
+    }
+    val warning = when {
+        tooLarge -> "Log is larger than ${ghFmtSize(ACTIONS_JOB_LOG_HARD_CAP_BYTES.toLong())}. Showing a safe preview; open the run in browser for the full log."
+        cacheFile != null -> "Large log cached to disk: ${cacheFile.name}"
+        else -> null
+    }
+    val steps = if (tooLarge) emptyMap() else splitLogsBySteps(job, parseSource).mapValues { (_, value) ->
+        safeLogPreview(value, ACTIONS_STEP_LOG_DISPLAY_BYTES)
+    }
+    val preview = if (tooLarge) {
+        warning.orEmpty() + "\n\n" + safeLogPreview(parseSource, ACTIONS_JOB_LOG_DISPLAY_BYTES)
+    } else {
+        safeLogPreview(parseSource, ACTIONS_JOB_LOG_DISPLAY_BYTES)
+    }
+
+    Log.d(ACTIONS_JOB_LOG_TAG, "parse complete job=${job.id} tooLarge=$tooLarge steps=${steps.size}")
+    return ProcessedJobLog(preview, steps, JobLogMeta(cacheFile = cacheFile, warning = warning, tooLarge = tooLarge))
 }
 
 private fun liveLogPlaceholder(job: GHJob): String = when (job.status) {
@@ -3196,6 +3285,22 @@ private fun saveTextFile(file: File, text: String): Boolean = try {
     false
 }
 
+private fun writeJobLogCacheFile(context: Context, job: GHJob, text: String): File? = try {
+    val dir = File(context.cacheDir, "github-job-logs").apply { mkdirs() }
+    File(dir, "${safeLogFileName(job)}.log").also { file ->
+        file.writeText(text)
+        Log.d(ACTIONS_JOB_LOG_TAG, "cache write job=${job.id} path=${file.absolutePath} bytes=${file.length()}")
+    }
+} catch (t: Throwable) {
+    Log.e(ACTIONS_JOB_LOG_TAG, "cache write failed job=${job.id}", t)
+    null
+}
+
+private fun safeLogPreview(text: String, maxChars: Int): String {
+    if (text.length <= maxChars) return text
+    return text.take(maxChars).trimEnd() + "\n\n[Log preview truncated at ${ghFmtSize(maxChars.toLong())}.]"
+}
+
 private fun splitLogsBySteps(job: GHJob, raw: String): Map<Int, String> {
     if (raw.isBlank()) return emptyMap()
     val lines = raw.lines()
@@ -3259,9 +3364,11 @@ private fun normalizeLogLine(line: String): String {
 }
 
 private fun looksLikeStepBoundary(normalized: String): Boolean {
-    return normalized.startsWith("##[group]Run ") ||
+    return normalized.startsWith("##[group]Step ") ||
+        normalized.startsWith("##[group]Run ") ||
         normalized.startsWith("##[group]Post ") ||
-        normalized.startsWith("##[group]Complete job")
+        normalized.startsWith("##[group]Complete job") ||
+        normalized.startsWith("##[group]")
 }
 
 private fun stepBoundaryMatchesStep(boundary: String, stepName: String): Boolean {
