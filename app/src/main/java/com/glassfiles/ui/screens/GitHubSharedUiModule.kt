@@ -83,10 +83,10 @@ internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Mo
     Row(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(vertical = 6.dp)
             .ghGlassCard(14.dp)
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
     ) {
