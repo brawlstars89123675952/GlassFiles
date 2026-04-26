@@ -1379,7 +1379,7 @@ private fun ArtifactRunRow(
                     MiniActionsBadge(formatArtifactSize(artifact.sizeInBytes), TextSecondary)
                     if (artifact.sizeInBytes <= 0L) MiniActionsBadge("suspect", Orange)
                     if (artifact.expired) MiniActionsBadge(Strings.ghExpired, Red)
-                    else MiniActionsBadge(artifact.createdAt.take(10), TextTertiary)
+                    else MiniActionsBadge(artifact.createdAt.take(10), TextSecondary)
                 }
             }
         }
