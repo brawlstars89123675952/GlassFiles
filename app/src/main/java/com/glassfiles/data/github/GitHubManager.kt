@@ -4506,7 +4506,9 @@ object GitHubManager {
         defaultBranch = j.optString("default_branch", "main"),
         updatedAt = j.optString("updated_at", ""),
         owner = j.optJSONObject("owner")?.optString("login") ?: "",
-        htmlUrl = j.optString("html_url", "")
+        htmlUrl = j.optString("html_url", ""),
+        isArchived = j.optBoolean("archived", false),
+        isTemplate = j.optBoolean("is_template", false)
     )
 
     data class ApiResult(val success: Boolean, val body: String, val code: Int)
@@ -4545,7 +4547,8 @@ data class GHUser(val login: String, val name: String, val avatarUrl: String, va
 
 data class GHRepo(val name: String, val fullName: String, val description: String, val language: String,
     val stars: Int, val forks: Int, val isPrivate: Boolean, val isFork: Boolean, val defaultBranch: String,
-    val updatedAt: String, val owner: String, val htmlUrl: String = "")
+    val updatedAt: String, val owner: String, val htmlUrl: String = "", val isArchived: Boolean = false,
+    val isTemplate: Boolean = false)
 
 data class GHActionResult(val success: Boolean, val code: Int, val message: String)
 

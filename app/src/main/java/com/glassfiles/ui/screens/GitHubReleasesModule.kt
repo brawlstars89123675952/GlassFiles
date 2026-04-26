@@ -205,18 +205,20 @@ private fun ReleaseCard(
             if (release.assets.isNotEmpty()) {
                 Text("Assets", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
                 Spacer(Modifier.height(6.dp))
-                release.assets.forEach { asset ->
-                    AssetRow(
-                        asset = asset,
-                        onDownload = {
-                            scope.launch {
-                                val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${asset.name}")
-                                val ok = GitHubManager.downloadReleaseAsset(context, asset, dest)
-                                Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        onDelete = if (asset.id > 0L) { { deletingAsset = asset } } else null
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    release.assets.forEach { asset ->
+                        AssetRow(
+                            asset = asset,
+                            onDownload = {
+                                scope.launch {
+                                    val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${asset.name}")
+                                    val ok = GitHubManager.downloadReleaseAsset(context, asset, dest)
+                                    Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onDelete = if (asset.id > 0L) { { deletingAsset = asset } } else null
+                        )
+                    }
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -348,7 +350,7 @@ private fun AssetRow(asset: GHAsset, onDownload: () -> Unit, onDelete: (() -> Un
             Text(releaseAssetKind(asset.name), fontSize = 10.sp, color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Text(formatBytes(asset.size), fontSize = 11.sp, color = colors.onSurfaceVariant)
-        Text("${formatGitHubNumber(asset.downloadCount)}↓", fontSize = 11.sp, color = colors.onSurfaceVariant)
+        Text("${formatGitHubNumber(asset.downloadCount)} downloads", fontSize = 11.sp, color = colors.onSurfaceVariant)
         IconButton(onClick = onDownload, modifier = Modifier.size(30.dp)) {
             Icon(Icons.Rounded.Download, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
         }

@@ -60,18 +60,24 @@ internal fun Modifier.ghGlassCard(radius: androidx.compose.ui.unit.Dp = 16.dp): 
 internal fun RepoCard(repo: GHRepo, onClick: () -> Unit, modifier: Modifier = Modifier, showStats: Boolean = false) {
     val colors = MaterialTheme.colorScheme
     val icon = when {
+        repo.isArchived -> Icons.Outlined.Archive
         repo.isPrivate -> Icons.Outlined.Lock
         repo.isFork -> Icons.Outlined.CallSplit
+        repo.isTemplate -> Icons.Outlined.Description
         else -> Icons.Outlined.Folder
     }
     val iconTint = when {
+        repo.isArchived -> colors.error
         repo.isPrivate -> colors.tertiary
         repo.isFork -> colors.onSurfaceVariant
+        repo.isTemplate -> colors.secondary
         else -> colors.primary
     }
     val iconBackground = when {
+        repo.isArchived -> colors.errorContainer.copy(alpha = 0.55f)
         repo.isPrivate -> colors.tertiaryContainer.copy(alpha = 0.55f)
         repo.isFork -> colors.surfaceVariant
+        repo.isTemplate -> colors.secondaryContainer.copy(alpha = 0.45f)
         else -> colors.primaryContainer.copy(alpha = 0.45f)
     }
     Row(
@@ -134,7 +140,7 @@ internal fun releaseAssetKind(name: String): String {
     return when {
         lower.endsWith(".apk") -> "Android APK"
         lower.endsWith(".aab") -> "Android App Bundle"
-        lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".appimage") -> "Linux package"
+        lower.contains("linux") || lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".appimage") -> "Linux package"
         lower.endsWith(".dmg") || lower.contains("mac") || lower.contains("darwin") -> "macOS build"
         lower.endsWith(".exe") || lower.endsWith(".msi") || lower.contains("win") -> "Windows build"
         lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tar") || lower.endsWith(".tgz") || lower.endsWith(".7z") -> "Archive"
@@ -147,7 +153,7 @@ internal fun releaseAssetIcon(name: String): ImageVector {
     val lower = name.lowercase(Locale.US)
     return when {
         lower.endsWith(".apk") || lower.endsWith(".aab") -> Icons.Outlined.Android
-        lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".appimage") -> Icons.Outlined.Inventory2
+        lower.contains("linux") || lower.endsWith(".deb") || lower.endsWith(".rpm") || lower.endsWith(".appimage") -> Icons.Outlined.Inventory2
         lower.endsWith(".dmg") || lower.contains("mac") || lower.contains("darwin") -> Icons.Outlined.DesktopMac
         lower.endsWith(".exe") || lower.endsWith(".msi") || lower.contains("win") -> Icons.Outlined.DesktopWindows
         lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tar") || lower.endsWith(".tgz") || lower.endsWith(".7z") -> Icons.Outlined.Archive

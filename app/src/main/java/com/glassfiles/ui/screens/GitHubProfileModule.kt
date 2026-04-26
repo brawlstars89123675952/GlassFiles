@@ -4,6 +4,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +41,7 @@ fun ProfileScreen(
     var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var isFollowing by remember { mutableStateOf(false) }
+    val listState = rememberSaveable(username, saver = LazyListState.Saver) { LazyListState(0, 0) }
 
     LaunchedEffect(username) {
         profile = GitHubManager.getUserProfile(context, username)
@@ -91,7 +94,7 @@ fun ProfileScreen(
             return@Column
         }
 
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(16.dp)) {
             item {
                 Column(
                     Modifier.fillMaxWidth().ghGlassCard(20.dp).padding(24.dp),

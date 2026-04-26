@@ -28,8 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -72,6 +72,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -448,18 +449,18 @@ private fun ActionsRunsHistoryScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var runs by remember(initialRuns) { mutableStateOf(initialRuns) }
-    var query by remember { mutableStateOf(TextFieldValue("")) }
-    var filter by remember { mutableStateOf(ActionsRunFilter.ALL) }
-    var selectedWorkflowId by remember { mutableStateOf<Long?>(null) }
-    var selectedBranch by remember { mutableStateOf<String?>(null) }
-    var selectedEvent by remember { mutableStateOf<String?>(null) }
-    var onlyMine by remember { mutableStateOf(false) }
-    var page by remember { mutableStateOf(1) }
-    var hasMore by remember { mutableStateOf(false) }
+    var query by rememberSaveable(repo.fullName, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    var filter by rememberSaveable(repo.fullName) { mutableStateOf(ActionsRunFilter.ALL) }
+    var selectedWorkflowId by rememberSaveable(repo.fullName) { mutableStateOf<Long?>(null) }
+    var selectedBranch by rememberSaveable(repo.fullName) { mutableStateOf<String?>(null) }
+    var selectedEvent by rememberSaveable(repo.fullName) { mutableStateOf<String?>(null) }
+    var onlyMine by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var page by rememberSaveable(repo.fullName) { mutableStateOf(1) }
+    var hasMore by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var refreshing by remember { mutableStateOf(false) }
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var pullDistance by remember { mutableStateOf(0f) }
-    val listState = rememberLazyListState()
+    val listState = rememberSaveable(repo.fullName, "actions-history", saver = LazyListState.Saver) { LazyListState(0, 0) }
     val currentLogin = remember { GitHubManager.getCachedUser(context)?.login.orEmpty() }
 
     suspend fun load(reset: Boolean = true) {
@@ -1782,7 +1783,7 @@ private fun MiniActionsBadge(text: String, color: Color) {
 internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val jobListState = rememberLazyListState()
+    val jobListState = rememberSaveable(runId, "jobs", saver = LazyListState.Saver) { LazyListState(0, 0) }
     var run by remember { mutableStateOf<GHWorkflowRun?>(null) }
     var jobs by remember { mutableStateOf<List<GHJob>>(emptyList()) }
     var artifacts by remember { mutableStateOf<List<GHArtifact>>(emptyList()) }
@@ -1803,10 +1804,10 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
     var expandedJobId by remember { mutableStateOf<Long?>(null) }
     var expandedStepKey by remember { mutableStateOf<String?>(null) }
     val expandedMatrixGroups = remember(runId) { mutableStateMapOf<String, Boolean>() }
-    var onlyFailedJobs by remember { mutableStateOf(false) }
-    var onlyActiveJobs by remember { mutableStateOf(false) }
-    var loadedLogsFilter by remember { mutableStateOf(TextFieldValue("")) }
-    var selectedSection by remember { mutableStateOf(RunDetailSection.JOBS) }
+    var onlyFailedJobs by rememberSaveable(runId) { mutableStateOf(false) }
+    var onlyActiveJobs by rememberSaveable(runId) { mutableStateOf(false) }
+    var loadedLogsFilter by rememberSaveable(runId, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
+    var selectedSection by rememberSaveable(runId) { mutableStateOf(RunDetailSection.JOBS) }
     var refreshing by remember { mutableStateOf(false) }
     var metadataLoaded by remember { mutableStateOf(false) }
     var artifactsLoaded by remember { mutableStateOf(false) }

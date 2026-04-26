@@ -2,6 +2,7 @@ package com.glassfiles.ui.screens
 
 import android.os.Environment
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -15,6 +16,8 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,20 +49,31 @@ fun GitHubScreen(onBack: () -> Unit, onMinimize: () -> Unit = {}, onClose: (() -
     var isLoggedIn by remember { mutableStateOf(GitHubManager.isLoggedIn(context)) }
     var user by remember { mutableStateOf(GitHubManager.getCachedUser(context)) }
     var selectedRepo by remember { mutableStateOf<GHRepo?>(null) }
-    var showGists by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showNotifications by remember { mutableStateOf(false) }
-    var showProfile by remember { mutableStateOf<String?>(null) }
+    var showGists by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var showNotifications by rememberSaveable { mutableStateOf(false) }
+    var showProfile by rememberSaveable { mutableStateOf<String?>(null) }
+    val saveableStateHolder = rememberSaveableStateHolder()
     
     LaunchedEffect(isLoggedIn) { if (isLoggedIn) user = GitHubManager.getUser(context) }
+    BackHandler(enabled = isLoggedIn) {
+        when {
+            selectedRepo != null -> selectedRepo = null
+            showProfile != null -> showProfile = null
+            showNotifications -> showNotifications = false
+            showSettings -> showSettings = false
+            showGists -> showGists = false
+            else -> onBack()
+        }
+    }
     when {
         !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { GitHubManager.saveToken(context, it); isLoggedIn = true }
-        showSettings -> GitHubSettingsScreen(onBack = { showSettings = false }, onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false }, onClose = onClose)
-        showGists -> GistsScreen({ showGists = false }, onMinimize, onClose)
-        showNotifications -> NotificationsScreen(onBack = { showNotifications = false })
-        showProfile != null -> ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it })
-        selectedRepo != null -> RepoDetailScreen(selectedRepo!!, { selectedRepo = null }, onMinimize, onClose)
-        else -> ReposScreen(user, onBack, onMinimize, onClose, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true }, { showNotifications = true }, { showProfile = it })
+        showSettings -> saveableStateHolder.SaveableStateProvider("settings") { GitHubSettingsScreen(onBack = { showSettings = false }, onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false }, onClose = onClose) }
+        showGists -> saveableStateHolder.SaveableStateProvider("gists") { GistsScreen({ showGists = false }, onMinimize, onClose) }
+        showNotifications -> saveableStateHolder.SaveableStateProvider("notifications") { NotificationsScreen(onBack = { showNotifications = false }) }
+        selectedRepo != null -> saveableStateHolder.SaveableStateProvider("repo:${selectedRepo!!.fullName}") { RepoDetailScreen(selectedRepo!!, { selectedRepo = null }, onMinimize, onClose) }
+        showProfile != null -> saveableStateHolder.SaveableStateProvider("profile:${showProfile!!}") { ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it }) }
+        else -> saveableStateHolder.SaveableStateProvider("home") { ReposScreen(user, onBack, onMinimize, onClose, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true }, { showNotifications = true }, { showProfile = it }) }
     }
     }
 }

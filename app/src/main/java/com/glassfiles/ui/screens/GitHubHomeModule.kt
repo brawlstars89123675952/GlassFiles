@@ -2,10 +2,12 @@ package com.glassfiles.ui.screens
 
 import android.os.Environment
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,13 +69,23 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
 internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Unit, onClose: (() -> Unit)? = null, onLogout: () -> Unit, onRepoClick: (GHRepo) -> Unit, onGists: () -> Unit, onSettings: () -> Unit, onNotifications: () -> Unit = {}, onProfile: (String) -> Unit = {}) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
-    var query by remember { mutableStateOf("") }; var showCreate by remember { mutableStateOf(false) }
-    var searchPublic by remember { mutableStateOf(false) }; var publicResults by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
-    var showStarred by remember { mutableStateOf(false) }
-    var showOrgs by remember { mutableStateOf(false) }
-    var showPackages by remember { mutableStateOf(false) }
-    var showAdvancedSearch by remember { mutableStateOf(false) }
-    var reposPage by remember { mutableIntStateOf(1) }; var reposHasMore by remember { mutableStateOf(true) }
+    var query by rememberSaveable { mutableStateOf("") }; var showCreate by rememberSaveable { mutableStateOf(false) }
+    var searchPublic by rememberSaveable { mutableStateOf(false) }; var publicResults by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
+    var showStarred by rememberSaveable { mutableStateOf(false) }
+    var showOrgs by rememberSaveable { mutableStateOf(false) }
+    var showPackages by rememberSaveable { mutableStateOf(false) }
+    var showAdvancedSearch by rememberSaveable { mutableStateOf(false) }
+    var reposPage by rememberSaveable { mutableIntStateOf(1) }; var reposHasMore by rememberSaveable { mutableStateOf(true) }
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
+    BackHandler(enabled = showStarred || showOrgs || showPackages || showAdvancedSearch || showCreate) {
+        when {
+            showCreate -> showCreate = false
+            showStarred -> showStarred = false
+            showOrgs -> showOrgs = false
+            showPackages -> showPackages = false
+            showAdvancedSearch -> showAdvancedSearch = false
+        }
+    }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
     LaunchedEffect(query, searchPublic) { if (searchPublic && query.length >= 2) publicResults = GitHubManager.searchRepos(context, query) }
     val filtered = remember(repos, query, searchPublic) {
@@ -90,7 +103,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             IconButton(onClick = { showCreate = true }) { Icon(Icons.Rounded.Add, null, Modifier.size(22.dp), tint = colors.primary) }
             IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
             if (user != null) {
                 item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(16.dp)).background(colors.surface).padding(16.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {

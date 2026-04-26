@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -39,11 +40,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +78,51 @@ private enum class AdvancedSearchKind(val label: String) {
     USERS("Users")
 }
 
+private val GhRepoSearchResultsSaver = listSaver<MutableState<List<GHRepo>>, Any>(
+    save = { state ->
+        state.value.flatMap { repo ->
+            listOf(
+                repo.name,
+                repo.fullName,
+                repo.description,
+                repo.language,
+                repo.stars,
+                repo.forks,
+                repo.isPrivate,
+                repo.isFork,
+                repo.defaultBranch,
+                repo.updatedAt,
+                repo.owner,
+                repo.htmlUrl,
+                repo.isArchived,
+                repo.isTemplate
+            )
+        }
+    },
+    restore = { saved ->
+        mutableStateOf(
+            saved.chunked(14).mapNotNull { row ->
+                if (row.size < 14) null else GHRepo(
+                    name = row[0] as String,
+                    fullName = row[1] as String,
+                    description = row[2] as String,
+                    language = row[3] as String,
+                    stars = row[4] as Int,
+                    forks = row[5] as Int,
+                    isPrivate = row[6] as Boolean,
+                    isFork = row[7] as Boolean,
+                    defaultBranch = row[8] as String,
+                    updatedAt = row[9] as String,
+                    owner = row[10] as String,
+                    htmlUrl = row[11] as String,
+                    isArchived = row[12] as Boolean,
+                    isTemplate = row[13] as Boolean
+                )
+            }
+        )
+    }
+)
+
 @Composable
 internal fun AdvancedSearchScreen(
     onBack: () -> Unit,
@@ -83,14 +132,15 @@ internal fun AdvancedSearchScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var query by remember { mutableStateOf("") }
-    var labelRepository by remember { mutableStateOf("") }
-    var selectedKind by remember { mutableStateOf(AdvancedSearchKind.REPOS) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var labelRepository by rememberSaveable { mutableStateOf("") }
+    var selectedKind by rememberSaveable { mutableStateOf(AdvancedSearchKind.REPOS) }
     var searching by remember { mutableStateOf(false) }
-    var searched by remember { mutableStateOf(false) }
-    var page by remember { mutableIntStateOf(1) }
+    var searched by rememberSaveable { mutableStateOf(false) }
+    var page by rememberSaveable { mutableIntStateOf(1) }
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
 
-    var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
+    var repos by rememberSaveable(saver = GhRepoSearchResultsSaver) { mutableStateOf<List<GHRepo>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHSearchIssueResult>>(emptyList()) }
     var commits by remember { mutableStateOf<List<GHSearchCommitResult>>(emptyList()) }
     var topics by remember { mutableStateOf<List<GHTopicSearchResult>>(emptyList()) }
@@ -151,6 +201,7 @@ internal fun AdvancedSearchScreen(
         GHTopBar("Advanced Search", onBack = onBack)
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
