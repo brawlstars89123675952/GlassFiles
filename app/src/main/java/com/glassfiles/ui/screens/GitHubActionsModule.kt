@@ -2827,15 +2827,14 @@ private fun WorkflowJobCard(
         }
     }
 
-    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp)) {
+    val statusBarColor = when (status) {
+        "failed", "failure", "timed_out", "action_required" -> MaterialTheme.colorScheme.error
+        "running", "in_progress" -> MaterialTheme.colorScheme.primary
+        else -> Color.Transparent
+    }
+    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp).ghGlassCard(14.dp)) {
         Box(
-            Modifier.width(3.dp).fillMaxHeight().background(
-                when (status) {
-                    "failed", "failure", "timed_out", "action_required" -> MaterialTheme.colorScheme.error
-                    "running", "in_progress" -> MaterialTheme.colorScheme.primary
-                    else -> Color.Transparent
-                }
-            )
+            Modifier.width(3.dp).fillMaxHeight().background(statusBarColor)
         )
         Column(Modifier.weight(1f).padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
