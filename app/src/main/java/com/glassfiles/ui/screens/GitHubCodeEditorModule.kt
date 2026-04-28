@@ -6,6 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -120,7 +121,7 @@ fun CodeEditorScreen(
     branch: String,
     initialContent: String,
     onBack: () -> Unit,
-    onAskAi: (() -> Unit)? = null
+    onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -475,6 +476,13 @@ fun CodeEditorScreen(
                 isMarkdown = isMarkdown,
                 hasChanges = hasChanges
             )
+            if (onAskAi != null) {
+                AiQuickActionsRow(
+                    filePath = file.path,
+                    branch = branch,
+                    onSendPrompt = { onAskAi(it) },
+                )
+            }
         }
 
         AnimatedVisibility(showSearch && !isImage) {
@@ -627,12 +635,12 @@ private fun GitHubEditorTopBar(
     onCycleMode: () -> Unit,
     onSave: () -> Unit,
     onOpenImage: () -> Unit,
-    onAskAi: (() -> Unit)? = null
+    onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
     val colors = MaterialTheme.colorScheme
     GHTopBar(fileName, subtitle = subtitle, onBack = onBack) {
         if (onAskAi != null) {
-            IconButton(onClick = onAskAi) { Icon(Icons.Rounded.AutoAwesome, null, tint = colors.primary) }
+            IconButton(onClick = { onAskAi(null) }) { Icon(Icons.Rounded.AutoAwesome, null, tint = colors.primary) }
         }
         if (!isImage) {
             IconButton(onClick = onToggleSearch) { Icon(Icons.Rounded.Search, null, tint = if (showSearch) Blue else TextSecondary) }
@@ -1182,5 +1190,56 @@ private fun openUrl(context: Context, url: String) {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
     } catch (_: Exception) {
         Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Horizontal row of one-tap prompt presets shown under the editor's
+ * info strip. Each chip launches the AI Agent with a prompt template
+ * scoped to the active file + branch. */
+@Composable
+private fun AiQuickActionsRow(
+    filePath: String,
+    branch: String,
+    onSendPrompt: (String) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val actions = listOf(
+        Strings.aiAgentQuickExplain to "Read `$filePath` on branch `$branch` and explain what it does, including the key types and side effects.",
+        Strings.aiAgentQuickAddTests to "Add unit tests for `$filePath` (branch `$branch`). Match the project's existing test framework and naming style. Read the file first to understand the scope.",
+        Strings.aiAgentQuickFixLint to "Read `$filePath` on branch `$branch` and fix any lint, formatting, or unused-import issues. Use edit_file for surgical changes; preserve behaviour.",
+        Strings.aiAgentQuickRefactor to "Read `$filePath` on branch `$branch` and propose a focused refactor that improves readability without changing behaviour. Apply with edit_file once approved.",
+        Strings.aiAgentQuickGenerateDocs to "Read `$filePath` on branch `$branch` and add KDoc/Javadoc to public types, functions, and properties that are missing it. Keep comments concise.",
+    )
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.AutoAwesome,
+            null,
+            Modifier.size(14.dp),
+            tint = colors.primary,
+        )
+        Spacer(Modifier.width(2.dp))
+        actions.forEach { (label, prompt) ->
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.6f))
+                    .border(0.5.dp, colors.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                    .clickable { onSendPrompt(prompt) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    label,
+                    fontSize = 11.sp,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        }
     }
 }

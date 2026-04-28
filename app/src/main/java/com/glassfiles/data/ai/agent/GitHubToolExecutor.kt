@@ -29,7 +29,20 @@ class GitHubToolExecutor(
             val output = when (call.name) {
                 AgentTools.LIST_DIR.name -> listDir(context, args.optString("path", ""))
                 AgentTools.READ_FILE.name -> readFile(context, args.getString("path"))
+                AgentTools.READ_FILE_RANGE.name -> readFileRange(
+                    context,
+                    args.getString("path"),
+                    args.getInt("start_line"),
+                    args.getInt("end_line"),
+                )
                 AgentTools.SEARCH_REPO.name -> searchRepo(context, args.getString("query"))
+                AgentTools.EDIT_FILE.name -> editFile(
+                    context,
+                    args.getString("path"),
+                    args.getString("old_string"),
+                    args.getString("new_string"),
+                    args.optString("message", "AI agent: edit ${args.getString("path")}"),
+                )
                 AgentTools.WRITE_FILE.name -> writeFile(
                     context,
                     args.getString("path"),
@@ -86,10 +99,95 @@ class GitHubToolExecutor(
         return if (text.isBlank()) "(empty file)" else text
     }
 
+    private suspend fun readFileRange(
+        context: Context,
+        path: String,
+        startLine: Int,
+        endLine: Int,
+    ): String {
+        if (startLine < 1) throw IllegalArgumentException("start_line must be >= 1, got $startLine")
+        if (endLine < startLine) throw IllegalArgumentException("end_line ($endLine) must be >= start_line ($startLine)")
+        val cleaned = path.trim().trim('/')
+        val text = GitHubManager.getFileContent(context, owner, repo, cleaned, branch)
+        if (text.isBlank()) return "(empty file)"
+        val lines = text.split('\n')
+        val total = lines.size
+        val from = (startLine - 1).coerceIn(0, total)
+        val to = endLine.coerceIn(from, total)
+        if (from >= total) return "(file has only $total line(s); range $startLine-$endLine is past the end)"
+        val width = to.toString().length
+        val sliced = lines.subList(from, to)
+        val rendered = sliced.mapIndexed { i, line ->
+            val ln = (from + i + 1).toString().padStart(width)
+            "$ln: $line"
+        }.joinToString("\n")
+        val suffix = if (to < total) "\n[file continues to line $total]" else ""
+        return "$rendered$suffix"
+    }
+
     private suspend fun searchRepo(context: Context, query: String): String {
         val results = GitHubManager.searchCode(context, query, owner, repo)
         if (results.isEmpty()) return "No matches."
         return results.joinToString("\n") { "${it.path}  (sha=${it.sha.take(7)})" }
+    }
+
+    private suspend fun editFile(
+        context: Context,
+        path: String,
+        oldString: String,
+        newString: String,
+        message: String,
+    ): String {
+        if (oldString.isEmpty()) {
+            throw RuntimeException("edit_file: old_string must not be empty. Use write_file to create a new file.")
+        }
+        if (oldString == newString) {
+            throw RuntimeException("edit_file: old_string and new_string are identical — nothing to change.")
+        }
+        val cleaned = path.trim().trim('/')
+        val current = GitHubManager.getFileContent(context, owner, repo, cleaned, branch)
+        if (current.isBlank()) {
+            throw RuntimeException("edit_file: file \"$cleaned\" is empty or could not be read on branch \"$branch\". Use write_file to create it.")
+        }
+        val occurrences = countOccurrences(current, oldString)
+        if (occurrences == 0) {
+            throw RuntimeException("edit_file: old_string was not found in \"$cleaned\". Re-read the file and pass an exact match.")
+        }
+        if (occurrences > 1) {
+            throw RuntimeException("edit_file: old_string appears $occurrences times in \"$cleaned\". Add more surrounding context so it is unique.")
+        }
+        val updated = current.replaceFirst(oldString, newString)
+        val existingSha = runCatching {
+            GitHubManager
+                .getRepoContents(context, owner, repo, parentOf(cleaned), branch)
+                .firstOrNull { it.path == cleaned }?.sha
+        }.getOrNull()
+        val ok = GitHubManager.uploadFile(
+            context = context,
+            owner = owner,
+            repo = repo,
+            path = cleaned,
+            content = updated.toByteArray(Charsets.UTF_8),
+            message = message,
+            branch = branch,
+            sha = existingSha,
+        )
+        return if (ok) {
+            val delta = updated.length - current.length
+            val sign = if (delta >= 0) "+" else ""
+            "Edited $cleaned ($sign$delta chars) on $branch."
+        } else throw RuntimeException("edit_file: GitHub rejected the commit. Check token scope or path.")
+    }
+
+    private fun countOccurrences(haystack: String, needle: String): Int {
+        if (needle.isEmpty()) return 0
+        var count = 0
+        var idx = haystack.indexOf(needle)
+        while (idx >= 0) {
+            count++
+            idx = haystack.indexOf(needle, idx + needle.length)
+        }
+        return count
     }
 
     private suspend fun writeFile(

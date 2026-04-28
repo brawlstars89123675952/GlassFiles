@@ -65,6 +65,36 @@ object AgentTools {
         readOnly = true,
     )
 
+    /**
+     * Reads a slice of a file by line range. Cheaper than [READ_FILE] for
+     * large files when the model only needs a window of context. The result
+     * is prefixed with each line's 1-based line number so the model can
+     * reference them by [EDIT_FILE] anchor strings.
+     */
+    val READ_FILE_RANGE = AiTool(
+        name = "read_file_range",
+        description = "Read a contiguous range of lines from a file in the active repository. Cheaper than read_file when only part of a large file is needed.",
+        parameters = obj {
+            put("type", "object")
+            put("properties", obj {
+                put("path", obj {
+                    put("type", "string")
+                    put("description", "Repo-relative path to the file.")
+                })
+                put("start_line", obj {
+                    put("type", "integer")
+                    put("description", "1-based line number to start reading from (inclusive).")
+                })
+                put("end_line", obj {
+                    put("type", "integer")
+                    put("description", "1-based line number to stop reading at (inclusive). Clamped to the end of the file.")
+                })
+            })
+            put("required", arr("path", "start_line", "end_line"))
+        },
+        readOnly = true,
+    )
+
     /** Code search inside the active repo via the GitHub Search API. */
     val SEARCH_REPO = AiTool(
         name = "search_repo",
@@ -80,6 +110,41 @@ object AgentTools {
             put("required", arr("query"))
         },
         readOnly = true,
+    )
+
+    /**
+     * Surgical find-and-replace edit on a single file. Fails when the
+     * `old_string` anchor is missing or appears more than once, so the
+     * model is forced to disambiguate (instead of accidentally rewriting
+     * the wrong region). Strongly preferred over [WRITE_FILE] for small
+     * targeted changes.
+     */
+    val EDIT_FILE = AiTool(
+        name = "edit_file",
+        description = "Surgically replace a unique substring inside an existing file. Fails if old_string is not found or appears more than once. Use this for targeted edits instead of rewriting the whole file.",
+        parameters = obj {
+            put("type", "object")
+            put("properties", obj {
+                put("path", obj {
+                    put("type", "string")
+                    put("description", "Repo-relative path to the file.")
+                })
+                put("old_string", obj {
+                    put("type", "string")
+                    put("description", "Exact text to replace. Must appear exactly once in the file. Include enough surrounding lines to be unique.")
+                })
+                put("new_string", obj {
+                    put("type", "string")
+                    put("description", "Replacement text. Use the same indentation style as the surrounding code.")
+                })
+                put("message", obj {
+                    put("type", "string")
+                    put("description", "Commit message for the edit.")
+                })
+            })
+            put("required", arr("path", "old_string", "new_string", "message"))
+        },
+        readOnly = false,
     )
 
     /**
@@ -191,8 +256,8 @@ object AgentTools {
 
     /** All tools, in canonical order. */
     val ALL: List<AiTool> = listOf(
-        LIST_DIR, READ_FILE, SEARCH_REPO,
-        WRITE_FILE, CREATE_BRANCH, COMMIT, OPEN_PR,
+        LIST_DIR, READ_FILE, READ_FILE_RANGE, SEARCH_REPO,
+        EDIT_FILE, WRITE_FILE, CREATE_BRANCH, COMMIT, OPEN_PR,
     )
 
     fun byName(name: String): AiTool? = ALL.firstOrNull { it.name == name }

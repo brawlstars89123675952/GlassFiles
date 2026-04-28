@@ -59,6 +59,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -84,6 +85,7 @@ import com.glassfiles.data.ai.agent.AgentTools
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.data.ai.agent.AiToolResult
 import com.glassfiles.data.ai.agent.GitHubToolExecutor
+import com.glassfiles.data.ai.agent.LineDiff
 import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiMessage
 import com.glassfiles.data.ai.models.AiModel
@@ -594,7 +596,13 @@ fun AiAgentScreen(
                     }
                 }
                 entries.forEach { entry ->
-                    item(key = entry.stableKey()) { TranscriptEntry(entry) }
+                    item(key = entry.stableKey()) {
+                        TranscriptEntry(
+                            entry = entry,
+                            activeRepoFullName = selectedRepo?.fullName,
+                            activeBranch = selectedBranch,
+                        )
+                    }
                 }
                 if (running && approvals.isEmpty()) {
                     item {
@@ -927,7 +935,11 @@ private fun AgentHistorySheet(
 }
 
 @Composable
-private fun TranscriptEntry(entry: AgentEntry) {
+private fun TranscriptEntry(
+    entry: AgentEntry,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+) {
     val colors = MaterialTheme.colorScheme
     when (entry) {
         is AgentEntry.User -> {
@@ -962,12 +974,21 @@ private fun TranscriptEntry(entry: AgentEntry) {
                 }
             }
         }
-        is AgentEntry.ToolCall -> ToolCallCard(entry, isPending = false, onApprove = {}, onReject = {})
+        is AgentEntry.ToolCall -> ToolCallCard(
+            entry = entry,
+            isPending = false,
+            activeRepoFullName = activeRepoFullName,
+            activeBranch = activeBranch,
+            onApprove = {},
+            onReject = {},
+        )
         is AgentEntry.ToolResult -> ToolResultCard(entry)
         is AgentEntry.Pending -> {
             ToolCallCard(
                 entry = AgentEntry.ToolCall(entry.pending.call),
                 isPending = true,
+                activeRepoFullName = activeRepoFullName,
+                activeBranch = activeBranch,
                 onApprove = { entry.pending.deferred.complete(true) },
                 onReject = { entry.pending.deferred.complete(false) },
             )
@@ -979,10 +1000,13 @@ private fun TranscriptEntry(entry: AgentEntry) {
 private fun ToolCallCard(
     entry: AgentEntry.ToolCall,
     isPending: Boolean,
+    activeRepoFullName: String?,
+    activeBranch: String?,
     onApprove: () -> Unit,
     onReject: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
+    val showDiff = isPending && entry.call.name in DIFF_PREVIEW_TOOLS
     Column(
         Modifier
             .fillMaxWidth()
@@ -1018,6 +1042,14 @@ private fun ToolCallCard(
             fontFamily = FontFamily.Monospace,
             color = colors.onSurfaceVariant,
         )
+        if (showDiff) {
+            Spacer(Modifier.height(10.dp))
+            DiffPreview(
+                call = entry.call,
+                activeRepoFullName = activeRepoFullName,
+                activeBranch = activeBranch,
+            )
+        }
         if (isPending) {
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1036,6 +1068,201 @@ private fun ToolCallCard(
                     onClick = onReject,
                 )
             }
+        }
+    }
+}
+
+private val DIFF_PREVIEW_TOOLS = setOf(
+    AgentTools.WRITE_FILE.name,
+    AgentTools.EDIT_FILE.name,
+    AgentTools.COMMIT.name,
+)
+
+/** Diff preview rendered inside [ToolCallCard] when a destructive tool
+ * call is awaiting approval. Fetches the current file content from
+ * GitHub for `write_file` / `commit`, derives the old text locally for
+ * `edit_file`, and renders a compact line-level `+/-` diff. */
+@Composable
+private fun DiffPreview(
+    call: AiToolCall,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+) {
+    val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val args = remember(call.argsJson) {
+        runCatching { org.json.JSONObject(call.argsJson) }.getOrElse { org.json.JSONObject() }
+    }
+    val owner = activeRepoFullName?.substringBefore('/').orEmpty()
+    val repo = activeRepoFullName?.substringAfter('/').orEmpty()
+    val branch = activeBranch.orEmpty()
+
+    when (call.name) {
+        AgentTools.EDIT_FILE.name -> {
+            val path = args.optString("path", "?")
+            val oldStr = args.optString("old_string", "")
+            val newStr = args.optString("new_string", "")
+            DiffBlockHeader(label = "$path  (edit)")
+            Spacer(Modifier.height(4.dp))
+            DiffLines(LineDiff.diff(oldStr, newStr))
+        }
+        AgentTools.WRITE_FILE.name -> {
+            val path = args.optString("path", "?")
+            val content = args.optString("content", "")
+            val original = produceState<String?>(
+                initialValue = null,
+                key1 = owner, key2 = repo, key3 = branch,
+            ) {
+                value = if (owner.isBlank() || repo.isBlank() || branch.isBlank() || path.isBlank()) {
+                    ""
+                } else {
+                    runCatching {
+                        kotlinx.coroutines.withContext(Dispatchers.IO) {
+                            GitHubManager.getFileContent(context, owner, repo, path, branch)
+                        }
+                    }.getOrDefault("")
+                }
+            }
+            val orig = original.value
+            DiffBlockHeader(label = "$path  (write)")
+            Spacer(Modifier.height(4.dp))
+            if (orig == null) {
+                Text(Strings.aiAgentDiffLoading, fontSize = 11.sp, color = colors.onSurfaceVariant)
+            } else {
+                DiffLines(LineDiff.diff(orig, content))
+            }
+        }
+        AgentTools.COMMIT.name -> {
+            val files = args.optJSONArray("files")
+            if (files == null || files.length() == 0) {
+                Text(Strings.aiAgentDiffEmpty, fontSize = 11.sp, color = colors.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val limit = minOf(files.length(), 5)
+                    for (i in 0 until limit) {
+                        val f = files.optJSONObject(i) ?: continue
+                        val path = f.optString("path", "?")
+                        val content = f.optString("content", "")
+                        val original = produceState<String?>(
+                            initialValue = null,
+                            key1 = "$owner/$repo/$branch/$path",
+                        ) {
+                            value = if (owner.isBlank() || repo.isBlank() || branch.isBlank() || path.isBlank()) {
+                                ""
+                            } else {
+                                runCatching {
+                                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                        GitHubManager.getFileContent(context, owner, repo, path, branch)
+                                    }
+                                }.getOrDefault("")
+                            }
+                        }
+                        DiffBlockHeader(label = path)
+                        Spacer(Modifier.height(2.dp))
+                        val orig = original.value
+                        if (orig == null) {
+                            Text(Strings.aiAgentDiffLoading, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                        } else {
+                            DiffLines(LineDiff.diff(orig, content))
+                        }
+                    }
+                    if (files.length() > limit) {
+                        Text(
+                            "+${files.length() - limit} more file(s)",
+                            fontSize = 11.sp,
+                            color = colors.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiffBlockHeader(label: String) {
+    val colors = MaterialTheme.colorScheme
+    Text(
+        label,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.4.sp,
+        color = colors.onSurfaceVariant,
+        fontFamily = FontFamily.Monospace,
+    )
+}
+
+@Composable
+private fun DiffLines(diff: List<LineDiff.Line>) {
+    val colors = MaterialTheme.colorScheme
+    val stats = LineDiff.stats(diff)
+    val compacted = LineDiff.compact(diff, contextLines = 2)
+    val maxRender = 60
+    val display = if (compacted.size > maxRender) compacted.take(maxRender) else compacted
+    val addBg = colors.tertiary.copy(alpha = 0.15f)
+    val delBg = colors.error.copy(alpha = 0.12f)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface.copy(alpha = 0.6f))
+            .border(0.5.dp, colors.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .padding(vertical = 4.dp),
+    ) {
+        Text(
+            "+${stats.added}  -${stats.removed}",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+        for (line in display) {
+            if (line == null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "…",
+                        fontSize = 10.sp,
+                        color = colors.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                continue
+            }
+            val (prefix, bg, fg) = when (line) {
+                is LineDiff.Line.Add -> Triple("+ ", addBg, colors.onSurface)
+                is LineDiff.Line.Del -> Triple("- ", delBg, colors.onSurface)
+                is LineDiff.Line.Same -> Triple("  ", androidx.compose.ui.graphics.Color.Transparent, colors.onSurfaceVariant)
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(bg)
+                    .padding(horizontal = 8.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    "$prefix${line.text}",
+                    fontSize = 11.sp,
+                    color = fg,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (compacted.size > maxRender) {
+            Text(
+                "+${compacted.size - maxRender} more lines",
+                fontSize = 10.sp,
+                color = colors.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            )
         }
     }
 }
