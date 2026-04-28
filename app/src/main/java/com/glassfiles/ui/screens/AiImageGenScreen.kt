@@ -677,14 +677,18 @@ private fun ActionPill(
 private fun sizeOptionsFor(model: AiModel?): List<String> {
     val id = model?.id?.lowercase().orEmpty()
     return when {
-        // gpt-image-1 supports "auto" — model picks the resolution itself
-        // (it generates at native quality, often 1024x1024 / 1024x1536 / 1536x1024).
+        // gpt-image-1 supports "auto" natively — model picks the resolution itself.
         id.contains("gpt-image") -> listOf("auto", "1024x1024", "1024x1536", "1536x1024")
-        id.contains("dall-e-2") || id.contains("dalle-2") -> listOf("256x256", "512x512", "1024x1024")
-        id.contains("dall-e-3") || id.contains("dalle-3") -> listOf("1024x1024", "1792x1024", "1024x1792")
-        id.contains("imagen") -> listOf("1024x1024", "1408x768", "768x1408")
-        id.contains("grok") || id.contains("imagine") -> listOf("1024x1024", "1024x768", "768x1024")
-        else -> listOf("512x512", "1024x1024", "1024x1792", "1792x1024")
+        id.contains("dall-e-2") || id.contains("dalle-2") -> listOf("auto", "256x256", "512x512", "1024x1024")
+        id.contains("dall-e-3") || id.contains("dalle-3") -> listOf("auto", "1024x1024", "1792x1024", "1024x1792")
+        id.contains("imagen") -> listOf("auto", "1024x1024", "1408x768", "768x1408")
+        // xAI `grok-2-image` only generates at 1024x768 and rejects the `size`
+        // field entirely. Auto is the only sensible option here.
+        id.contains("grok") || id.contains("imagine") -> listOf("auto")
+        // Alibaba wanx — square + a few common ratios; auto skips the size field
+        // so the model uses its default (typically 1024x1024).
+        id.contains("wanx") || id.contains("-t2i-") -> listOf("auto", "1024x1024", "1280x720", "720x1280")
+        else -> listOf("auto", "512x512", "1024x1024", "1024x1792", "1792x1024")
     }
 }
 
