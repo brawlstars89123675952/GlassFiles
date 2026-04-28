@@ -79,12 +79,17 @@ fun AiModelsScreen(onBack: () -> Unit) {
         errors[provider] = null
         scope.launch {
             try {
-                val list = ModelRegistry.getModels(
-                    context = context,
-                    provider = provider,
-                    apiKey = AiKeyStore.getKey(context, provider),
-                    force = force,
-                )
+                val key = AiKeyStore.getKey(context, provider)
+                val list = if (force) {
+                    // The user explicitly asked to refresh — propagate auth /
+                    // network errors so they see the real failure instead of an
+                    // empty list. ModelRegistry.getModels() silently falls back
+                    // to stale cache on failure, which makes the error UI here
+                    // unreachable, so we use refreshOrThrow() for force-refresh.
+                    ModelRegistry.refreshOrThrow(context, provider, key)
+                } else {
+                    ModelRegistry.getModels(context, provider, key, force = false)
+                }
                 models[provider] = list
             } catch (e: Exception) {
                 errors[provider] = e.message ?: e.javaClass.simpleName

@@ -57,6 +57,29 @@ object ModelRegistry {
         }
     }
 
+    /**
+     * Force-refreshes the cache for a provider and propagates exceptions on
+     * failure (auth error, network error, parsing error). Use this when the
+     * caller needs to surface a real error to the user — e.g. the manual
+     * "Refresh" button in `AiModelsScreen`. Unlike [getModels], this NEVER
+     * silently falls back to a stale cache: on success it stores and returns
+     * the live list; on failure it throws.
+     *
+     * Throws [IllegalStateException] if [apiKey] is blank.
+     */
+    suspend fun refreshOrThrow(
+        context: Context,
+        provider: AiProviderId,
+        apiKey: String,
+    ): List<AiModel> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) {
+            throw IllegalStateException("Enter the ${provider.displayName} API key first")
+        }
+        val live = AiProviders.get(provider).listModels(context, apiKey)
+        writeCache(context, provider, live)
+        live
+    }
+
     /** Aggregated view across every provider that has a non-blank API key configured. */
     suspend fun getAllModels(
         context: Context,
