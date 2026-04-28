@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -270,7 +271,17 @@ fun GlassFilesApp(
             }
         }
 
-        if (githubWasOpened && !githubMiniMode && activeScreen == AppScreen.GITHUB) {
+        // Full-screen GitHub view. AnimatedVisibility crossfades + scales
+        // it against the floating mini-window below so the
+        // mini ↔ full-screen toggle feels like a continuous zoom
+        // instead of a hard cut. The shared `gitHubContent` (a
+        // movableContentOf) keeps internal navigation state across the
+        // transition.
+        AnimatedVisibility(
+            visible = githubWasOpened && !githubMiniMode && activeScreen == AppScreen.GITHUB,
+            enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.94f),
+            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.94f),
+        ) {
             Box(Modifier.fillMaxSize()) { gitHubContent(false) }
         }
 
@@ -527,7 +538,15 @@ fun GlassFilesApp(
             }
         }
 
-        if (githubWasOpened && githubMiniMode && !githubBubbleMode) {
+        // Mini-window. Same animation idiom as the full-screen view —
+        // they're each other's inverse, so when the user taps expand
+        // the mini fades+scales out as the full-screen view fades+scales
+        // in (and vice versa on minimize).
+        AnimatedVisibility(
+            visible = githubWasOpened && githubMiniMode && !githubBubbleMode,
+            enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 1.04f),
+            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 1.04f),
+        ) {
             GitHubFloatingWindow(
                 onExpand = {
                     githubMiniMode = false
@@ -542,15 +561,33 @@ fun GlassFilesApp(
             )
         }
 
-        if (githubWasOpened && githubBubbleMode) {
+        // The bubble — smallest of the three states. Pop in/out so it
+        // doesn't appear/disappear instantly when the user toggles.
+        AnimatedVisibility(
+            visible = githubWasOpened && githubBubbleMode,
+            enter = fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.6f),
+            exit = fadeOut(tween(140)) + scaleOut(tween(180), targetScale = 0.6f),
+        ) {
             GitHubBubble(onExpand = { githubBubbleMode = false; githubMiniMode = true }, onClose = { closeGitHubFully() })
         }
 
         // AI Agent bottom-sheet (overlay on top of activeScreen). Shown
         // only when launched from inside the GitHub module via the
         // sparkle icon — opening the agent from the AI hub still uses
-        // the full-screen AI_AGENT route below.
-        if (aiSheetVisible) {
+        // the full-screen AI_AGENT route below. Wrapped in
+        // AnimatedVisibility so the surface slides in/out from the
+        // bottom edge instead of popping into existence at full size.
+        AnimatedVisibility(
+            visible = aiSheetVisible,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 260),
+                initialOffsetY = { it },
+            ) + fadeIn(tween(180)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 220),
+                targetOffsetY = { it },
+            ) + fadeOut(tween(160)),
+        ) {
             AiAgentBottomSheet(
                 expanded = aiSheetExpanded,
                 onExpandedChange = { aiSheetExpanded = it },
@@ -759,17 +796,26 @@ private fun AiAgentBottomSheet(
             label = "ai-sheet-height",
         )
 
-        // Scrim — only when expanded; tap to collapse (NOT close).
-        if (expanded) {
+        // Scrim — fades in/out alongside the height animation so the
+        // expand/collapse feels like one continuous motion instead of
+        // a hard cut. Tap to collapse (NOT close).
+        val scrimAlpha by animateFloatAsState(
+            targetValue = if (expanded) 0.32f else 0f,
+            animationSpec = tween(durationMillis = 220),
+            label = "ai-sheet-scrim",
+        )
+        if (scrimAlpha > 0f) {
             val scrimInteraction = remember { MutableInteractionSource() }
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(colors.scrim.copy(alpha = 0.32f))
-                    .clickable(
-                        interactionSource = scrimInteraction,
-                        indication = null,
-                    ) { onExpandedChange(false) },
+                    .background(colors.scrim.copy(alpha = scrimAlpha))
+                    .then(
+                        if (expanded) Modifier.clickable(
+                            interactionSource = scrimInteraction,
+                            indication = null,
+                        ) { onExpandedChange(false) } else Modifier
+                    ),
             )
         }
 
@@ -806,7 +852,15 @@ private fun AiAgentBottomSheet(
                             .background(colors.outlineVariant),
                     )
                 }
-                if (expanded) {
+                // Crossfade keeps the sheet's content visually continuous
+                // through the height animation — without it the bar
+                // and the agent UI would swap instantly mid-tween.
+                Crossfade(
+                    targetState = expanded,
+                    animationSpec = tween(durationMillis = 220),
+                    modifier = Modifier.fillMaxSize(),
+                    label = "ai-sheet-body",
+                ) { isExpanded -> if (isExpanded) {
                     // The agent supplies its own top bar with title +
                     // history/new/stop buttons; we hand it `onClose` so
                     // an X icon appears next to those, and `onBack`
@@ -844,7 +898,7 @@ private fun AiAgentBottomSheet(
                             Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
                         }
                     }
-                }
+                } }
             }
         }
     }
