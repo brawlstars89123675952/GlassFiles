@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -311,7 +312,7 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                androidx.compose.foundation.lazy.items(results) { item ->
+                items(results) { item ->
                     ImageResultCard(item, context)
                 }
             }
