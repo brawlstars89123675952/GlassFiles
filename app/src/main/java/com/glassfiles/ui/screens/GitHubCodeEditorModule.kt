@@ -477,9 +477,24 @@ fun CodeEditorScreen(
                 hasChanges = hasChanges
             )
             if (onAskAi != null) {
+                // C2 — when the user has highlighted a region, expose a
+                // dedicated "Send selection" chip that ships the
+                // selected snippet to the agent inline. Falls through
+                // to the standard quick-action prompts when there is
+                // no selection.
+                val selectedRange = textState.selection
+                val selectedText = run {
+                    val src = textState.text
+                    val start = minOf(selectedRange.start, selectedRange.end)
+                        .coerceIn(0, src.length)
+                    val end = maxOf(selectedRange.start, selectedRange.end)
+                        .coerceIn(0, src.length)
+                    if (end > start) src.substring(start, end) else ""
+                }
                 AiQuickActionsRow(
                     filePath = file.path,
                     branch = branch,
+                    selectedText = selectedText,
                     onSendPrompt = { onAskAi(it) },
                 )
             }
@@ -1244,6 +1259,7 @@ private fun openUrl(context: Context, url: String) {
 private fun AiQuickActionsRow(
     filePath: String,
     branch: String,
+    selectedText: String,
     onSendPrompt: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -1269,6 +1285,45 @@ private fun AiQuickActionsRow(
             tint = colors.primary,
         )
         Spacer(Modifier.width(2.dp))
+        // C2 — selection-first chip. We cap the snippet at ~4 KB to
+        // avoid blowing the agent's input box if the user
+        // accidentally selected the whole file. The agent already has
+        // file-read tools to fetch surrounding context if needed.
+        if (selectedText.isNotBlank()) {
+            val snippet = if (selectedText.length > 4_000) {
+                selectedText.take(4_000) + "\n…(truncated)"
+            } else {
+                selectedText
+            }
+            val prompt = buildString {
+                append(Strings.aiAgentSendSelectionPromptPrefix)
+                append(" `")
+                append(filePath)
+                append("` (branch `")
+                append(branch)
+                append("`):\n\n```\n")
+                append(snippet)
+                append("\n```\n")
+            }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(colors.primaryContainer.copy(alpha = 0.7f))
+                    .border(
+                        0.5.dp,
+                        colors.outlineVariant.copy(alpha = 0.5f),
+                        RoundedCornerShape(14.dp),
+                    )
+                    .clickable { onSendPrompt(prompt) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    Strings.aiAgentSendSelectionChip,
+                    fontSize = 11.sp,
+                    color = colors.onPrimaryContainer,
+                )
+            }
+        }
         actions.forEach { (label, prompt) ->
             Box(
                 Modifier

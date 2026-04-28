@@ -1791,7 +1791,12 @@ private fun MiniActionsBadge(text: String, color: Color) {
 }
 
 @Composable
-internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Unit) {
+internal fun WorkflowRunDetailScreen(
+    repo: GHRepo,
+    runId: Long,
+    onSuggestFix: ((prompt: String) -> Unit)? = null,
+    onBack: () -> Unit,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val jobListState = rememberSaveable(runId, "jobs", saver = LazyListState.Saver) { LazyListState(0, 0) }
@@ -1994,6 +1999,36 @@ internal fun WorkflowRunDetailScreen(repo: GHRepo, runId: Long, onBack: () -> Un
                     refreshAll()
                 }
             }) { Icon(Icons.Rounded.Error, null, tint = Orange) }
+            // B — "Suggest fix" handoff to AI Agent. Only shown when
+            // (a) the agent integration is wired (onSuggestFix != null)
+            // and (b) this run actually failed; succeeded runs don't
+            // need a fix. Prompt is built from the run's name + the
+            // first failed job (when available) to give the agent a
+            // concrete starting point instead of a generic ask.
+            if (onSuggestFix != null && run?.conclusion == "failure") {
+                IconButton(onClick = {
+                    val r = run
+                    val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
+                    val prompt = buildString {
+                        append(Strings.aiAgentSuggestFixPrompt)
+                        append("\n\n")
+                        append("Workflow: ").append(r?.name ?: "?").append('\n')
+                        append("Run: #").append(r?.runNumber ?: runId).append('\n')
+                        if (firstFailed != null) {
+                            append("Failed job: ").append(firstFailed.name).append('\n')
+                        }
+                        r?.headBranch?.takeIf { it.isNotBlank() }?.let {
+                            append("Branch: ").append(it).append('\n')
+                        }
+                        r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
+                            append("URL: ").append(it).append('\n')
+                        }
+                    }
+                    onSuggestFix(prompt)
+                }) {
+                    Icon(Icons.Rounded.AutoAwesome, null, tint = Blue)
+                }
+            }
             IconButton(onClick = {
                 scope.launch {
                     val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)

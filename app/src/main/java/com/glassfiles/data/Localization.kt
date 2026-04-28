@@ -382,6 +382,44 @@ object Strings {
     val aiAgentSystemPromptSave get() = s("Сохранить", "Save")
     val aiAgentSystemPromptCancel get() = s("Отмена", "Cancel")
 
+    // C3 — plan-then-execute toggle. Lives in the same dialog as the
+    // system-prompt override, so the strings are right next door.
+    val aiAgentPlanFirstLabel get() = s(
+        "Сначала план, потом действия",
+        "Plan first, then act",
+    )
+    val aiAgentPlanFirstHint get() = s(
+        "Агент в первом ответе только распишет план, без вызова инструментов. Дальше — после твоего «ок».",
+        "On the first turn the agent will only outline a plan — no tool calls — and wait for your go-ahead.",
+    )
+
+    // D2 — resume banner shown when the previous agent run for this
+    // session was killed mid-flight. The pointer lives in
+    // AiAgentResumeStore and is wiped after the user picks an action.
+    val aiAgentResumeBannerText get() = s(
+        "Прошлый запуск агента не завершился. Возобновить с тем же запросом?",
+        "The previous agent run didn't finish. Resume with the same prompt?",
+    )
+    val aiAgentResumeBannerAction get() = s("Возобновить", "Resume")
+    val aiAgentResumeBannerDiscard get() = s("Отбросить", "Discard")
+
+    // B — Suggest fix on a failed CI run. Prefilled prompt that the
+    // workflow-run page sends into the agent.
+    val aiAgentSuggestFixPrompt get() = s(
+        "Этот запуск GitHub Actions упал. Прочитай логи неудавшегося job через read_workflow_run и предложи исправление.",
+        "This GitHub Actions run failed. Read the failing job's logs via read_workflow_run and suggest a fix.",
+    )
+
+    // C2 — "Send selection" chip in the code editor's quick-actions row.
+    val aiAgentSendSelectionChip get() = s(
+        "Отправить выделение",
+        "Send selection",
+    )
+    val aiAgentSendSelectionPromptPrefix get() = s(
+        "Посмотри этот фрагмент из",
+        "Take a look at this snippet from",
+    )
+
     // Cost-policy UI (PR-COST-B). Three modes + warning dialog copy.
     val aiCostMode get() = s("Режим", "Mode")
     val aiCostModeEco get() = s("Эко", "Eco")

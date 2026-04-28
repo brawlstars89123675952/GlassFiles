@@ -300,7 +300,20 @@ internal fun RepoDetailScreen(
         )
         return
     }
-    if (selectedRunId != null) { WorkflowRunDetailScreen(repo, selectedRunId!!) { selectedRunId = null }; return }
+    if (selectedRunId != null) {
+        // B — wire onOpenAiAgent through so the run-detail screen can
+        // ask the AI Agent to look at a failed run. Composable receiver
+        // is responsible for opening the agent on a prefilled prompt.
+        WorkflowRunDetailScreen(
+            repo = repo,
+            runId = selectedRunId!!,
+            onSuggestFix = onOpenAiAgent?.let { open ->
+                { prompt -> open(repo.fullName, selectedBranch, prompt) }
+            },
+            onBack = { selectedRunId = null },
+        )
+        return
+    }
     if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onTeams = { showRepoSettings = false; showTeams = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
     if (showBranchProtection) { BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) ; return }
     if (showCollaborators) { CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false }; return }
