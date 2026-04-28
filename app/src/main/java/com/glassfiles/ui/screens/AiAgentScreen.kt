@@ -609,12 +609,13 @@ fun AiAgentScreen(
         // pending user text. This is what gets shipped to the provider
         // on the very next call, so it's the most honest number we
         // can show to the user without a real token-counter.
-        val approxContext = text.length + transcript.sumOf { entry ->
+        val approxContext: Int = text.length + transcript.sumOf { entry ->
             when (entry) {
                 is AgentEntry.User -> entry.text.length
                 is AgentEntry.Assistant -> entry.text.length
                 is AgentEntry.ToolCall -> entry.call.argsJson.length
                 is AgentEntry.ToolResult -> entry.result.output.length
+                is AgentEntry.Pending -> 0
             }
         }
         val limits = com.glassfiles.data.ai.cost.AiCostPolicy.limitsFor(costMode)
