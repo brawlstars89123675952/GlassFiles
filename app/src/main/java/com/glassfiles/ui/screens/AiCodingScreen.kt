@@ -374,7 +374,7 @@ private fun <T> PickerChip(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(10.dp))
-                .background(colors.surfaceVariant)
+                .background(colors.surfaceVariant.copy(alpha = 0.5f))
                 .clickable(enabled = options.isNotEmpty()) { expanded = true }
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -436,7 +436,7 @@ private fun CodingMessageRow(message: CodingMessage, context: Context) {
     val container = when {
         message.isError -> colors.error.copy(alpha = 0.10f)
         isUser -> colors.primary.copy(alpha = 0.10f)
-        else -> colors.surfaceVariant
+        else -> colors.surfaceVariant.copy(alpha = 0.5f)
     }
     val onContainer = when {
         message.isError -> colors.error
@@ -577,7 +577,7 @@ private fun InputBar(
             Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(20.dp))
-                .background(colors.surfaceVariant)
+                .background(colors.surfaceVariant.copy(alpha = 0.5f))
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             BasicTextField(
