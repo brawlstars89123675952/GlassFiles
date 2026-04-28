@@ -26,13 +26,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -62,12 +61,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.glassfiles.data.Strings
+import com.glassfiles.data.ai.AiAssetHistoryStore
 import com.glassfiles.data.ai.AiGallerySaver
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.ModelRegistry
 import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiModel
+import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
+import com.glassfiles.ui.components.AiPickerChip
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -107,6 +109,32 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
     var genError by remember { mutableStateOf<String?>(null) }
     var generationJob by remember { mutableStateOf<Job?>(null) }
     val results = remember { mutableStateListOf<VideoResult>() }
+    var historyLoaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (historyLoaded) return@LaunchedEffect
+        AiAssetHistoryStore.list(context, AiAssetHistoryStore.MODE_VIDEO).forEach { rec ->
+            val file = File(rec.filePath)
+            if (!file.exists()) return@forEach
+            val provider = runCatching { AiProviderId.valueOf(rec.providerId) }.getOrNull() ?: return@forEach
+            val stubModel = AiModel(
+                providerId = provider,
+                id = rec.modelId,
+                displayName = rec.modelDisplay,
+                capabilities = setOf(AiCapability.VIDEO_GEN),
+            )
+            results.add(
+                VideoResult(
+                    cacheFile = file,
+                    model = stubModel,
+                    prompt = rec.prompt,
+                    historyId = rec.id,
+                    savedTo = rec.savedToGalleryUri,
+                ),
+            )
+        }
+        historyLoaded = true
+    }
 
     LaunchedEffect(configured) {
         modelsLoading = true
@@ -153,7 +181,29 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
                     aspectRatio = aspect,
                     onProgress = { status = it },
                 )
-                results.add(0, VideoResult(File(path), model))
+                val cacheFile = File(path)
+                val record = AiAssetHistoryStore.Record(
+                    id = System.currentTimeMillis() + (0..999).random(),
+                    mode = AiAssetHistoryStore.MODE_VIDEO,
+                    providerId = model.providerId.name,
+                    modelId = model.id,
+                    modelDisplay = model.displayName,
+                    prompt = text,
+                    size = aspect,
+                    filePath = cacheFile.absolutePath,
+                    savedToGalleryUri = null,
+                    createdAt = System.currentTimeMillis(),
+                )
+                AiAssetHistoryStore.add(context, record)
+                results.add(
+                    0,
+                    VideoResult(
+                        cacheFile = cacheFile,
+                        model = model,
+                        prompt = text,
+                        historyId = record.id,
+                    ),
+                )
             } catch (e: Exception) {
                 if (e !is kotlinx.coroutines.CancellationException) {
                     genError = e.message ?: e.javaClass.simpleName
@@ -206,29 +256,39 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            VideoDropdownChip(
+            AiPickerChip(
                 label = "MODEL",
                 value = selected?.displayName ?: Strings.aiRefreshing,
-                modifier = Modifier.weight(2f),
+                title = "Model",
                 options = videoModels,
                 optionLabel = { it.displayName },
+                optionSubtitle = { m ->
+                    val caps = m.capabilities.joinToString(" · ") { it.name.lowercase() }
+                    if (caps.isBlank()) m.id else "$caps · ${m.id}"
+                },
+                selected = selected,
                 onSelect = { selected = it },
+                modifier = Modifier.weight(2f),
             )
-            VideoDropdownChip(
+            AiPickerChip(
                 label = "ASPECT",
                 value = aspect,
-                modifier = Modifier.weight(1f),
+                title = "Aspect ratio",
                 options = aspectOptions,
                 optionLabel = { it },
+                selected = aspect,
                 onSelect = { aspect = it },
+                modifier = Modifier.weight(1f),
             )
-            VideoDropdownChip(
+            AiPickerChip(
                 label = "SEC",
                 value = duration.toString(),
-                modifier = Modifier.weight(0.7f),
+                title = "Duration (s)",
                 options = listOf(2, 3, 4, 5, 6, 8),
                 optionLabel = { it.toString() },
+                selected = duration,
                 onSelect = { duration = it },
+                modifier = Modifier.weight(0.7f),
             )
         }
 
@@ -340,8 +400,30 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                items(results) { item ->
-                    VideoResultCard(item, context)
+                items(results, key = { it.historyId }) { item ->
+                    VideoResultCard(
+                        item = item,
+                        context = context,
+                        onDelete = {
+                            AiAssetHistoryStore.remove(
+                                context,
+                                AiAssetHistoryStore.MODE_VIDEO,
+                                item.historyId,
+                            )
+                            runCatching { item.cacheFile.delete() }
+                            results.remove(item)
+                        },
+                        onSavedToGallery = { uri ->
+                            AiAssetHistoryStore.list(context, AiAssetHistoryStore.MODE_VIDEO)
+                                .firstOrNull { it.id == item.historyId }
+                                ?.let { rec ->
+                                    AiAssetHistoryStore.update(
+                                        context,
+                                        rec.copy(savedToGalleryUri = uri),
+                                    )
+                                }
+                        },
+                    )
                 }
             }
         }
@@ -353,17 +435,24 @@ private val aspectOptions = listOf("16:9", "9:16", "1:1", "4:3", "3:4")
 private data class VideoResult(
     val cacheFile: File,
     val model: AiModel,
+    val prompt: String = "",
+    val historyId: Long = 0L,
     var savedTo: String? = null,
     var saveError: String? = null,
 )
 
 @Composable
-private fun VideoResultCard(item: VideoResult, context: Context) {
+private fun VideoResultCard(
+    item: VideoResult,
+    context: Context,
+    onDelete: () -> Unit,
+    onSavedToGallery: (String) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
-    var saved by remember { mutableStateOf(item.savedTo != null) }
-    var saving by remember { mutableStateOf(false) }
-    var saveError by remember { mutableStateOf(item.saveError) }
+    var saved by remember(item.historyId) { mutableStateOf(item.savedTo != null) }
+    var saving by remember(item.historyId) { mutableStateOf(false) }
+    var saveError by remember(item.historyId) { mutableStateOf(item.saveError) }
     var thumb by remember(item.cacheFile.absolutePath) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
     }
@@ -442,6 +531,7 @@ private fun VideoResultCard(item: VideoResult, context: Context) {
                             item.savedTo = path
                             saved = true
                             saveError = null
+                            onSavedToGallery(path)
                         } catch (e: Exception) {
                             saveError = e.message ?: e.javaClass.simpleName
                             item.saveError = saveError
@@ -460,6 +550,20 @@ private fun VideoResultCard(item: VideoResult, context: Context) {
                 icon = Icons.Rounded.Share,
                 label = Strings.aiVideoShare,
                 onClick = { shareVideo(context, item.cacheFile) },
+            )
+            VideoActionChip(
+                icon = Icons.Rounded.Delete,
+                label = Strings.aiHistoryDelete,
+                onClick = onDelete,
+            )
+        }
+        if (item.prompt.isNotBlank()) {
+            Text(
+                item.prompt,
+                fontSize = 11.sp,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
         if (saveError != null) {
@@ -536,66 +640,6 @@ private fun VideoActionChip(
         Icon(icon, null, Modifier.size(14.dp), tint = fg)
         Spacer(Modifier.size(6.dp))
         Text(label, fontSize = 12.sp, color = fg)
-    }
-}
-
-@Composable
-private fun <T> VideoDropdownChip(
-    label: String,
-    value: String,
-    options: List<T>,
-    optionLabel: (T) -> String,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(colors.surfaceVariant.copy(alpha = 0.5f))
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Text(
-                label,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp,
-                color = colors.onSurfaceVariant,
-            )
-            Spacer(Modifier.size(2.dp))
-            Text(
-                value,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onSurface,
-                maxLines = 1,
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.background(colors.surface),
-        ) {
-            options.forEach { opt ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            optionLabel(opt),
-                            fontSize = 13.sp,
-                            color = colors.onSurface,
-                        )
-                    },
-                    onClick = {
-                        onSelect(opt)
-                        expanded = false
-                    },
-                )
-            }
-        }
     }
 }
 

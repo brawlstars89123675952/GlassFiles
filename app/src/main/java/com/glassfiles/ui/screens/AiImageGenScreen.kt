@@ -23,15 +23,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -62,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.glassfiles.data.Strings
+import com.glassfiles.data.ai.AiAssetHistoryStore
 import com.glassfiles.data.ai.AiGallerySaver
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.ModelRegistry
@@ -70,6 +69,7 @@ import com.glassfiles.data.ai.models.AiModel
 import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
 import com.glassfiles.ui.components.AiImageViewer
+import com.glassfiles.ui.components.AiPickerChip
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -104,6 +104,34 @@ fun AiImageGenScreen(onBack: () -> Unit) {
     val results = remember { mutableStateListOf<ImageResult>() }
     var promptExpanded by remember { mutableStateOf(true) }
     var viewerFile by remember { mutableStateOf<File?>(null) }
+    var historyLoaded by remember { mutableStateOf(false) }
+
+    // Restore previous generations from disk so the user can scroll through
+    // older outputs after returning to the screen.
+    LaunchedEffect(Unit) {
+        if (historyLoaded) return@LaunchedEffect
+        AiAssetHistoryStore.list(context, AiAssetHistoryStore.MODE_IMAGE).forEach { rec ->
+            val file = File(rec.filePath)
+            if (!file.exists()) return@forEach
+            val provider = runCatching { AiProviderId.valueOf(rec.providerId) }.getOrNull() ?: return@forEach
+            val stubModel = AiModel(
+                providerId = provider,
+                id = rec.modelId,
+                displayName = rec.modelDisplay,
+                capabilities = setOf(AiCapability.IMAGE_GEN),
+            )
+            results.add(
+                ImageResult(
+                    cacheFile = file,
+                    model = stubModel,
+                    prompt = rec.prompt,
+                    historyId = rec.id,
+                    savedTo = rec.savedToGalleryUri,
+                ),
+            )
+        }
+        historyLoaded = true
+    }
 
     LaunchedEffect(selected) {
         // When model changes, snap size to a value the new model accepts.
@@ -155,7 +183,31 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                     size = size,
                     n = count,
                 )
-                paths.forEach { results.add(0, ImageResult(File(it), model)) }
+                paths.forEach { path ->
+                    val cacheFile = File(path)
+                    val record = AiAssetHistoryStore.Record(
+                        id = System.currentTimeMillis() + (0..999).random(),
+                        mode = AiAssetHistoryStore.MODE_IMAGE,
+                        providerId = model.providerId.name,
+                        modelId = model.id,
+                        modelDisplay = model.displayName,
+                        prompt = text,
+                        size = size,
+                        filePath = cacheFile.absolutePath,
+                        savedToGalleryUri = null,
+                        createdAt = System.currentTimeMillis(),
+                    )
+                    AiAssetHistoryStore.add(context, record)
+                    results.add(
+                        0,
+                        ImageResult(
+                            cacheFile = cacheFile,
+                            model = model,
+                            prompt = text,
+                            historyId = record.id,
+                        ),
+                    )
+                }
             } catch (e: Exception) {
                 genError = e.message ?: e.javaClass.simpleName
             } finally {
@@ -200,29 +252,39 @@ fun AiImageGenScreen(onBack: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            DropdownChip(
+            AiPickerChip(
                 label = "MODEL",
                 value = selected?.displayName ?: Strings.aiRefreshing,
-                modifier = Modifier.weight(2f),
+                title = "Model",
                 options = imageModels,
                 optionLabel = { it.displayName },
+                optionSubtitle = { m ->
+                    val caps = m.capabilities.joinToString(" · ") { it.name.lowercase() }
+                    if (caps.isBlank()) m.id else "$caps · ${m.id}"
+                },
+                selected = selected,
                 onSelect = { selected = it },
+                modifier = Modifier.weight(2f),
             )
-            DropdownChip(
+            AiPickerChip(
                 label = "SIZE",
                 value = size,
-                modifier = Modifier.weight(1f),
+                title = "Size",
                 options = sizeOptionsFor(selected),
                 optionLabel = { it },
+                selected = size,
                 onSelect = { size = it },
+                modifier = Modifier.weight(1f),
             )
-            DropdownChip(
+            AiPickerChip(
                 label = "N",
                 value = count.toString(),
-                modifier = Modifier.weight(0.6f),
+                title = "Count",
                 options = listOf(1, 2, 3, 4),
                 optionLabel = { it.toString() },
+                selected = count,
                 onSelect = { count = it },
+                modifier = Modifier.weight(0.6f),
             )
         }
 
@@ -334,11 +396,32 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                items(results) { item ->
+                items(results, key = { it.historyId }) { item ->
                     ImageResultCard(
                         item = item,
                         context = context,
                         onOpenViewer = { viewerFile = it },
+                        onDelete = {
+                            AiAssetHistoryStore.remove(
+                                context,
+                                AiAssetHistoryStore.MODE_IMAGE,
+                                item.historyId,
+                            )
+                            runCatching { item.cacheFile.delete() }
+                            results.remove(item)
+                        },
+                        onSavedToGallery = { uri ->
+                            // Persist the gallery uri so the saved
+                            // checkmark survives a screen rotation / restart.
+                            AiAssetHistoryStore.list(context, AiAssetHistoryStore.MODE_IMAGE)
+                                .firstOrNull { it.id == item.historyId }
+                                ?.let { rec ->
+                                    AiAssetHistoryStore.update(
+                                        context,
+                                        rec.copy(savedToGalleryUri = uri),
+                                    )
+                                }
+                        },
                     )
                 }
             }
@@ -423,61 +506,11 @@ private fun GenerateButton(enabled: Boolean, generating: Boolean, onClick: () ->
     }
 }
 
-@Composable
-private fun <T> DropdownChip(
-    label: String,
-    value: String,
-    options: List<T>,
-    optionLabel: (T) -> String,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(10.dp))
-                .background(colors.surfaceVariant.copy(alpha = 0.5f))
-                .clickable(enabled = options.isNotEmpty()) { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    label,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.6.sp,
-                    color = colors.onSurfaceVariant,
-                )
-                Text(
-                    value,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                )
-            }
-            Icon(Icons.Rounded.ExpandMore, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEach { opt ->
-                DropdownMenuItem(
-                    text = { Text(optionLabel(opt), fontSize = 13.sp, color = colors.onSurface) },
-                    onClick = {
-                        onSelect(opt); expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
-
 private data class ImageResult(
     val cacheFile: File,
     val model: AiModel,
+    val prompt: String = "",
+    val historyId: Long = 0L,
     var savedTo: String? = null,
 )
 
@@ -486,11 +519,13 @@ private fun ImageResultCard(
     item: ImageResult,
     context: Context,
     onOpenViewer: (File) -> Unit,
+    onDelete: () -> Unit,
+    onSavedToGallery: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
-    var saved by remember { mutableStateOf(item.savedTo != null) }
-    var savingError by remember { mutableStateOf<String?>(null) }
+    var saved by remember(item.historyId) { mutableStateOf(item.savedTo != null) }
+    var savingError by remember(item.historyId) { mutableStateOf<String?>(null) }
 
     Column(
         Modifier
@@ -546,9 +581,10 @@ private fun ImageResultCard(
                     scope.launch {
                         try {
                             val name = "GlassFiles_${System.currentTimeMillis()}.${item.cacheFile.extension}"
-                            AiGallerySaver.saveImage(context, item.cacheFile, name)
+                            val uri = AiGallerySaver.saveImage(context, item.cacheFile, name)
                             saved = true
                             savingError = null
+                            onSavedToGallery(uri)
                         } catch (e: Exception) {
                             savingError = e.message
                         }
@@ -567,6 +603,21 @@ private fun ImageResultCard(
                 label = Strings.aiImageShare,
                 primary = false,
                 onClick = { shareFile(context, item.cacheFile) },
+            )
+            ActionPill(
+                icon = Icons.Rounded.Delete,
+                label = Strings.aiHistoryDelete,
+                primary = false,
+                onClick = onDelete,
+            )
+        }
+        if (item.prompt.isNotBlank()) {
+            Text(
+                item.prompt,
+                fontSize = 11.sp,
+                color = colors.onSurfaceVariant,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
     }

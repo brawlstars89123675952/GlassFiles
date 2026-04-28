@@ -87,7 +87,7 @@ import com.glassfiles.data.ai.models.AiMessage
 import com.glassfiles.data.ai.models.AiModel
 import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
-import com.glassfiles.ui.components.AiPickerSheet
+import com.glassfiles.ui.components.AiPickerChip
 import com.glassfiles.ui.components.CodeColors
 import com.glassfiles.ui.components.highlightCode
 import kotlinx.coroutines.Dispatchers
@@ -488,7 +488,7 @@ private fun ModelPickerBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        PickerChip(
+        AiPickerChip(
             label = Strings.aiCodingPickProvider,
             value = provider?.displayName ?: "—",
             title = Strings.aiCodingPickProvider,
@@ -498,7 +498,7 @@ private fun ModelPickerBar(
             onSelect = { onProviderChange(it) },
             modifier = Modifier.weight(1f),
         )
-        PickerChip(
+        AiPickerChip(
             label = Strings.aiCodingPickModel,
             value = when {
                 loadingModels -> Strings.aiRefreshing
@@ -519,68 +519,6 @@ private fun ModelPickerBar(
             selected = codingModels.firstOrNull { it.id == modelId },
             onSelect = { onModelChange(it.id) },
             modifier = Modifier.weight(1.5f),
-        )
-    }
-}
-
-@Composable
-private fun <T> PickerChip(
-    label: String,
-    value: String,
-    title: String,
-    options: List<T>,
-    optionLabel: (T) -> String,
-    optionSubtitle: (T) -> String? = { null },
-    selected: T?,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    var open by remember { mutableStateOf(false) }
-
-    Row(
-        modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(colors.surfaceVariant.copy(alpha = 0.5f))
-            .clickable(enabled = options.isNotEmpty()) { open = true }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                label.uppercase(),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp,
-                color = colors.onSurfaceVariant,
-                fontFamily = FontFamily.Monospace,
-            )
-            Text(
-                value,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = colors.onSurface,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-            )
-        }
-        Icon(
-            Icons.Rounded.ExpandMore,
-            null,
-            Modifier.size(16.dp),
-            tint = colors.onSurfaceVariant,
-        )
-    }
-
-    if (open) {
-        AiPickerSheet(
-            title = title,
-            options = options,
-            optionLabel = optionLabel,
-            optionSubtitle = optionSubtitle,
-            selected = selected,
-            onDismiss = { open = false },
-            onSelect = onSelect,
         )
     }
 }
