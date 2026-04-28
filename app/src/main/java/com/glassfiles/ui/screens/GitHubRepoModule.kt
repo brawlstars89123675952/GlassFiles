@@ -306,7 +306,7 @@ internal fun RepoDetailScreen(
     if (showTeams) { RepoTeamsScreen(repoOwner = repo.owner, repoName = repo.name) { showTeams = false }; return }
     if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name, initialBase = selectedBranch) { showCompare = false }; return }
     if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name) { showWebhooks = false }; return }
-    if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name) { showDiscussions = false }; return }
+    if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name, canWrite = repo.canWrite()) { showDiscussions = false }; return }
     if (showRulesets) { RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { showRulesets = false }; return }
     if (showSecurity) { SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { showSecurity = false }; return }
     
@@ -470,8 +470,8 @@ internal fun RepoDetailScreen(
             Spacer(Modifier.weight(1f))
             when (selectedTab) {
                 RepoTab.FILES -> if (canWrite) { SmallAction(Icons.Rounded.NoteAdd, Strings.ghCreateFile) { showCreateFile = true }; SmallAction(Icons.Rounded.Upload, Strings.ghUpload) { showUpload = true } }
-                RepoTab.ISSUES -> SmallAction(Icons.Rounded.Add, Strings.ghNewIssue) { showCreateIssue = true }
-                RepoTab.PULLS -> SmallAction(Icons.Rounded.Add, Strings.ghNewPR) { showCreatePR = true }
+                RepoTab.ISSUES -> if (canWrite || repo.permissions == null) SmallAction(Icons.Rounded.Add, Strings.ghNewIssue) { showCreateIssue = true }
+                RepoTab.PULLS -> if (canWrite || repo.permissions == null) SmallAction(Icons.Rounded.Add, Strings.ghNewPR) { showCreatePR = true }
                 RepoTab.ACTIONS -> if (canWrite) SmallAction(Icons.Rounded.PlayArrow, Strings.ghRunWorkflow) { showDispatch = true }
                 else -> {}
             }
@@ -868,14 +868,15 @@ private fun PullRequestDetailScreen(
             }
 
             item {
+                val canWrite = repo.canWrite()
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(Icons.Rounded.Edit, "Edit", TextSecondary) { showEdit = true }
+                    if (canWrite) Chip(Icons.Rounded.Edit, "Edit", TextSecondary) { showEdit = true }
                     Chip(Icons.Rounded.Article, "Files", Blue) { onOpenFiles(pullNumber) }
-                    Chip(Icons.Rounded.RateReview, "Review", Blue) { showReview = true }
-                    Chip(Icons.Rounded.Group, "Reviewers", Blue) { showReviewers = true }
+                    if (canWrite) Chip(Icons.Rounded.RateReview, "Review", Blue) { showReview = true }
+                    if (canWrite) Chip(Icons.Rounded.Group, "Reviewers", Blue) { showReviewers = true }
                     Chip(Icons.Rounded.History, "Reviews", TextSecondary) { showReviews = true }
                     Chip(Icons.Rounded.FactCheck, "Checks", Blue) { showChecks = true }
-                    if (current.state == "open" && !current.merged && !current.draft) {
+                    if (canWrite && current.state == "open" && !current.merged && !current.draft) {
                         Chip(Icons.Rounded.CallMerge, if (merging) "Merging..." else Strings.ghMerge, Color(0xFF34C759)) {
                             if (!merging) showMerge = true
                         }
@@ -2156,32 +2157,34 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                 IconButton(onClick = { showMetaDialog = true }) {
                     Icon(Icons.Rounded.Tune, null, Modifier.size(20.dp), tint = Blue)
                 }
-                IconButton(onClick = { showLockDialog = true }) {
-                    Icon(
-                        if (detail!!.locked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
-                        null,
-                        Modifier.size(20.dp),
-                        tint = if (detail!!.locked) Color(0xFF34C759) else Color(0xFFFF9500)
-                    )
-                }
-                val isOpen = detail!!.state == "open"
-                IconButton(onClick = {
-                    scope.launch {
-                        val ok = if (isOpen) {
-                            GitHubManager.closeIssue(context, repo.owner, repo.name, issueNumber)
-                        } else {
-                            GitHubManager.reopenIssue(context, repo.owner, repo.name, issueNumber)
-                        }
-                        if (ok) refreshIssueDetail()
-                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                if (repo.canWrite()) {
+                    IconButton(onClick = { showLockDialog = true }) {
+                        Icon(
+                            if (detail!!.locked) Icons.Rounded.LockOpen else Icons.Rounded.Lock,
+                            null,
+                            Modifier.size(20.dp),
+                            tint = if (detail!!.locked) Color(0xFF34C759) else Color(0xFFFF9500)
+                        )
                     }
-                }) {
-                    Icon(
-                        if (isOpen) Icons.Rounded.Close else Icons.Rounded.Refresh,
-                        null,
-                        Modifier.size(20.dp),
-                        tint = if (isOpen) Color(0xFFFF3B30) else Color(0xFF34C759)
-                    )
+                    val isOpen = detail!!.state == "open"
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = if (isOpen) {
+                                GitHubManager.closeIssue(context, repo.owner, repo.name, issueNumber)
+                            } else {
+                                GitHubManager.reopenIssue(context, repo.owner, repo.name, issueNumber)
+                            }
+                            if (ok) refreshIssueDetail()
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
+                        Icon(
+                            if (isOpen) Icons.Rounded.Close else Icons.Rounded.Refresh,
+                            null,
+                            Modifier.size(20.dp),
+                            tint = if (isOpen) Color(0xFFFF3B30) else Color(0xFF34C759)
+                        )
+                    }
                 }
             }
         }
