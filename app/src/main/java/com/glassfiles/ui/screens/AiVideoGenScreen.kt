@@ -63,6 +63,7 @@ import androidx.core.content.FileProvider
 import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiAssetHistoryStore
 import com.glassfiles.data.ai.AiGallerySaver
+import com.glassfiles.data.ai.AiSettingsStore
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.ModelRegistry
 import com.glassfiles.data.ai.models.AiCapability
@@ -182,6 +183,13 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
                     onProgress = { status = it },
                 )
                 val cacheFile = File(path)
+                var savedUri: String? = null
+                if (AiSettingsStore.isAutoSaveGallery(context)) {
+                    runCatching {
+                        val name = "ai_${System.currentTimeMillis()}.mp4"
+                        AiGallerySaver.saveVideo(context, cacheFile, name)
+                    }.onSuccess { savedUri = it }
+                }
                 val record = AiAssetHistoryStore.Record(
                     id = System.currentTimeMillis() + (0..999).random(),
                     mode = AiAssetHistoryStore.MODE_VIDEO,
@@ -191,7 +199,7 @@ fun AiVideoGenScreen(onBack: () -> Unit) {
                     prompt = text,
                     size = aspect,
                     filePath = cacheFile.absolutePath,
-                    savedToGalleryUri = null,
+                    savedToGalleryUri = savedUri,
                     createdAt = System.currentTimeMillis(),
                 )
                 AiAssetHistoryStore.add(context, record)

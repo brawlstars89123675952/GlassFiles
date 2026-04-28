@@ -63,6 +63,7 @@ import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiAssetHistoryStore
 import com.glassfiles.data.ai.AiGallerySaver
 import com.glassfiles.data.ai.AiKeyStore
+import com.glassfiles.data.ai.AiSettingsStore
 import com.glassfiles.data.ai.ModelRegistry
 import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiModel
@@ -183,8 +184,16 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                     size = size,
                     n = count,
                 )
+                val autoSave = AiSettingsStore.isAutoSaveGallery(context)
                 paths.forEach { path ->
                     val cacheFile = File(path)
+                    var savedUri: String? = null
+                    if (autoSave) {
+                        runCatching {
+                            val name = "ai_${System.currentTimeMillis()}.png"
+                            AiGallerySaver.saveImage(context, cacheFile, name)
+                        }.onSuccess { savedUri = it }
+                    }
                     val record = AiAssetHistoryStore.Record(
                         id = System.currentTimeMillis() + (0..999).random(),
                         mode = AiAssetHistoryStore.MODE_IMAGE,
@@ -194,7 +203,7 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                         prompt = text,
                         size = size,
                         filePath = cacheFile.absolutePath,
-                        savedToGalleryUri = null,
+                        savedToGalleryUri = savedUri,
                         createdAt = System.currentTimeMillis(),
                     )
                     AiAssetHistoryStore.add(context, record)
