@@ -60,6 +60,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -181,6 +182,12 @@ fun AiAgentScreen(
     // on confirm so subsequent runs in this repo prepend it as a
     // `system` message.
     var showSystemPrompt by remember { mutableStateOf(false) }
+    // D2 — pending resumable run, if any. Read whenever
+    // [activeSessionId] changes; once the user resumes/discards we set
+    // it back to null without writing anything until the next launch.
+    var pendingResume by remember {
+        mutableStateOf<com.glassfiles.data.ai.AiAgentResumeStore.Pending?>(null)
+    }
 
     val transcript = remember { mutableStateListOf<AgentEntry>() }
     var input by remember { mutableStateOf(TextFieldValue(initialPrompt.orEmpty())) }
@@ -376,6 +383,14 @@ fun AiAgentScreen(
         approvals.clear()
     }
 
+    // D2 — peek at the resume store every time the active session
+    // changes. When the previous run ended cleanly, [getPending]
+    // returns null and no banner is rendered.
+    LaunchedEffect(activeSessionId) {
+        pendingResume = com.glassfiles.data.ai.AiAgentResumeStore
+            .getPending(context, activeSessionId)
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────
     fun refreshSessions() {
         sessions = AiChatSessionStore.list(context, AGENT_SESSION_MODE)
@@ -498,6 +513,22 @@ fun AiAgentScreen(
         pendingImage = null
         transcript += AgentEntry.User(text, image)
         persistSession()
+        // D2: persist a "task started, not finished" pointer so a
+        // process kill mid-run leaves a recoverable trail. Cleared in
+        // the finally block when the run completes (success, error,
+        // or user stop).
+        com.glassfiles.data.ai.AiAgentResumeStore.markStarted(
+            context,
+            activeSessionId,
+            com.glassfiles.data.ai.AiAgentResumeStore.Pending(
+                prompt = text,
+                imageBase64 = image,
+                repoFullName = repo.fullName,
+                branch = branch,
+                modelKey = model.uniqueKey,
+                startedAt = System.currentTimeMillis(),
+            ),
+        )
         running = true
 
         runJob = scope.launch {
@@ -550,12 +581,29 @@ fun AiAgentScreen(
             val systemOverride = com.glassfiles.data.ai.AiAgentPrefs
                 .getSystemPromptOverride(context, repo.fullName)
                 ?.takeIf { it.isNotBlank() }
+            // C3 — plan-then-execute. When the per-repo toggle is on,
+            // prepend a planning preamble ahead of the user's prompt
+            // so the very first model turn outputs only a numbered
+            // plan (no tool calls). Tools resume on the next user turn,
+            // i.e. when the user types "go", clicks "Approve plan", or
+            // simply continues the conversation.
+            val planFirst = com.glassfiles.data.ai.AiAgentPrefs
+                .getPlanThenExecute(context, repo.fullName)
             val baseMessages = transcript.toAiMessages()
-            val seed = if (systemOverride != null) {
-                listOf(AiMessage(role = "system", content = systemOverride)) + baseMessages
-            } else {
-                baseMessages
+            val systemMessages = buildList {
+                if (systemOverride != null) {
+                    add(AiMessage(role = "system", content = systemOverride))
+                }
+                if (planFirst) {
+                    add(
+                        AiMessage(
+                            role = "system",
+                            content = AGENT_PLAN_FIRST_SYSTEM_PROMPT,
+                        ),
+                    )
+                }
             }
+            val seed = systemMessages + baseMessages
             try {
                 runAgentLoop(
                     seedMessages = seed,
@@ -598,6 +646,11 @@ fun AiAgentScreen(
                         executor.snapshotCache(),
                     )
                 }
+                // D2: clear the resume pointer — the run is over, so
+                // there's nothing to recover from a future process kill.
+                com.glassfiles.data.ai.AiAgentResumeStore.markFinished(
+                    context, activeSessionId,
+                )
                 // Local-only usage record. We never store prompt /
                 // file contents — only counters and labels. See
                 // AiUsageRecord kdoc for the privacy contract.
@@ -1055,6 +1108,54 @@ fun AiAgentScreen(
                 }
             }
         }
+        // D2 — resume banner. Surfaced when the previous run for this
+        // session was killed without a clean finish. Tapping Resume
+        // re-issues the same prompt; Discard wipes the pointer.
+        // Hidden while a run is already in flight (don't compete with
+        // streaming UI).
+        pendingResume?.takeIf { !running }?.let { pending ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.secondaryContainer.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    Strings.aiAgentResumeBannerText,
+                    fontSize = 12.sp,
+                    color = colors.onSecondaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = {
+                    val resume = pending
+                    pendingResume = null
+                    com.glassfiles.data.ai.AiAgentResumeStore
+                        .clear(context, activeSessionId)
+                    submit(resume.prompt, resume.imageBase64)
+                }) {
+                    Text(
+                        Strings.aiAgentResumeBannerAction,
+                        color = colors.primary,
+                        fontSize = 12.sp,
+                    )
+                }
+                TextButton(onClick = {
+                    pendingResume = null
+                    com.glassfiles.data.ai.AiAgentResumeStore
+                        .clear(context, activeSessionId)
+                }) {
+                    Text(
+                        Strings.aiAgentResumeBannerDiscard,
+                        color = colors.onSurfaceVariant,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+        }
 
         if (pendingImage != null) {
             AgentAttachmentPreview(
@@ -1197,17 +1298,25 @@ fun AiAgentScreen(
         // a repo is picked (the IconButton is disabled otherwise).
         val activeRepoForPrompt = selectedRepo
         if (showSystemPrompt && activeRepoForPrompt != null) {
-            val current = remember(activeRepoForPrompt.fullName) {
+            val currentPrompt = remember(activeRepoForPrompt.fullName) {
                 com.glassfiles.data.ai.AiAgentPrefs
                     .getSystemPromptOverride(context, activeRepoForPrompt.fullName)
                     .orEmpty()
             }
+            val currentPlanFirst = remember(activeRepoForPrompt.fullName) {
+                com.glassfiles.data.ai.AiAgentPrefs
+                    .getPlanThenExecute(context, activeRepoForPrompt.fullName)
+            }
             com.glassfiles.ui.screens.ai.SystemPromptOverrideDialog(
                 repoFullName = activeRepoForPrompt.fullName,
-                initialPrompt = current,
-                onSave = { text ->
+                initialPrompt = currentPrompt,
+                initialPlanFirst = currentPlanFirst,
+                onSave = { text, planFirst ->
                     com.glassfiles.data.ai.AiAgentPrefs.setSystemPromptOverride(
                         context, activeRepoForPrompt.fullName, text,
+                    )
+                    com.glassfiles.data.ai.AiAgentPrefs.setPlanThenExecute(
+                        context, activeRepoForPrompt.fullName, planFirst,
                     )
                     showSystemPrompt = false
                 },
@@ -2358,6 +2467,20 @@ private suspend fun runAgentLoop(
 
 private const val MAX_ITERATIONS = 8
 private const val AGENT_SESSION_MODE = "agent"
+
+/**
+ * C3 — plan-first preamble used when the per-repo plan-then-execute
+ * toggle is on. We deliberately keep it short and prescriptive so the
+ * model doesn't get tempted to call a tool on the first turn; the
+ * "wait for the user" phrasing has been more reliable than vaguer
+ * "ask first" in our smoke tests across providers.
+ */
+private const val AGENT_PLAN_FIRST_SYSTEM_PROMPT =
+    "Plan-then-execute mode is enabled. On your very next turn, output " +
+        "ONLY a short numbered plan describing what you will do — do NOT " +
+        "call any tools yet, do NOT modify any files. Then stop and wait " +
+        "for the user. Once the user replies (e.g. 'go', 'approve', or " +
+        "any further instructions), proceed normally with tool calls."
 
 /** Hard char-length budget for the rolling tool-use transcript. ~80 000
  * chars ≈ 20–25 k tokens, well under the smallest tool-use windows of
