@@ -128,12 +128,20 @@ internal fun GHTopBar(title: String, subtitle: String? = null, onBack: () -> Uni
         Modifier
             .fillMaxWidth()
             .background(colors.surface)
+            // In full-screen mode the top bar must clear the system
+            // status bar. Hardcoding 48.dp doesn't generalise (devices
+            // with notches / camera cutouts can need more, devices
+            // with hidden status bars don't need any). Using the live
+            // inset means the layout no longer "jumps under the
+            // clock" when re-entering full-screen from the mini
+            // bubble — see PR #31 follow-up.
+            .then(if (compact) Modifier else Modifier.statusBarsPadding())
     ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(
-                    top = if (compact) 4.dp else 48.dp,
+                    top = if (compact) 4.dp else 8.dp,
                     start = if (compact) 8.dp else 16.dp,
                     end = if (compact) 8.dp else 16.dp,
                     bottom = if (compact) 4.dp else 14.dp
