@@ -4,21 +4,23 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
+import com.glassfiles.data.ai.models.AiMessage
+import com.glassfiles.data.ai.models.AiProviderId
+import com.glassfiles.data.ai.providers.AiProviders
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.InputStreamReader
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.zip.ZipFile
 
 // ═══════════════════════════════════
-// AI Models — Gemini + Qwen (full list)
+// Legacy enum kept for backwards compatibility
 // ═══════════════════════════════════
+//
+// The old hardcoded `AiProvider` enum is the sole option-set the existing UI
+// (AiChatScreen) compiles against. We keep it as-is so this PR is a pure
+// data-layer refactor — the dispatcher now routes every entry through the new
+// per-provider implementations rather than running its own HTTP code.
+//
+// Subsequent PRs replace this enum with [ModelRegistry] + [AiModel] in the UI.
 
 enum class AiProvider(
     val label: String, val modelId: String, val supportsVision: Boolean,
@@ -67,212 +69,83 @@ enum class AiProvider(
     QWEN25_32B("Qwen2.5 32B", "qwen2.5-32b-instruct", false, "Medium dense", isQwen = true, supportsFiles = true, category = "Qwen Open-Source"),
 }
 
-data class ChatMessage(val role: String, val content: String, val imageBase64: String? = null, val fileContent: String? = null)
+/**
+ * [ChatMessage] is now an alias of [AiMessage] — both struct-types are
+ * structurally identical. New code should reach for [AiMessage] directly.
+ */
+typealias ChatMessage = AiMessage
 
 // ═══════════════════════════════════
-// API Key Storage
+// Legacy API-key store (delegates to AiKeyStore)
 // ═══════════════════════════════════
 
 object GeminiKeyStore {
-    private const val PREFS = "gemini_prefs"
-    private const val KEY_GEMINI = "api_key"
-    private const val KEY_PROXY = "proxy_url"
-    private const val KEY_QWEN = "qwen_api_key"
-    private const val KEY_QWEN_REGION = "qwen_region"
+    fun getKey(context: Context): String = AiKeyStore.getKey(context, AiProviderId.GOOGLE)
+    fun saveKey(context: Context, key: String) = AiKeyStore.saveKey(context, AiProviderId.GOOGLE, key)
+    fun hasKey(context: Context): Boolean = AiKeyStore.hasKey(context, AiProviderId.GOOGLE)
 
-    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    fun getProxy(context: Context): String = AiKeyStore.getGeminiProxy(context)
+    fun saveProxy(context: Context, url: String) = AiKeyStore.saveGeminiProxy(context, url)
 
-    fun getKey(context: Context): String = prefs(context).getString(KEY_GEMINI, "") ?: ""
-    fun saveKey(context: Context, key: String) = prefs(context).edit().putString(KEY_GEMINI, key.trim()).apply()
-    fun hasKey(context: Context): Boolean = getKey(context).isNotBlank()
+    fun getQwenKey(context: Context): String = AiKeyStore.getKey(context, AiProviderId.ALIBABA)
+    fun saveQwenKey(context: Context, key: String) = AiKeyStore.saveKey(context, AiProviderId.ALIBABA, key)
+    fun hasQwenKey(context: Context): Boolean = AiKeyStore.hasKey(context, AiProviderId.ALIBABA)
 
-    fun getProxy(context: Context): String = prefs(context).getString(KEY_PROXY, "") ?: ""
-    fun saveProxy(context: Context, url: String) = prefs(context).edit().putString(KEY_PROXY, url.trim().trimEnd('/')).apply()
-
-    fun getQwenKey(context: Context): String = prefs(context).getString(KEY_QWEN, "") ?: ""
-    fun saveQwenKey(context: Context, key: String) = prefs(context).edit().putString(KEY_QWEN, key.trim()).apply()
-    fun hasQwenKey(context: Context): Boolean = getQwenKey(context).isNotBlank()
-
-    fun getQwenRegion(context: Context): String = prefs(context).getString(KEY_QWEN_REGION, "intl") ?: "intl"
-    fun saveQwenRegion(context: Context, region: String) = prefs(context).edit().putString(KEY_QWEN_REGION, region).apply()
+    fun getQwenRegion(context: Context): String = AiKeyStore.getQwenRegion(context)
+    fun saveQwenRegion(context: Context, region: String) = AiKeyStore.saveQwenRegion(context, region)
 }
 
 // ═══════════════════════════════════
-// AI Manager
+// AI Manager — facade that dispatches to per-provider implementations
 // ═══════════════════════════════════
 
 object AiManager {
-    private const val GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
-    private const val SYSTEM_PROMPT = "You are a helpful AI assistant in the GlassFiles app — a file manager for Android. You can analyze files, code, images, and archives. Respond in the same language as the user."
 
-    private fun qwenBaseUrl(region: String): String = when (region) {
-        "cn" -> "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        "us" -> "https://dashscope-us.aliyuncs.com/compatible-mode/v1"
-        "hk" -> "https://cn-hongkong.dashscope.aliyuncs.com/compatible-mode/v1"
-        else -> "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-    }
-
+    /**
+     * Streaming chat. Routes [provider] to the matching [AiProvider] in the
+     * `providers/` package. The legacy `openRouterKey` parameter is accepted but
+     * unused by the current providers; OpenRouter is exposed via [AiProviderId.OPENROUTER]
+     * with its own key stored in [AiKeyStore].
+     */
     suspend fun chat(
-        provider: AiProvider, messages: List<ChatMessage>,
-        geminiKey: String = "", openRouterKey: String = "", proxyUrl: String = "",
-        qwenKey: String = "", qwenRegion: String = "intl",
+        provider: AiProvider,
+        messages: List<ChatMessage>,
+        geminiKey: String = "",
+        @Suppress("UNUSED_PARAMETER") openRouterKey: String = "",
+        @Suppress("UNUSED_PARAMETER") proxyUrl: String = "",
+        qwenKey: String = "",
+        @Suppress("UNUSED_PARAMETER") qwenRegion: String = "intl",
         onChunk: (String) -> Unit
-    ): String = withContext(Dispatchers.IO) {
-        when {
-            provider.isGemini -> {
-                if (geminiKey.isBlank()) throw Exception("Enter Gemini API key in AI settings")
-                doChatGemini(provider.modelId, messages, geminiKey, proxyUrl, onChunk)
-            }
-            provider.isQwen -> {
-                if (qwenKey.isBlank()) throw Exception("Enter Qwen API key in AI settings")
-                doChatQwen(provider.modelId, messages, provider.supportsVision, qwenKey, qwenRegion, onChunk)
-            }
-            else -> throw Exception("Unknown provider")
-        }
-    }
-
-    // ═══════════════════════════════════
-    // Qwen (OpenAI-compatible streaming)
-    // ═══════════════════════════════════
-
-    private fun doChatQwen(
-        modelId: String, messages: List<ChatMessage>, supportsVision: Boolean,
-        apiKey: String, region: String, onChunk: (String) -> Unit
     ): String {
-        val url = "${qwenBaseUrl(region)}/chat/completions"
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Authorization", "Bearer $apiKey")
-            doOutput = true; connectTimeout = 30000; readTimeout = 120000
+        // Map legacy enum → new provider id + raw model id.
+        val (providerId, apiKey) = when {
+            provider.isGemini -> AiProviderId.GOOGLE to geminiKey
+            provider.isQwen -> AiProviderId.ALIBABA to qwenKey
+            else -> throw IllegalArgumentException("Unknown legacy provider $provider")
         }
-
-        val msgs = JSONArray()
-        msgs.put(JSONObject().put("role", "system").put("content", SYSTEM_PROMPT))
-
-        messages.forEach { msg ->
-            when {
-                msg.imageBase64 != null && supportsVision -> {
-                    val content = JSONArray()
-                    content.put(JSONObject().put("type", "text").put("text", msg.content))
-                    content.put(JSONObject().put("type", "image_url").put("image_url",
-                        JSONObject().put("url", "data:image/jpeg;base64,${msg.imageBase64}")))
-                    msgs.put(JSONObject().put("role", msg.role).put("content", content))
-                }
-                msg.fileContent != null -> {
-                    val fullText = if (msg.content.isNotBlank()) "${msg.content}\n\n--- File content ---\n${msg.fileContent}" else msg.fileContent
-                    msgs.put(JSONObject().put("role", msg.role).put("content", fullText))
-                }
-                else -> msgs.put(JSONObject().put("role", msg.role).put("content", msg.content))
-            }
+        if (apiKey.isBlank()) {
+            throw IllegalStateException("Enter the ${providerId.displayName} API key in AI settings")
         }
+        // We need a Context to resolve provider settings (Qwen region, Gemini proxy).
+        // Callers (the UI) already pre-read those values into the parameters above,
+        // but the new providers reach into AiKeyStore directly. The first call from
+        // the UI passes the same SharedPreferences — context is implicit there.
+        val context = LegacyContextHolder.context
+            ?: throw IllegalStateException("AiManager not initialised: call AiManager.init(context) first")
+        return AiProviders.get(providerId)
+            .chat(context, provider.modelId, messages, apiKey, onChunk)
+    }
 
-        val body = JSONObject().put("model", modelId).put("messages", msgs).put("stream", true).toString()
-        conn.outputStream.use { it.write(body.toByteArray()) }
-
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            val err = (if (code >= 400) conn.errorStream else conn.inputStream)?.bufferedReader()?.readText()?.take(500) ?: "error $code"
-            conn.disconnect()
-            val detail = try { JSONObject(err).optJSONObject("error")?.optString("message", "") ?: err.take(200) } catch (_: Exception) { err.take(200) }
-            throw Exception("Qwen $code: $detail")
-        }
-
-        val sb = StringBuilder()
-        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            val l = line ?: continue
-            if (!l.startsWith("data: ")) continue
-            val data = l.removePrefix("data: ").trim()
-            if (data == "[DONE]") break
-            try {
-                val chunk = JSONObject(data).getJSONArray("choices")
-                    .getJSONObject(0).getJSONObject("delta").optString("content", "")
-                if (chunk.isNotEmpty()) { sb.append(chunk); onChunk(chunk) }
-            } catch (_: Exception) {}
-        }
-        reader.close(); conn.disconnect()
-        return sb.toString()
+    /**
+     * One-time initialisation so the legacy [chat] entry point can reach a
+     * Context. Application code calls this from `onCreate`.
+     */
+    fun init(context: Context) {
+        LegacyContextHolder.context = context.applicationContext
     }
 
     // ═══════════════════════════════════
-    // Gemini (SSE streaming)
-    // ═══════════════════════════════════
-
-    private fun doChatGemini(
-        modelId: String, messages: List<ChatMessage>,
-        apiKey: String, proxyUrl: String, onChunk: (String) -> Unit
-    ): String {
-        val base = proxyUrl.ifBlank { GEMINI_BASE }
-        val url = "$base/$modelId:streamGenerateContent?alt=sse&key=$apiKey"
-
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; setRequestProperty("Content-Type", "application/json")
-            doOutput = true; connectTimeout = 30000; readTimeout = 120000
-        }
-
-        val contents = JSONArray()
-        messages.forEach { msg ->
-            val role = if (msg.role == "assistant") "model" else "user"
-            val parts = JSONArray()
-            if (msg.content.isNotBlank()) parts.put(JSONObject().put("text", msg.content))
-            if (msg.fileContent != null) parts.put(JSONObject().put("text", "\n--- File content ---\n${msg.fileContent}"))
-            if (msg.imageBase64 != null) {
-                parts.put(JSONObject().put("inlineData",
-                    JSONObject().put("mimeType", "image/jpeg").put("data", msg.imageBase64)))
-            }
-            contents.put(JSONObject().put("role", role).put("parts", parts))
-        }
-
-        val body = JSONObject()
-            .put("contents", contents)
-            .put("systemInstruction", JSONObject().put("parts",
-                JSONArray().put(JSONObject().put("text", SYSTEM_PROMPT))))
-            .toString()
-
-        conn.outputStream.use { it.write(body.toByteArray()) }
-
-        val code = conn.responseCode
-        if (code !in 200..299) {
-            val err = (if (code >= 400) conn.errorStream else conn.inputStream)?.bufferedReader()?.readText()?.take(800) ?: "error $code"
-            conn.disconnect()
-            val googleMsg = try { JSONObject(err).optJSONObject("error")?.optString("message", "") ?: "" } catch (_: Exception) { "" }
-            val detail = googleMsg.ifBlank { err.take(200) }
-            when (code) {
-                400 -> throw Exception("400: $detail")
-                403 -> throw Exception("403 Access denied: $detail")
-                404 -> throw Exception("Model $modelId not found")
-                429 -> throw Exception("429 Rate limit: $detail")
-                else -> throw Exception("$code: $detail")
-            }
-        }
-
-        val sb = StringBuilder()
-        val reader = BufferedReader(InputStreamReader(conn.inputStream))
-        var line: String?
-        while (reader.readLine().also { line = it } != null) {
-            val l = line ?: continue
-            if (!l.startsWith("data: ")) continue
-            val data = l.removePrefix("data: ").trim()
-            if (data == "[DONE]" || data.isEmpty()) continue
-            try {
-                val json = JSONObject(data)
-                val candidates = json.optJSONArray("candidates") ?: continue
-                if (candidates.length() == 0) continue
-                val parts = candidates.getJSONObject(0).optJSONObject("content")?.optJSONArray("parts") ?: continue
-                for (i in 0 until parts.length()) {
-                    val text = parts.getJSONObject(i).optString("text", "")
-                    if (text.isNotEmpty()) { sb.append(text); onChunk(text) }
-                }
-            } catch (_: Exception) {}
-        }
-        reader.close(); conn.disconnect()
-        return sb.toString()
-    }
-
-    // ═══════════════════════════════════
-    // ZIP Archive Support (up to 60 files)
+    // ZIP / file utilities (unchanged)
     // ═══════════════════════════════════
 
     private val TEXT_EXTENSIONS = setOf(
@@ -331,10 +204,6 @@ object AiManager {
         return sb.toString()
     }
 
-    // ═══════════════════════════════════
-    // File Reading
-    // ═══════════════════════════════════
-
     fun encodeImage(file: File): String? = try {
         val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
         val maxSide = 1024
@@ -379,3 +248,8 @@ data class FileReadResult(
     val imageBase64: String? = null,
     val fileName: String = ""
 )
+
+private object LegacyContextHolder {
+    @Volatile
+    var context: Context? = null
+}

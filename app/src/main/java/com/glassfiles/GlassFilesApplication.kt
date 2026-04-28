@@ -3,6 +3,7 @@ package com.glassfiles
 import android.app.Application
 import android.os.Environment
 import android.os.StatFs
+import com.glassfiles.data.ai.AiManager
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.notifications.AppNotifications
 import com.glassfiles.notifications.NotificationChannels
@@ -18,6 +19,7 @@ class GlassFilesApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         installCrashLogger()
+        AiManager.init(this)
         initNotifications()
         notifyPendingCrashLog()
         notifyLowStorageIfNeeded()
