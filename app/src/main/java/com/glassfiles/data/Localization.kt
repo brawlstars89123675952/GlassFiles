@@ -311,6 +311,13 @@ object Strings {
     val aiAgentToolError get() = s("Ошибка", "Error")
     val aiAgentRejected get() = s("Отклонено пользователем.", "Rejected by user.")
     val aiAgentEmptyChat get() = s("Опиши что нужно сделать в репозитории.", "Tell the agent what to do in the repo.")
+    val aiAgentDiffLoading get() = s("Загружаю текущее содержимое…", "Loading current contents…")
+    val aiAgentDiffEmpty get() = s("Нет изменений для предпросмотра.", "No changes to preview.")
+    val aiAgentQuickExplain get() = s("Объясни", "Explain")
+    val aiAgentQuickAddTests get() = s("Добавь тесты", "Add tests")
+    val aiAgentQuickFixLint get() = s("Поправь стиль", "Fix lint")
+    val aiAgentQuickRefactor get() = s("Рефакторинг", "Refactor")
+    val aiAgentQuickGenerateDocs get() = s("Сгенерируй KDoc", "Generate KDoc")
 
     val about get() = s("О приложении", "About")
     val version get() = s("Версия", "Version")

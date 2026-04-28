@@ -327,12 +327,9 @@ internal fun RepoDetailScreen(
                 scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) }
             },
             onAskAi = onOpenAiAgent?.let { open ->
-                { ->
-                    open(
-                        repo.fullName,
-                        selectedBranch,
-                        "Look at the file `${safeEditingFile.path}` on branch `$selectedBranch` and explain what it does.",
-                    )
+                { customPrompt ->
+                    val prompt = customPrompt ?: "Look at the file `${safeEditingFile.path}` on branch `$selectedBranch` and explain what it does."
+                    open(repo.fullName, selectedBranch, prompt)
                 }
             }
         )
