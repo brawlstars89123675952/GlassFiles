@@ -301,7 +301,6 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
             IconButton(onClick = { try { cameraLauncher.launch(cameraUri) } catch (_: Exception) { Toast.makeText(context, "Camera not available", Toast.LENGTH_SHORT).show() } }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.CameraAlt, null, Modifier.size(20.dp), tint = T2) }
             BasicTextField(input, { input = it }, Modifier.weight(1f).background(Card2, RoundedCornerShape(20.dp)).border(1.dp, Border, RoundedCornerShape(20.dp)).padding(horizontal = 14.dp, vertical = 11.dp),
                 textStyle = TextStyle(T1, 15.sp), cursorBrush = SolidColor(if (provider.isQwen) QwenColor else Accent), decorationBox = { i -> if (input.isEmpty()) Text("Message...", color = T3, fontSize = 15.sp); i() })
-            IconButton(onClick = { voiceInput() }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Mic, null, Modifier.size(20.dp), tint = T2) }
             val sc = if (provider.isQwen) QwenColor else Accent
             if (isLoading) { Box(Modifier.size(40.dp).clip(CircleShape).background(Color(0xFFFF3B30)).clickable { currentJob?.cancel(); currentJob = null }, contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Stop, null, Modifier.size(20.dp), tint = Color.White) } }
             else { val cs = input.isNotBlank() || attachedImage != null || attachedFile != null
