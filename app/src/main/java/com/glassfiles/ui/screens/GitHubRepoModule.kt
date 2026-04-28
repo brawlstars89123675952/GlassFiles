@@ -448,10 +448,15 @@ internal fun RepoDetailScreen(
             IconButton(onClick = { cloneProgress = "Starting..."; scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git"); val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it }; Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); cloneProgress = null } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.Download, null, Modifier.size(ic), tint = colors.primary) }
         }
         if (!canWrite && repo.permissions != null) {
+            // Match the surrounding bg (toolbar above, branch row below) so the
+            // parent Column's SurfaceLight — which is pure black in AMOLED —
+            // doesn't leak through as a contrasting band.
             Row(
-                Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+                Modifier.fillMaxWidth()
+                    .background(colors.surface)
+                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(Icons.Rounded.Visibility, null, Modifier.size(14.dp), tint = colors.onSurfaceVariant)
                 Text(
