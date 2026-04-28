@@ -58,6 +58,7 @@ class GitHubToolExecutor(
                 AgentTools.READ_PR.name -> readPr(context, args.getInt("number"))
                 AgentTools.LIST_ISSUES.name -> listIssues(context, args.optString("state", "open"))
                 AgentTools.READ_ISSUE.name -> readIssue(context, args.getInt("number"))
+                AgentTools.READ_CHECK_RUNS.name -> readCheckRuns(context, args.getString("ref"))
                 AgentTools.READ_WORKFLOW_RUN.name -> readWorkflowRun(context, args.getLong("run_id"))
                 AgentTools.EDIT_FILE.name -> editFile(
                     context,
@@ -285,6 +286,29 @@ class GitHubToolExecutor(
                     if (c.body.length > 800) appendLine("[…comment truncated]")
                 }
                 if (comments.size > 5) appendLine("[earlier ${comments.size - 5} comment(s) omitted]")
+            }
+        }.trimEnd()
+    }
+
+    private suspend fun readCheckRuns(context: Context, ref: String): String {
+        val checks = GitHubManager.getCheckRunsForRef(context, owner, repo, ref)
+        if (checks.isEmpty()) return "No check runs registered for ref \"$ref\"."
+        return buildString {
+            appendLine("ref: $ref")
+            appendLine("total: ${checks.size}")
+            // Emit one block per check so the model can quickly spot
+            // which one is red without parsing prose. Title + summary
+            // come straight from the provider (Devin Review etc.) and
+            // usually contain the actionable explanation already.
+            checks.forEach { c ->
+                appendLine()
+                appendLine("• ${c.name}: status=${c.status}, conclusion=${c.conclusion}")
+                if (c.outputTitle.isNotBlank()) appendLine("  title: ${c.outputTitle}")
+                if (c.outputSummary.isNotBlank()) {
+                    val summary = c.outputSummary.lineSequence().joinToString("\n  ").take(800)
+                    appendLine("  summary: $summary")
+                }
+                if (c.detailsUrl.isNotBlank()) appendLine("  url: ${c.detailsUrl}")
             }
         }.trimEnd()
     }

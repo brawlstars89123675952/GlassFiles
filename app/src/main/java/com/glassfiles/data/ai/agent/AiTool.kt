@@ -362,6 +362,29 @@ object AgentTools {
     )
 
     /**
+     * Reads the check-runs registered for a specific git ref. Different
+     * from [READ_WORKFLOW_RUN] in that this includes external checks
+     * too (Devin Review, Vercel previews, third-party CI, etc.) — not
+     * just GitHub Actions runs. Use this when the user asks "why is
+     * the PR not green".
+     */
+    val READ_CHECK_RUNS = AiTool(
+        name = "read_check_runs",
+        description = "List all check-run statuses (GitHub Actions + external checks like Devin Review, preview deploys, etc.) for a git ref in the active repository.",
+        parameters = obj {
+            put("type", "object")
+            put("properties", obj {
+                put("ref", obj {
+                    put("type", "string")
+                    put("description", "Git ref to inspect: a branch name, a tag, or a commit SHA. For PRs, use the head SHA.")
+                })
+            })
+            put("required", arr("ref"))
+        },
+        readOnly = true,
+    )
+
+    /**
      * Reads a workflow run summary plus the per-job statuses, plus the
      * full logs of any failed jobs. Designed to support the use case
      * "tell me why CI failed and propose a fix".
@@ -388,7 +411,7 @@ object AgentTools {
         LIST_BRANCHES, COMPARE_REFS,
         LIST_PULLS, READ_PR,
         LIST_ISSUES, READ_ISSUE,
-        READ_WORKFLOW_RUN,
+        READ_CHECK_RUNS, READ_WORKFLOW_RUN,
         EDIT_FILE, WRITE_FILE, CREATE_BRANCH, COMMIT, OPEN_PR,
     )
 
