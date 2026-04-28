@@ -354,6 +354,17 @@ object Strings {
         "Провайдер недоступен — переключился на {model}.",
         "Provider unavailable — falling back to {model}.",
     )
+    val aiSummary get() = s("AI Сводка", "AI Summary")
+    val aiSummaryLoading get() = s("Генерируется…", "Generating…")
+    val aiSummaryEmpty get() = s("Нет сводки.", "No summary.")
+    val aiSummaryRegenerate get() = s("Сгенерировать заново", "Regenerate")
+    val aiCommitMsgGenerate get() = s("Сгенерировать AI", "AI suggest")
+    val aiCommitMsgGenerating get() = s("Генерируется…", "Generating…")
+    val aiCommitMsgError get() = s("AI недоступен", "AI unavailable")
+    val aiNotConfigured get() = s(
+        "Сначала настрой провайдер AI в настройках.",
+        "Configure an AI provider first.",
+    )
 
     val about get() = s("О приложении", "About")
     val version get() = s("Версия", "Version")

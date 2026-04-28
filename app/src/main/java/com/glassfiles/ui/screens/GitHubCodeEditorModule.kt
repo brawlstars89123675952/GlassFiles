@@ -554,6 +554,8 @@ fun CodeEditorScreen(
     }
 
     if (showCommitDialog) {
+        var aiSuggesting by remember { mutableStateOf(false) }
+        var aiSuggestError by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { showCommitDialog = false },
             title = { Text("Commit changes") },
@@ -567,6 +569,48 @@ fun CodeEditorScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            enabled = !aiSuggesting,
+                            onClick = {
+                                aiSuggesting = true
+                                aiSuggestError = null
+                                scope.launch {
+                                    try {
+                                        commitMessage = generateCommitMessage(
+                                            context = context,
+                                            path = file.path,
+                                            oldText = savedContent,
+                                            newText = text,
+                                        )
+                                    } catch (e: Exception) {
+                                        aiSuggestError = e.message ?: e.javaClass.simpleName
+                                    } finally {
+                                        aiSuggesting = false
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        ) {
+                            if (aiSuggesting) {
+                                CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                                Text(Strings.aiCommitMsgGenerating, fontSize = 12.sp)
+                            } else {
+                                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(14.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(Strings.aiCommitMsgGenerate, fontSize = 12.sp)
+                            }
+                        }
+                        aiSuggestError?.let { err ->
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                err.take(60),
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -1242,4 +1286,72 @@ private fun AiQuickActionsRow(
             }
         }
     }
+}
+
+/**
+ * Build a unified-style diff between [oldText] and [newText] for a
+ * one-shot AI commit-message suggestion. Doesn't do real LCS — for a
+ * commit-message hint a coarse "removed/added line lists" is plenty
+ * and avoids a full diff-engine dependency.
+ */
+private fun coarseDiff(oldText: String, newText: String, maxLines: Int = 60): String {
+    val oldLines = oldText.lineSequence().toList()
+    val newLines = newText.lineSequence().toList()
+    val oldSet = oldLines.toMutableSet()
+    val newSet = newLines.toMutableSet()
+    val removed = oldLines.filter { it !in newSet }
+    val added = newLines.filter { it !in oldSet }
+    return buildString {
+        appendLine("(coarse diff: ${added.size} added line(s), ${removed.size} removed line(s))")
+        if (removed.isNotEmpty()) {
+            appendLine()
+            appendLine("--- removed:")
+            removed.take(maxLines).forEach { appendLine("- $it") }
+            if (removed.size > maxLines) appendLine("  […${removed.size - maxLines} more]")
+        }
+        if (added.isNotEmpty()) {
+            appendLine()
+            appendLine("+++ added:")
+            added.take(maxLines).forEach { appendLine("+ $it") }
+            if (added.size > maxLines) appendLine("  […${added.size - maxLines} more]")
+        }
+    }
+}
+
+/**
+ * One-shot AI suggestion for the commit message of the current
+ * single-file edit. Sends the (coarse) diff to the picked model and
+ * asks for a Conventional-Commit-style one-liner. Used by the "AI
+ * suggest" button in the commit dialog.
+ */
+private suspend fun generateCommitMessage(
+    context: android.content.Context,
+    path: String,
+    oldText: String,
+    newText: String,
+): String {
+    val systemPrompt =
+        "You are a Conventional Commits assistant. Given the path of a file and a diff " +
+        "of an edit, produce a single-line commit message in Conventional Commits style " +
+        "(e.g. \"fix(api): handle empty list\", \"docs: clarify install\"). " +
+        "Keep it under 72 characters. Output ONLY the message, no explanation, no quotes."
+    val userPrompt = buildString {
+        appendLine("Path: $path")
+        appendLine()
+        append(coarseDiff(oldText, newText))
+    }
+    val raw = com.glassfiles.data.ai.AiOneShot.complete(
+        context = context,
+        systemPrompt = systemPrompt,
+        userPrompt = userPrompt,
+    )
+    // Strip surrounding quotes / trailing punctuation that smaller
+    // models love to emit despite the explicit instruction.
+    return raw
+        .lineSequence()
+        .firstOrNull { it.isNotBlank() }
+        .orEmpty()
+        .trim()
+        .trim('"', '\'', '`')
+        .take(120)
 }

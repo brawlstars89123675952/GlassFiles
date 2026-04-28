@@ -784,6 +784,12 @@ private fun PullRequestDetailScreen(
     var showReviews by remember { mutableStateOf(false) }
     var showMerge by remember { mutableStateOf(false) }
     var merging by remember { mutableStateOf(false) }
+    // One-shot AI summary state. Populated by the chip in the action
+    // row below; nulled out when the dialog is dismissed.
+    var aiSummary by remember { mutableStateOf<String?>(null) }
+    var aiSummaryLoading by remember { mutableStateOf(false) }
+    var aiSummaryError by remember { mutableStateOf<String?>(null) }
+    var aiSummaryShown by remember { mutableStateOf(false) }
 
     suspend fun refreshPull() {
         loading = true
@@ -893,6 +899,31 @@ private fun PullRequestDetailScreen(
             item {
                 val canWrite = repo.canWrite()
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Chip(
+                        Icons.Rounded.AutoAwesome,
+                        if (aiSummaryLoading) Strings.aiSummaryLoading else Strings.aiSummary,
+                        Blue,
+                    ) {
+                        if (aiSummaryLoading) return@Chip
+                        aiSummaryShown = true
+                        aiSummaryError = null
+                        if (aiSummary == null) {
+                            aiSummaryLoading = true
+                            scope.launch {
+                                try {
+                                    aiSummary = generatePullRequestSummary(
+                                        context = context,
+                                        pr = current,
+                                        files = files,
+                                    )
+                                } catch (e: Exception) {
+                                    aiSummaryError = e.message ?: e.javaClass.simpleName
+                                } finally {
+                                    aiSummaryLoading = false
+                                }
+                            }
+                        }
+                    }
                     if (canWrite) Chip(Icons.Rounded.Edit, "Edit", TextSecondary) { showEdit = true }
                     Chip(Icons.Rounded.Article, "Files", Blue) { onOpenFiles(pullNumber) }
                     if (canWrite) Chip(Icons.Rounded.RateReview, "Review", Blue) { showReview = true }
@@ -986,6 +1017,140 @@ private fun PullRequestDetailScreen(
             }
         )
     }
+    if (aiSummaryShown) {
+        AiPullSummaryDialog(
+            loading = aiSummaryLoading,
+            summary = aiSummary,
+            error = aiSummaryError,
+            onRegenerate = {
+                if (current == null) return@AiPullSummaryDialog
+                aiSummaryLoading = true
+                aiSummary = null
+                aiSummaryError = null
+                scope.launch {
+                    try {
+                        aiSummary = generatePullRequestSummary(
+                            context = context,
+                            pr = current,
+                            files = files,
+                        )
+                    } catch (e: Exception) {
+                        aiSummaryError = e.message ?: e.javaClass.simpleName
+                    } finally {
+                        aiSummaryLoading = false
+                    }
+                }
+            },
+            onDismiss = { aiSummaryShown = false },
+        )
+    }
+}
+
+/**
+ * One-shot prompt builder for the "AI summary" chip on the PR detail
+ * screen. Sends the PR's title / description / head & base / commit
+ * count / changed-file list (with patches truncated for long diffs)
+ * to the picked model and asks for a concise three-bullet TL;DR.
+ */
+private suspend fun generatePullRequestSummary(
+    context: Context,
+    pr: GHPullRequest,
+    files: List<GHPullFile>,
+): String {
+    val payload = buildString {
+        appendLine("Title: ${pr.title}")
+        appendLine("State: ${pr.state}${if (pr.draft) " (draft)" else ""}${if (pr.merged) " (merged)" else ""}")
+        appendLine("Author: ${pr.author}")
+        appendLine("Branches: ${pr.head} -> ${pr.base}")
+        appendLine("Stats: ${pr.commits} commits, +${pr.additions}/-${pr.deletions}, ${pr.changedFiles} files")
+        if (pr.body.isNotBlank()) {
+            appendLine()
+            appendLine("Description:")
+            appendLine(pr.body.take(2000))
+        }
+        if (files.isNotEmpty()) {
+            appendLine()
+            appendLine("Changed files (${files.size}):")
+            // 12 files * 600 char patch = ~7k tokens of context max.
+            // Beyond that the model can't keep it all in mind anyway.
+            files.take(12).forEach { f ->
+                append("- ${f.filename}  (+${f.additions} -${f.deletions})")
+                if (f.patch.isNotBlank()) {
+                    appendLine()
+                    appendLine(f.patch.take(600))
+                } else {
+                    appendLine()
+                }
+            }
+            if (files.size > 12) appendLine("[…${files.size - 12} more files omitted]")
+        }
+    }
+    val systemPrompt =
+        "You are a code-review assistant. Given the metadata and diff of a GitHub pull request, " +
+        "produce a concise summary that helps a reviewer decide whether to approve. " +
+        "Use 3-5 short bullet points. First bullet is the one-line intent. " +
+        "Mention notable risks or test gaps if visible from the diff. Plain text, no markdown headers."
+    return com.glassfiles.data.ai.AiOneShot.complete(
+        context = context,
+        systemPrompt = systemPrompt,
+        userPrompt = payload,
+    )
+}
+
+@Composable
+private fun AiPullSummaryDialog(
+    loading: Boolean,
+    summary: String?,
+    error: String?,
+    onRegenerate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = colors.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(Strings.aiSummary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Box(
+                Modifier
+                    .heightIn(min = 80.dp, max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                when {
+                    loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(10.dp))
+                        Text(Strings.aiSummaryLoading, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                    }
+                    error != null -> Text(
+                        error,
+                        fontSize = 13.sp,
+                        color = colors.error,
+                    )
+                    summary != null -> Text(
+                        summary,
+                        fontSize = 13.sp,
+                        color = colors.onSurface,
+                        lineHeight = 18.sp,
+                    )
+                    else -> Text(Strings.aiSummaryEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(Strings.close) }
+        },
+        dismissButton = {
+            TextButton(onClick = onRegenerate, enabled = !loading) {
+                Text(Strings.aiSummaryRegenerate)
+            }
+        },
+    )
 }
 
 @Composable
