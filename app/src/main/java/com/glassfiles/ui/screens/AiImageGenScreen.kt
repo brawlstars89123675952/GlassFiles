@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.OpenInNew
@@ -68,6 +69,7 @@ import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiModel
 import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
+import com.glassfiles.ui.components.AiImageViewer
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -100,6 +102,14 @@ fun AiImageGenScreen(onBack: () -> Unit) {
     var generating by remember { mutableStateOf(false) }
     var genError by remember { mutableStateOf<String?>(null) }
     val results = remember { mutableStateListOf<ImageResult>() }
+    var promptExpanded by remember { mutableStateOf(true) }
+    var viewerFile by remember { mutableStateOf<File?>(null) }
+
+    LaunchedEffect(selected) {
+        // When model changes, snap size to a value the new model accepts.
+        val opts = sizeOptionsFor(selected)
+        if (opts.isNotEmpty() && size !in opts) size = opts.first()
+    }
 
     LaunchedEffect(configured) {
         modelsLoading = true
@@ -132,6 +142,7 @@ fun AiImageGenScreen(onBack: () -> Unit) {
             genError = Strings.aiNoKey
             return
         }
+        promptExpanded = false
         generating = true
         genError = null
         scope.launch {
@@ -216,62 +227,73 @@ fun AiImageGenScreen(onBack: () -> Unit) {
         }
 
         // ── Prompt input ─────────────────────────────────────────────────
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(colors.surfaceVariant.copy(alpha = 0.5f))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                Strings.aiImagePrompt.uppercase(),
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.6.sp,
-                color = colors.onSurfaceVariant,
-            )
-            BasicTextField(
-                value = prompt,
-                onValueChange = { prompt = it },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                textStyle = LocalTextStyle.current.merge(
-                    TextStyle(color = colors.onSurface, fontSize = 14.sp),
-                ),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
-                decorationBox = { inner ->
-                    if (prompt.text.isEmpty()) {
-                        Text(
-                            Strings.aiImagePromptHint,
-                            fontSize = 14.sp,
-                            color = colors.onSurfaceVariant,
-                        )
-                    }
-                    inner()
-                },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                    keyboardType = KeyboardType.Text,
-                    imeAction = ImeAction.Default,
-                ),
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (genError != null) {
-                    Text(
-                        genError!!,
-                        fontSize = 12.sp,
-                        color = colors.error,
-                        modifier = Modifier.weight(1f).padding(end = 8.dp),
-                    )
-                } else {
-                    Spacer(Modifier.weight(1f))
-                }
-                GenerateButton(
-                    enabled = !generating && selected != null && prompt.text.isNotBlank(),
-                    generating = generating,
-                    onClick = ::generate,
+        if (promptExpanded) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    Strings.aiImagePrompt.uppercase(),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.6.sp,
+                    color = colors.onSurfaceVariant,
                 )
+                BasicTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                    textStyle = LocalTextStyle.current.merge(
+                        TextStyle(color = colors.onSurface, fontSize = 14.sp),
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                    decorationBox = { inner ->
+                        if (prompt.text.isEmpty()) {
+                            Text(
+                                Strings.aiImagePromptHint,
+                                fontSize = 14.sp,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                        inner()
+                    },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Default,
+                    ),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (genError != null) {
+                        Text(
+                            genError!!,
+                            fontSize = 12.sp,
+                            color = colors.error,
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                    GenerateButton(
+                        enabled = !generating && selected != null && prompt.text.isNotBlank(),
+                        generating = generating,
+                        onClick = ::generate,
+                    )
+                }
             }
+        } else {
+            // Collapsed: one-line preview that re-expands on tap.
+            CollapsedPromptBar(
+                prompt = prompt.text,
+                generating = generating,
+                onExpand = { promptExpanded = true },
+                onGenerate = ::generate,
+                generateEnabled = !generating && selected != null && prompt.text.isNotBlank(),
+            )
         }
 
         // ── Results
@@ -313,10 +335,61 @@ fun AiImageGenScreen(onBack: () -> Unit) {
                     }
                 }
                 items(results) { item ->
-                    ImageResultCard(item, context)
+                    ImageResultCard(
+                        item = item,
+                        context = context,
+                        onOpenViewer = { viewerFile = it },
+                    )
                 }
             }
         }
+    }
+
+    val vf = viewerFile
+    if (vf != null) {
+        AiImageViewer(file = vf, onDismiss = { viewerFile = null })
+    }
+}
+
+@Composable
+private fun CollapsedPromptBar(
+    prompt: String,
+    generating: Boolean,
+    generateEnabled: Boolean,
+    onExpand: () -> Unit,
+    onGenerate: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(enabled = !generating) { onExpand() }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.Edit,
+            null,
+            Modifier.size(14.dp),
+            tint = colors.onSurfaceVariant,
+        )
+        Spacer(Modifier.size(8.dp))
+        Text(
+            text = prompt.ifBlank { Strings.aiImagePromptHint },
+            fontSize = 13.sp,
+            color = if (prompt.isBlank()) colors.onSurfaceVariant else colors.onSurface,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.size(8.dp))
+        GenerateButton(
+            enabled = generateEnabled,
+            generating = generating,
+            onClick = onGenerate,
+        )
     }
 }
 
@@ -409,7 +482,11 @@ private data class ImageResult(
 )
 
 @Composable
-private fun ImageResultCard(item: ImageResult, context: Context) {
+private fun ImageResultCard(
+    item: ImageResult,
+    context: Context,
+    onOpenViewer: (File) -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     var saved by remember { mutableStateOf(item.savedTo != null) }
@@ -431,7 +508,8 @@ private fun ImageResultCard(item: ImageResult, context: Context) {
                 .fillMaxWidth()
                 .heightIn(min = 200.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(colors.surface),
+                .background(colors.surface)
+                .clickable { onOpenViewer(item.cacheFile) },
         )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
@@ -522,6 +600,9 @@ private fun ActionPill(
 private fun sizeOptionsFor(model: AiModel?): List<String> {
     val id = model?.id?.lowercase().orEmpty()
     return when {
+        // gpt-image-1 supports "auto" — model picks the resolution itself
+        // (it generates at native quality, often 1024x1024 / 1024x1536 / 1536x1024).
+        id.contains("gpt-image") -> listOf("auto", "1024x1024", "1024x1536", "1536x1024")
         id.contains("dall-e-2") || id.contains("dalle-2") -> listOf("256x256", "512x512", "1024x1024")
         id.contains("dall-e-3") || id.contains("dalle-3") -> listOf("1024x1024", "1792x1024", "1024x1792")
         id.contains("imagen") -> listOf("1024x1024", "1408x768", "768x1408")
