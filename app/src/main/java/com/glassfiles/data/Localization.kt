@@ -366,6 +366,92 @@ object Strings {
         "Configure an AI provider first.",
     )
 
+    // Cost-policy UI (PR-COST-B). Three modes + warning dialog copy.
+    val aiCostMode get() = s("Режим", "Mode")
+    val aiCostModeEco get() = s("Эко", "Eco")
+    val aiCostModeBalanced get() = s("Сбалансированный", "Balanced")
+    val aiCostModeMax get() = s("Макс. качество", "Max quality")
+    val aiCostModeEcoHint get() = s(
+        "Минимум контекста, дешёвые запросы. Лучшая экономия.",
+        "Smallest context, cheapest runs. Best for saving credits.",
+    )
+    val aiCostModeBalancedHint get() = s(
+        "По умолчанию. Подходит для повседневных вопросов по репозиторию.",
+        "Default. Comfortable for everyday repo questions.",
+    )
+    val aiCostModeMaxHint get() = s(
+        "Большой контекст и больше итераций. Используй для глубокого анализа.",
+        "Largest context and more iterations. For deep analysis.",
+    )
+    val aiCostWarningTitle get() = s("Внимание: возможно дорогая операция", "Heads up: this run may be expensive")
+    val aiCostWarningReasonPrivate get() = s(
+        "Это приватный репозиторий. Содержимое будет отправлено внешнему AI-провайдеру.",
+        "This is a private repo. Content will be sent to an external AI provider.",
+    )
+    val aiCostWarningReasonMaxMode get() = s(
+        "Активен режим максимального качества — лимиты по контексту и итерациям увеличены.",
+        "Max quality mode is on — context and iteration caps are higher.",
+    )
+    val aiCostWarningReasonLarge get() = s(
+        "В контекст будет отправлено много текста, это может стоить значимое количество токенов.",
+        "A lot of text will be sent in the context — this may cost a meaningful amount of tokens.",
+    )
+    val aiCostWarningRepo get() = s("Репозиторий", "Repository")
+    val aiCostWarningBranch get() = s("Ветка", "Branch")
+    val aiCostWarningProvider get() = s("Провайдер", "Provider")
+    val aiCostWarningModel get() = s("Модель", "Model")
+    val aiCostWarningFiles get() = s("Файлов", "Files")
+    val aiCostWarningContext get() = s("Размер", "Size")
+    val aiCostWarningChars get() = s("{n} символов", "{n} chars")
+    val aiCostWarningPrivate get() = s("приватный", "private")
+    val aiCostWarningTransmitNote get() = s(
+        "Содержимое будет отправлено в API провайдера. Стоимость и токены — оценочные.",
+        "Content will be sent to the provider API. Token and cost numbers are estimates.",
+    )
+    val aiCostWarningRememberLabel get() = s(
+        "Запомнить для этого репо и провайдера",
+        "Remember for this repo and provider",
+    )
+    val aiCostWarningContinueOnce get() = s("Продолжить один раз", "Continue once")
+    val aiCostWarningContinueRemember get() = s("Продолжить и запомнить", "Continue and remember")
+
+    // ─── Local AI usage tracking (PR-COST-C) ───────────────────────
+    val aiUsageTitle get() = s("AI Usage", "AI Usage")
+    val aiUsageSubtitle get() = s(
+        "Локальная статистика по запросам, токенам и тулам.",
+        "Local stats: requests, tokens, tool calls.",
+    )
+    val aiUsageWindowToday get() = s("Сегодня", "Today")
+    val aiUsageWindowWeek get() = s("Неделя", "Week")
+    val aiUsageWindowMonth get() = s("Месяц", "Month")
+    val aiUsageEmpty get() = s(
+        "Пока нет записей. Запусти задачу в AI Agent или сгенерируй картинку — здесь появится статистика.",
+        "No records yet. Run a task in AI Agent or generate an image — stats will show up here.",
+    )
+    val aiUsageRecords get() = s("Запросов", "Requests")
+    val aiUsageTokens get() = s("Токенов", "Tokens")
+    val aiUsageTokensEstimateOnly get() = s("оценочно", "estimate only")
+    val aiUsageChars get() = s("Символов", "Chars")
+    val aiUsageToolCalls get() = s("Тул-коллов", "Tool calls")
+    val aiUsageFilesRead get() = s("Файлов прочитано", "Files read")
+    val aiUsageFilesWritten get() = s("Файлов записано", "Files written")
+    val aiUsageEstimated get() = s("Оценочные", "Estimated")
+    val aiUsageEstimatedFmt get() = s("{n} из {total}", "{n} of {total}")
+    val aiUsageByProvider get() = s("ПО ПРОВАЙДЕРАМ", "BY PROVIDER")
+    val aiUsageByModel get() = s("ПО МОДЕЛЯМ", "BY MODEL")
+    val aiUsageByMode get() = s("ПО РЕЖИМАМ", "BY MODE")
+    val aiUsageBucketSubtitle get() = s("{n} запросов · {chars} симв.", "{n} requests · {chars} chars")
+    val aiUsageDisclaimer get() = s(
+        "Локальная оценка. Реальный счёт у провайдера может отличаться.",
+        "Local estimate only. Final billing may differ from the provider dashboard.",
+    )
+    val aiUsageClearTitle get() = s("Очистить локальную статистику?", "Clear local usage stats?")
+    val aiUsageClearBody get() = s(
+        "Будут удалены все записи об использовании AI с этого устройства. Действие нельзя отменить.",
+        "All AI usage records on this device will be removed. This cannot be undone.",
+    )
+    val aiUsageClearConfirm get() = s("Очистить", "Clear")
+
     val about get() = s("О приложении", "About")
     val version get() = s("Версия", "Version")
 
