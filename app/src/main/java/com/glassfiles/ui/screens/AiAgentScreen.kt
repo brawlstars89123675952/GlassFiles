@@ -2482,14 +2482,17 @@ private const val AGENT_PLAN_FIRST_SYSTEM_PROMPT =
         "for the user. Once the user replies (e.g. 'go', 'approve', or " +
         "any further instructions), proceed normally with tool calls."
 
-/** Hard char-length budget for the rolling tool-use transcript. ~80 000
- * chars ≈ 20–25 k tokens, well under the smallest tool-use windows of
- * the providers we ship. */
-private const val CONTEXT_COMPACT_CHARS = 80_000
+/** Soft char-length trigger for transcript summarisation. At ~2 M chars
+ * (~500 k tokens) we fold older turns into a one-line briefing so the
+ * next provider call still fits inside a 1 M-token window without
+ * losing the entire history. Bumped from the historical 80 000 to give
+ * the user a real megacontext budget on providers that support it. */
+private const val CONTEXT_COMPACT_CHARS = 2_000_000
 
-/** Number of *most-recent* messages we always keep verbatim. Older
- * messages can be folded into a summary. 6 ≈ 3 user/assistant turns. */
-private const val CONTEXT_KEEP_TAIL = 6
+/** Number of *most-recent* messages we always keep verbatim before
+ * summarising the head. 20 ≈ 10 user/assistant turns — enough room
+ * for a multi-step refactor or a PR-sized review thread. */
+private const val CONTEXT_KEEP_TAIL = 20
 
 /**
  * If [messages] exceeds [CONTEXT_COMPACT_CHARS] in total payload size,
