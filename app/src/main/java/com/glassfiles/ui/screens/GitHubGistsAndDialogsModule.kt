@@ -29,8 +29,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.*
+import com.glassfiles.ui.components.AiModuleCard
+import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -96,10 +100,89 @@ internal fun GistsScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
 
 @Composable private fun BC(name: String, sel: Boolean, onClick: () -> Unit) { Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) Blue.copy(0.15f) else SurfaceLight).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp)) { Text(name, fontSize = 12.sp, color = if (sel) Blue else TextSecondary) } }
 
-@Composable internal fun BranchPickerDialog(branches: List<String>, current: String, canWrite: Boolean = true, onSelect: (String) -> Unit, onDismiss: () -> Unit, onCreateBranch: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, containerColor = SurfaceWhite, title = { Text(Strings.ghBranches, fontWeight = FontWeight.Bold, color = TextPrimary) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { branches.forEach { b -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (b == current) Blue.copy(0.1f) else Color.Transparent).clickable { onSelect(b) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.AccountTree, null, Modifier.size(16.dp), tint = if (b == current) Blue else TextSecondary); Text(b, fontSize = 14.sp, color = if (b == current) Blue else TextPrimary, modifier = Modifier.weight(1f)); if (b == current) Icon(Icons.Rounded.Check, null, Modifier.size(16.dp), tint = Blue) } }
-            if (canWrite) { Spacer(Modifier.height(4.dp)); Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor)); Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { onCreateBranch() }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.Add, null, Modifier.size(16.dp), tint = Blue); Text(Strings.ghNewBranch, fontSize = 14.sp, color = Blue) } } } }, confirmButton = {}) }
+@Composable internal fun BranchPickerDialog(
+    branches: List<String>,
+    current: String,
+    canWrite: Boolean = true,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onCreateBranch: () -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    val branchGlyph = "\u2442" // ⑂
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = true),
+    ) {
+        AiModuleCard(elevated = true) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "> branches",
+                    color = palette.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                Spacer(Modifier.height(2.dp))
+                Column(
+                    Modifier
+                        .heightIn(max = 360.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
+                    branches.forEach { b ->
+                        val isCurrent = b == current
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isCurrent) palette.accent.copy(alpha = 0.10f) else Color.Transparent)
+                                .clickable { onSelect(b) }
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                branchGlyph,
+                                color = if (isCurrent) palette.accent else palette.textSecondary,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 13.sp,
+                            )
+                            Text(
+                                b,
+                                color = if (isCurrent) palette.accent else palette.textPrimary,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            if (isCurrent) {
+                                Text(
+                                    "[\u2713]",
+                                    color = palette.accent,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 12.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (canWrite) {
+                    Spacer(Modifier.height(6.dp))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                    Spacer(Modifier.height(8.dp))
+                    AiModulePillButton(
+                        label = "+ new branch",
+                        onClick = onCreateBranch,
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable private fun CreateGistDialog(onDismiss: () -> Unit, onDone: () -> Unit) { var d by remember { mutableStateOf("") }; var fn by remember { mutableStateOf("file.txt") }; var ct by remember { mutableStateOf("") }; var pub by remember { mutableStateOf(true) }; val ctx = LocalContext.current; val s = rememberCoroutineScope()
     AlertDialog(onDismissRequest = onDismiss, containerColor = SurfaceWhite, title = { Text(Strings.ghNewGist, fontWeight = FontWeight.Bold, color = TextPrimary) },
