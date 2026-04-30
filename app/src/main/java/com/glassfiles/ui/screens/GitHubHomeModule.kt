@@ -24,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -34,6 +35,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.*
+import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.components.AiModuleSecondaryButton
+import com.glassfiles.ui.components.AiModuleSpinner
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
@@ -95,60 +99,221 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     if (showOrgs) { OrgsScreen(onBack = { showOrgs = false }, onRepoClick = { showOrgs = false; onRepoClick(it) }); return }
     if (showPackages && user != null) { PackagesScreen(userLogin = user.login, onBack = { showPackages = false }); return }
     if (showAdvancedSearch) { AdvancedSearchScreen(onBack = { showAdvancedSearch = false }, onRepoClick = onRepoClick, onProfile = onProfile); return }
-    val colors = MaterialTheme.colorScheme
-    Column(Modifier.fillMaxSize().background(colors.background)) {
-        GHTopBar("GitHub", onBack = onBack, onMinimize = onMinimize, onClose = onClose) {
-            IconButton(onClick = onNotifications) { Icon(Icons.Rounded.Notifications, null, Modifier.size(20.dp), tint = colors.primary) }
-            IconButton(onClick = onGists) { Icon(Icons.Rounded.Description, null, Modifier.size(20.dp), tint = colors.primary) }
-            IconButton(onClick = { showCreate = true }) { Icon(Icons.Rounded.Add, null, Modifier.size(22.dp), tint = colors.primary) }
-            IconButton(onClick = onSettings) { Icon(Icons.Rounded.Settings, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant) }
-        }
-        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
-            if (user != null) {
-                item { Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(16.dp)).background(colors.surface).padding(16.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AsyncImage(user.avatarUrl, user.login, Modifier.size(56.dp).clip(CircleShape))
-                        Column(Modifier.weight(1f)) { Text(user.name.ifBlank { user.login }, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = colors.onSurface); Text("@${user.login}", fontSize = 13.sp, color = colors.onSurfaceVariant); if (user.bio.isNotBlank()) Text(user.bio, fontSize = 12.sp, color = colors.onSurfaceVariant, maxLines = 2) }
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        AiModulePageBar(
+            title = "> github",
+            onBack = onBack,
+            trailing = {
+                IconButton(onClick = onNotifications, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Notifications, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                IconButton(onClick = onGists, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Description, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                IconButton(onClick = { showCreate = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Add, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                IconButton(onClick = onSettings, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Settings, null, Modifier.size(18.dp), tint = palette.textSecondary)
+                }
+                IconButton(onClick = onMinimize, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(18.dp), tint = palette.textSecondary)
+                }
+                if (onClose != null) {
+                    IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = palette.error)
                     }
-                } }
-                item { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox(Strings.ghRepos, formatGitHubNumber(user.publicRepos + user.privateRepos), Modifier.weight(1f)); StatBox(Strings.ghFollowers, formatGitHubNumber(user.followers), Modifier.weight(1f)); StatBox(Strings.ghFollowing, formatGitHubNumber(user.following), Modifier.weight(1f))
-                } }
+                }
+            },
+        )
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+        ) {
+            if (user != null) {
+                item {
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AsyncImage(user.avatarUrl, user.login, Modifier.size(36.dp).clip(CircleShape))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                "@${user.login}",
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                            )
+                            if (user.name.isNotBlank() && user.name != user.login) {
+                                Text(
+                                    user.name,
+                                    color = palette.textSecondary,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            if (user.bio.isNotBlank()) {
+                                Text(
+                                    user.bio,
+                                    color = palette.textMuted,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
+                item {
+                    Text(
+                        text = "repos: ${formatGitHubNumber(user.publicRepos + user.privateRepos)}   followers: ${formatGitHubNumber(user.followers)}   following: ${formatGitHubNumber(user.following)}",
+                        color = palette.textSecondary,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
+                }
             }
             // Quick actions row
             item {
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    QuickChip(Icons.Rounded.Star, Strings.ghStarredRepos) { showStarred = true }
-                    QuickChip(Icons.Rounded.Business, Strings.ghOrganizations) { showOrgs = true }
-                    QuickChip(Icons.Rounded.Search, "Search") { showAdvancedSearch = true }
-                    QuickChip(Icons.Rounded.Archive, "Packages") { showPackages = true }
-                    QuickChip(Icons.Rounded.Person, Strings.ghProfile) { if (user != null) onProfile(user.login) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 6.dp).horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    TerminalQuickChip(Strings.ghStarredRepos) { showStarred = true }
+                    TerminalQuickChip(Strings.ghOrganizations) { showOrgs = true }
+                    TerminalQuickChip("Search") { showAdvancedSearch = true }
+                    TerminalQuickChip("Packages") { showPackages = true }
+                    TerminalQuickChip(Strings.ghProfile) { if (user != null) onProfile(user.login) }
                 }
             }
-            item { Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(colors.surface).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    if (query.isEmpty()) Text(if (searchPublic) Strings.ghSearchPublic else Strings.ghSearchRepos, color = colors.onSurfaceVariant, fontSize = 14.sp)
-                    BasicTextField(query, { query = it }, textStyle = androidx.compose.ui.text.TextStyle(color = colors.onSurface, fontSize = 14.sp), singleLine = true, modifier = Modifier.fillMaxWidth())
+            item {
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        if (searchPublic) "search public:" else "search:",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                    )
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(palette.surface)
+                            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        if (query.isEmpty()) {
+                            Text(
+                                if (searchPublic) "name / desc / public…" else "name / desc",
+                                color = palette.textMuted,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        BasicTextField(
+                            query,
+                            { query = it },
+                            textStyle = TextStyle(
+                                color = palette.textPrimary,
+                                fontSize = 12.sp,
+                                fontFamily = JetBrainsMono,
+                            ),
+                            singleLine = true,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (searchPublic) palette.accent.copy(alpha = 0.10f) else palette.surface)
+                            .border(1.dp, if (searchPublic) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(4.dp))
+                            .clickable { searchPublic = !searchPublic; query = "" }
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            "public",
+                            color = if (searchPublic) palette.accent else palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
-                Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(if (searchPublic) colors.primary.copy(0.15f) else colors.surface).clickable { searchPublic = !searchPublic; query = "" }, contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Public, null, Modifier.size(18.dp), tint = if (searchPublic) colors.primary else colors.onSurfaceVariant)
+            }
+            if (loading) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
+                        AiModuleSpinner(label = "loading repos\u2026")
+                    }
                 }
-            } }
-            if (loading) { item { Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp) } } }
-            else { items(filtered) { repo -> RepoCard(repo, onClick = { onRepoClick(repo) }) }
-                if (!searchPublic && query.isBlank() && reposHasMore) item { Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).clickable { scope.launch { reposPage++; val r = GitHubManager.getRepos(context, reposPage); if (r.size < 30) reposHasMore = false; repos = repos + r } }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Medium) } }
+            } else if (filtered.isEmpty()) {
+                item {
+                    Text(
+                        "no repositories",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            } else {
+                items(filtered) { repo -> RepoCard(repo, onClick = { onRepoClick(repo) }) }
+                if (!searchPublic && query.isBlank() && reposHasMore) {
+                    item {
+                        Box(
+                            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AiModuleSecondaryButton(
+                                label = "load more \u2192",
+                                onClick = {
+                                    scope.launch {
+                                        reposPage++
+                                        val r = GitHubManager.getRepos(context, reposPage)
+                                        if (r.size < 30) reposHasMore = false
+                                        repos = repos + r
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
     }
     if (showCreate) CreateRepoDialog({ showCreate = false }) { n, d, p -> scope.launch { val ok = GitHubManager.createRepo(context, n, d, p); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); if (ok) { reposPage = 1; repos = GitHubManager.getRepos(context, 1); reposHasMore = repos.size >= 30 }; showCreate = false } }
 }
 
-@Composable private fun QuickChip(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Row(Modifier.height(40.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-        .clickable(onClick = onClick).padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+@Composable
+private fun TerminalQuickChip(label: String, onClick: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) {
+        Text(
+            label.lowercase(java.util.Locale.US),
+            color = palette.textSecondary,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+        )
     }
 }
 
