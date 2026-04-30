@@ -47,7 +47,7 @@ fun <T> AiPickerChip(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val colors = AgentTerminalDarkColors
+    val colors = AiModuleDarkColors
     var open by remember { mutableStateOf(false) }
 
     Row(
