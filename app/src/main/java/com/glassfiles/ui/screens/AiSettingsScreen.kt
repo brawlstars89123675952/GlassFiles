@@ -176,7 +176,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             // ─── Toggles ──────────────────────────────────────────────────
             item {
                 Column {
-                    TerminalCheckRow(
+                    AiModuleCheckRow(
                         label = Strings.aiSettingsAutoSave,
                         description = Strings.aiSettingsAutoSaveHint,
                         checked = autoSave,
@@ -185,7 +185,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                             AiSettingsStore.setAutoSaveGallery(context, autoSave)
                         },
                     )
-                    TerminalCheckRow(
+                    AiModuleCheckRow(
                         label = Strings.aiSettingsStreamScroll,
                         checked = streamScroll,
                         onToggle = {
