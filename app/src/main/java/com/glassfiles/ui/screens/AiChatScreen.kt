@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.ai.*
+import com.glassfiles.ui.screens.ai.terminal.JetBrainsMono
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -56,12 +57,16 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-private val BG = Color(0xFF09090B); private val Card = Color(0xFF111113); private val Card2 = Color(0xFF18181B)
-private val Border = Color(0xFF27272A); private val T1 = Color(0xFFE4E4E7); private val T2 = Color(0xFF71717A); private val T3 = Color(0xFF52525B)
-private val Accent = Color(0xFF22C55E); private val Bl = Color(0xFF3B82F6); private val QwenColor = Color(0xFF6366F1)
-private val CodeBg = Color(0xFF0D1117); private val CodeBorder = Color(0xFF30363D); private val CodeKw = Color(0xFFFF7B72)
-private val CodeStr = Color(0xFFA5D6A7); private val CodeCmt = Color(0xFF8B949E); private val CodeNum = Color(0xFF79C0FF)
-private val CodeTy = Color(0xFFFFA657); private val CodeFn = Color(0xFFD2A8FF); private val CodeDef = Color(0xFFE6EDF3)
+// AI module terminal palette — kept private to this file but
+// hand-aligned with [com.glassfiles.ui.screens.ai.terminal.AgentTerminalDarkColors]
+// so the chat screen reads as the same surface as the agent / hub /
+// settings. Keep these in sync if the agent palette ever changes.
+private val BG = Color(0xFF000000); private val Card = Color(0xFF0A0A0A); private val Card2 = Color(0xFF141414)
+private val Border = Color(0xFF1F1F1F); private val T1 = Color(0xFFE0E0E0); private val T2 = Color(0xFF999999); private val T3 = Color(0xFF5C5C5C)
+private val Accent = Color(0xFFA8D982); private val Bl = Color(0xFFE5C07B); private val QwenColor = Color(0xFFE5C07B)
+private val CodeBg = Color(0xFF0A0A0A); private val CodeBorder = Color(0xFF1F1F1F); private val CodeKw = Color(0xFFA8D982)
+private val CodeStr = Color(0xFF98C379); private val CodeCmt = Color(0xFF5C6370); private val CodeNum = Color(0xFFD19A66)
+private val CodeTy = Color(0xFFE5C07B); private val CodeFn = Color(0xFFABB2BF); private val CodeDef = Color(0xFFE0E0E0)
 private val kwSet = setOf("fun","val","var","class","object","interface","enum","when","if","else","for","while","return","import","package","private","public","protected","internal","override","suspend","data","sealed","abstract","open","companion","init","try","catch","throw","finally","is","as","in","by","null","true","false","this","super","it","break","continue","const","lateinit","function","let","def","self","None","True","False","async","await","yield","from","with","lambda","elif","except","raise","static","final","void","int","String","boolean","float","double","long","new","delete","typeof","instanceof","export","default","switch","case","struct","impl","fn","pub","mut","use","mod","func","go","chan","select","defer","range","type","map","make","println","print")
 
 @Composable
@@ -353,7 +358,7 @@ private fun ChatView(sessionId: String, historyMgr: ChatHistoryManager, onBack: 
             Spacer(Modifier.width(6.dp))
             Box(Modifier.clip(RoundedCornerShape(4.dp)).background(Color(0xFF30363D)).clickable { onCopy() }.padding(horizontal = 8.dp, vertical = 3.dp)) { Text("Copy", fontSize = 10.sp, color = CodeDef) } }
         Column(Modifier.background(CodeBg).horizontalScroll(rememberScrollState()).padding(8.dp)) {
-            lines.forEachIndexed { idx, line -> Row { Text("${idx + 1}".padStart(3), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)); Text(hlLine(line, lang), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp) } } } } }
+            lines.forEachIndexed { idx, line -> Row { Text("${idx + 1}".padStart(3), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Color(0xFF484F58), modifier = Modifier.padding(end = 10.dp)); Text(hlLine(line, lang), fontSize = 12.sp, fontFamily = JetBrainsMono, lineHeight = 18.sp) } } } } }
 
 private fun hlLine(line: String, lang: String): AnnotatedString = buildAnnotatedString {
     var i = 0; while (i < line.length) { when {
@@ -384,7 +389,7 @@ private fun hlLine(line: String, lang: String): AnnotatedString = buildAnnotated
 private fun inlineMd(t: String): AnnotatedString = buildAnnotatedString { var i = 0; while (i < t.length) { when {
     i < t.length - 1 && t[i] == '*' && t[i + 1] == '*' -> { val e = t.indexOf("**", i + 2); if (e > 0) { withStyle(SpanStyle(color = T1, fontWeight = FontWeight.Bold)) { append(t.substring(i + 2, e)) }; i = e + 2 } else { withStyle(SpanStyle(color = T1)) { append(t[i].toString()) }; i++ } }
     t[i] == '*' -> { val e = t.indexOf('*', i + 1); if (e > 0) { withStyle(SpanStyle(color = T1, fontStyle = FontStyle.Italic)) { append(t.substring(i + 1, e)) }; i = e + 1 } else { withStyle(SpanStyle(color = T1)) { append(t[i].toString()) }; i++ } }
-    t[i] == '`' -> { val e = t.indexOf('`', i + 1); if (e > 0) { withStyle(SpanStyle(color = Color(0xFFE06C75), fontFamily = FontFamily.Monospace, background = Color(0xFF1E1E2E))) { append(t.substring(i + 1, e)) }; i = e + 1 } else { withStyle(SpanStyle(color = T1)) { append(t[i].toString()) }; i++ } }
+    t[i] == '`' -> { val e = t.indexOf('`', i + 1); if (e > 0) { withStyle(SpanStyle(color = Color(0xFFE06C75), fontFamily = JetBrainsMono, background = Color(0xFF1E1E2E))) { append(t.substring(i + 1, e)) }; i = e + 1 } else { withStyle(SpanStyle(color = T1)) { append(t[i].toString()) }; i++ } }
     else -> { withStyle(SpanStyle(color = T1)) { append(t[i].toString()) }; i++ }
 } } }
 
@@ -425,5 +430,5 @@ private fun Bubble(msg: ChatMessage, prov: AiProvider, msgIdx: Int, speakingIdx:
 @Composable private fun SectionLabel(t: String, c: Color) { Text(t, fontSize = 13.sp, color = c, fontWeight = FontWeight.Medium) }
 @Composable private fun InputField(v: String, ch: (String) -> Unit, h: String, mono: Boolean = false) {
     BasicTextField(v, ch, Modifier.fillMaxWidth().background(Card, RoundedCornerShape(10.dp)).border(1.dp, Border, RoundedCornerShape(10.dp)).padding(14.dp),
-        textStyle = TextStyle(T1, 14.sp, fontFamily = if (mono) FontFamily.Monospace else FontFamily.Default), cursorBrush = SolidColor(Accent), singleLine = true,
+        textStyle = TextStyle(T1, 14.sp, fontFamily = if (mono) JetBrainsMono else FontFamily.Default), cursorBrush = SolidColor(Accent), singleLine = true,
         decorationBox = { inner -> if (v.isEmpty()) Text(h, color = T3, fontSize = 14.sp); inner() }) }
