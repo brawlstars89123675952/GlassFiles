@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Inline approval prompt rendered straight in the chat — never a Material
