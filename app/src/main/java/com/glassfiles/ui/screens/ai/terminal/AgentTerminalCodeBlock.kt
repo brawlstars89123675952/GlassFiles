@@ -38,6 +38,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.glassfiles.ui.components.highlightCode
+import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Terminal-themed wrapper around [com.glassfiles.ui.components.AiCodeBlock]'s
