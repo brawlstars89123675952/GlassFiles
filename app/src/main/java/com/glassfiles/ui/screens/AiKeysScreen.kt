@@ -147,7 +147,7 @@ private fun ProviderRow(
     onClear: () -> Unit,
     onOpenConsole: () -> Unit,
 ) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     val hasKey = value.isNotBlank()
 
     Column(Modifier.fillMaxWidth()) {
