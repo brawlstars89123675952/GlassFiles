@@ -237,7 +237,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
 
 @Composable
 private fun SettingsSectionHeader(text: String, withPadding: Boolean = true) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
@@ -250,12 +250,12 @@ private fun SettingsSectionHeader(text: String, withPadding: Boolean = true) {
             fontFamily = JetBrainsMono,
             fontSize = 12.sp,
         )
-        TerminalSectionLabel(text = text)
+        AiModuleSectionLabel(text = text)
     }
     if (!withPadding) {
-        TerminalHairline(Modifier.padding(top = 2.dp))
+        AiModuleHairline(Modifier.padding(top = 2.dp))
     } else {
-        TerminalHairline(Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+        AiModuleHairline(Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
     }
 }
 
