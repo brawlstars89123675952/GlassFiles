@@ -168,7 +168,7 @@ private fun ProviderTab(
     configured: Boolean,
     onClick: () -> Unit,
 ) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     val borderColor = when {
         selected -> colors.accent
         configured -> colors.border
