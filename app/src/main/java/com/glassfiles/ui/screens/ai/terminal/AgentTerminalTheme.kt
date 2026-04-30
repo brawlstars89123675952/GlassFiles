@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.glassfiles.ui.components.CodeColors
+import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Terminal-mode palette and typography used by the entire AI module
