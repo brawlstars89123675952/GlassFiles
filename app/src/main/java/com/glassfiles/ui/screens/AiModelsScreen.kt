@@ -108,13 +108,14 @@ fun AiModelsScreen(onBack: () -> Unit) {
         if (models[selected].isNullOrEmpty()) load(selected, force = false)
     }
 
-    AgentTerminalSurface {
+    AiModuleSurface {
         Column(Modifier.fillMaxSize()) {
-            TerminalPageBar(
+            AiModulePageBar(
                 title = Strings.aiModels,
                 onBack = onBack,
                 subtitle = "$selected · catalog",
                 trailing = {
+                    val colors = AiModuleTheme.colors
                     IconButton(
                         onClick = { load(selected, force = true) },
                         modifier = Modifier.size(36.dp),
@@ -123,7 +124,7 @@ fun AiModelsScreen(onBack: () -> Unit) {
                             Icons.Rounded.Refresh,
                             null,
                             Modifier.size(18.dp),
-                            tint = AgentTerminal.colors.accent,
+                            tint = colors.accent,
                         )
                     }
                 },
