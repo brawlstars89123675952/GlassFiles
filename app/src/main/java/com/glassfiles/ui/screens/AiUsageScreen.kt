@@ -88,6 +88,7 @@ fun AiUsageScreen(onBack: () -> Unit) {
             }
         },
     ) {
+        val colors = AiModuleTheme.colors
         Column(Modifier.fillMaxSize()) {
             // Window selector — terminal flag style: `[1d] [7d] [30d]`.
             Row(
