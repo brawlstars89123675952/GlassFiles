@@ -122,7 +122,9 @@ import com.glassfiles.ui.theme.Orange
 import com.glassfiles.ui.theme.Purple
 import com.glassfiles.ui.theme.Red
 import com.glassfiles.ui.theme.Teal
+import com.glassfiles.ui.components.AiModuleDestructiveButton
 import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.components.AiModulePrimaryButton
 import com.glassfiles.ui.components.AiModuleSecondaryButton
 import com.glassfiles.ui.components.AiModuleSpinner
 import com.glassfiles.ui.components.aiModuleStatusBadge
@@ -284,10 +286,12 @@ internal fun ActionsTab(
         missingDispatchInputs(dispatchSchema, dispatchInputValues)
     }
 
+    AiModuleSurface {
+    val palette = AiModuleTheme.colors
     Column(
         Modifier
             .fillMaxSize()
-            .background(SurfaceLight)
+            .background(palette.background)
             .verticalScroll(rememberScrollState())
             .imePadding()
     ) {
@@ -295,15 +299,27 @@ internal fun ActionsTab(
             Row(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, Orange.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(palette.surface)
+                    .border(1.dp, palette.warning.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Info, null, tint = Orange, modifier = Modifier.size(16.dp))
-                Text(notice, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 16.sp)
+                Text(
+                    "!",
+                    color = palette.warning,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                )
+                Text(
+                    notice,
+                    fontSize = 12.sp,
+                    color = palette.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    lineHeight = 16.sp,
+                )
             }
         }
         ActionsOverviewHeader(
@@ -393,6 +409,7 @@ internal fun ActionsTab(
             nowMs = nowMs,
             onOpenLatestRun = { latestRun?.let(onRunClick) }
         )
+    }
     }
 }
 
@@ -900,186 +917,316 @@ private fun ActionsOverviewHeader(
     nowMs: Long,
     onOpenLatestRun: () -> Unit
 ) {
+    val palette = AiModuleTheme.colors
     Column(
         Modifier
             .fillMaxWidth()
-            .background(SurfaceLight)
+            .background(palette.background)
             .padding(top = 4.dp)
     ) {
+        // Stats one-liner: total: N  active: N  ok: N  fail: N
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            StatCard("Total", totalRuns.toString(), Icons.Rounded.Timeline, Blue, modifier = Modifier.weight(1f))
-            StatCard("Active", activeCount.toString(), Icons.Rounded.FlashOn, Blue, modifier = Modifier.weight(1f))
-            StatCard("Success", successCount.toString(), Icons.Rounded.CheckCircle, Green, modifier = Modifier.weight(1f))
-            StatCard("Failed", failedCount.toString(), Icons.Rounded.Error, Red, modifier = Modifier.weight(1f))
+            ActionsStatPair("total", totalRuns.toString(), palette.textPrimary, palette)
+            ActionsStatPair("active", activeCount.toString(), palette.warning, palette)
+            ActionsStatPair("ok", successCount.toString(), palette.accent, palette)
+            ActionsStatPair("fail", failedCount.toString(), palette.error, palette)
         }
 
-        Spacer(Modifier.height(8.dp))
+        // > WORKFLOW CONTROL  ............................................. ⟳
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, top = 8.dp, bottom = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "> WORKFLOW CONTROL",
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = AiModuleTheme.type.label,
+                letterSpacing = 0.6.sp,
+            )
+            if (refreshing) {
+                Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner()
+                }
+            } else {
+                IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Rounded.Refresh,
+                        null,
+                        tint = palette.textSecondary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
+        }
 
-        Column(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .ghGlassCard(12.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(palette.surface)
+                .border(1.dp, palette.border, RoundedCornerShape(6.dp))
                 .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = Blue, modifier = Modifier.size(18.dp))
-                    Text(
-                        "WORKFLOW CONTROL",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextSecondary,
-                        letterSpacing = 0.8.sp
-                    )
-                }
-                IconButton(onClick = onRefresh, modifier = Modifier.size(28.dp)) {
-                    if (refreshing) CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
-                    else Icon(Icons.Rounded.Refresh, null, tint = Blue, modifier = Modifier.size(18.dp))
-                }
-            }
-
-            InputGroup("Workflow") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // workflow:
+                ActionsFieldLabel("workflow", palette)
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (workflows.isEmpty()) {
-                        ActionsFilterChip(Strings.ghNoWorkflows, false) {}
+                        Text(
+                            Strings.ghNoWorkflows,
+                            color = palette.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                        )
                     } else {
                         workflows.forEach { workflow ->
                             val selected = workflow.id == selectedWorkflowId
-                            ActionsFilterChip(
+                            ActionsTerminalFilterChip(
                                 workflow.name.ifBlank { workflow.path.substringAfterLast('/') },
-                                selected
+                                selected,
                             ) { onSelectWorkflow(workflow.id) }
                         }
                     }
                 }
-            }
 
-            InputGroup("Branch / ref") {
-                OutlinedTextField(
-                    value = selectedBranch,
-                    onValueChange = onBranchChange,
-                    placeholder = { Text("main", fontSize = 13.sp, color = TextTertiary) },
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                // branch:
+                ActionsFieldLabel("branch", palette)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.weight(1f)) {
+                        if (selectedBranch.isEmpty()) {
+                            Text(
+                                "main",
+                                color = palette.textMuted,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 13.sp,
+                            )
+                        }
+                        BasicTextField(
+                            value = selectedBranch,
+                            onValueChange = onBranchChange,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                color = palette.textPrimary,
+                                fontSize = 13.sp,
+                                fontFamily = JetBrainsMono,
+                            ),
+                            singleLine = true,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 if (branches.isNotEmpty()) {
                     Row(
                         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         branches.take(20).forEach { branch ->
-                            ActionsFilterChip(branch, branch == selectedBranch) { onBranchChange(branch) }
+                            ActionsTerminalFilterChip(branch, branch == selectedBranch) {
+                                onBranchChange(branch)
+                            }
                         }
                     }
                 }
-            }
 
-            val hasInputs = dispatchSchema?.inputs?.isNotEmpty() == true
-            if (hasInputs) {
-                InputGroup("Inputs") {
+                val hasInputs = dispatchSchema?.inputs?.isNotEmpty() == true
+                if (dispatchSchema == null) {
+                    Text(
+                        "no workflow_dispatch trigger",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                    )
+                } else if (!hasInputs) {
+                    Text(
+                        "no inputs",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                    )
+                } else {
+                    ActionsFieldLabel("inputs", palette)
                     DynamicDispatchInputs(
                         schema = dispatchSchema,
                         values = dispatchInputValues,
                         missingRequiredInputs = missingRequiredInputs,
-                        onValueChange = onDispatchInputChange
+                        onValueChange = onDispatchInputChange,
                     )
                 }
-            } else {
-                DynamicDispatchInputs(
-                    schema = dispatchSchema,
-                    values = dispatchInputValues,
-                    missingRequiredInputs = missingRequiredInputs,
-                    onValueChange = onDispatchInputChange
-                )
-            }
 
-            workflows.firstOrNull { it.id == selectedWorkflowId }?.let { selectedWorkflow ->
-                Spacer(Modifier.height(2.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.10f))
-                )
+                workflows.firstOrNull { it.id == selectedWorkflowId }?.let { selectedWorkflow ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(palette.border)
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val state = selectedWorkflow.state.ifBlank { "unknown" }
+                        val stateColor = if (selectedWorkflow.state == "active") palette.accent else palette.textSecondary
+                        Text(
+                            "[$state]",
+                            color = stateColor,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            selectedWorkflow.path,
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = palette.textMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (canWrite) {
+                            val isActive = selectedWorkflow.state == "active"
+                            if (isActive) {
+                                AiModuleDestructiveButton(
+                                    label = "disable",
+                                    onClick = { onToggleWorkflowState(selectedWorkflow) },
+                                )
+                            } else {
+                                AiModuleSecondaryButton(
+                                    label = "enable",
+                                    onClick = { onToggleWorkflowState(selectedWorkflow) },
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    MiniActionsBadge(selectedWorkflow.state.ifBlank { "unknown" }, if (selectedWorkflow.state == "active") Green else TextSecondary)
-                    Text(
-                        selectedWorkflow.path,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = TextTertiary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (latestRun != null) {
+                        AiModuleSecondaryButton(
+                            label = "latest #${latestRun.runNumber} \u2192",
+                            onClick = onOpenLatestRun,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
                     if (canWrite) {
-                        TextButton(onClick = { onToggleWorkflowState(selectedWorkflow) }) {
+                        AiModulePrimaryButton(
+                            label = if (dispatching) "dispatching\u2026" else "\u23F5 ${Strings.ghRunWorkflow} \u2192",
+                            onClick = onDispatch,
+                            enabled = !dispatching &&
+                                workflows.isNotEmpty() &&
+                                dispatchSchema != null &&
+                                missingRequiredInputs.isEmpty(),
+                        )
+                    }
+                }
+
+                latestRun?.let { run ->
+                    val badge = aiModuleStatusBadge(run.status, run.conclusion, palette)
+                    val elapsed = calcRunDuration(run, nowMs)
+                    val parts = buildList {
+                        add("latest:")
+                        add(badge.glyph)
+                        add(displayRunStatus(run))
+                        if (run.branch.isNotBlank()) add(run.branch)
+                        if (run.event.isNotBlank()) add(run.event)
+                        if (elapsed.isNotBlank()) add(elapsed)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        parts.forEachIndexed { idx, part ->
+                            val color = when {
+                                idx == 0 -> palette.textMuted
+                                idx == 1 -> badge.color.copy(alpha = badge.alpha)
+                                idx == 2 -> badge.color.copy(alpha = badge.alpha)
+                                else -> palette.textSecondary
+                            }
                             Text(
-                                if (selectedWorkflow.state == "active") "Disable" else "Enable",
-                                color = if (selectedWorkflow.state == "active") Red else Blue,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium
+                                part,
+                                color = color,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                     }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    if (latestRun != null) {
-                        Chip(Icons.Rounded.Article, "Latest #${latestRun.runNumber}") { onOpenLatestRun() }
-                    }
-                }
-                if (canWrite) {
-                    TextButton(onClick = onDispatch, enabled = !dispatching && workflows.isNotEmpty() && dispatchSchema != null && missingRequiredInputs.isEmpty()) {
-                        if (dispatching) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Rounded.PlayArrow, null, tint = Blue, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(Strings.ghRunWorkflow, color = Blue, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-            }
-
-            latestRun?.let { run ->
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniActionsBadge("Latest ${displayRunStatus(run)}", runStatusColor(run))
-                    if (run.branch.isNotBlank()) MiniActionsBadge(run.branch, Blue)
-                    if (run.event.isNotBlank()) MiniActionsBadge(run.event, Purple)
-                    val elapsed = calcRunDuration(run, nowMs)
-                    if (elapsed.isNotBlank()) MiniActionsBadge(elapsed, TextSecondary)
                 }
             }
         }
 
         Spacer(Modifier.height(6.dp))
     }
+}
+
+@Composable
+private fun ActionsStatPair(
+    label: String,
+    value: String,
+    valueColor: Color,
+    palette: com.glassfiles.ui.theme.AiModuleColors,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "$label:",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            value,
+            color = valueColor,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+@Composable
+private fun ActionsFieldLabel(
+    label: String,
+    palette: com.glassfiles.ui.theme.AiModuleColors,
+) {
+    Text(
+        "$label:",
+        color = palette.textSecondary,
+        fontFamily = JetBrainsMono,
+        fontSize = 11.sp,
+        letterSpacing = 0.4.sp,
+    )
 }
 
 @Composable
