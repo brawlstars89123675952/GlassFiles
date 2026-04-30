@@ -39,7 +39,6 @@ import com.glassfiles.data.ai.usage.AiUsageBucket
 import com.glassfiles.data.ai.usage.AiUsageStore
 import com.glassfiles.data.ai.usage.AiUsageWindow
 import com.glassfiles.data.ai.usage.summarise
-import com.glassfiles.ui.screens.ai.terminal.AgentTerminal
 import com.glassfiles.ui.screens.ai.terminal.AgentTerminalDarkColors
 import com.glassfiles.ui.screens.ai.terminal.JetBrainsMono
 import com.glassfiles.ui.screens.ai.terminal.TerminalHairline
