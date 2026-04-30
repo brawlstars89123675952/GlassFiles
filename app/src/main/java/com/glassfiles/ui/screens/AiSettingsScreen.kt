@@ -209,7 +209,7 @@ fun AiSettingsScreen(onBack: () -> Unit) {
                         modifier = Modifier.padding(vertical = 4.dp),
                     )
                     Spacer(Modifier.height(6.dp))
-                    TerminalPillButton(
+                    AiModulePillButton(
                         label = if (cacheCleared) {
                             Strings.aiSettingsClearCacheDone.lowercase() + " ✓"
                         } else {
