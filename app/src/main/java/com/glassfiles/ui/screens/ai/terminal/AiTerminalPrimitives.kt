@@ -441,7 +441,11 @@ fun TerminalScreenScaffold(
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 content()
             }
-            if (bottomBar != null) bottomBar()
+            if (bottomBar != null) {
+                Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
+                    bottomBar()
+                }
+            }
         }
     }
 }
