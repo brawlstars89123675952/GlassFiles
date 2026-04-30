@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Reusable terminal-mode UI primitives shared by every AI-module
