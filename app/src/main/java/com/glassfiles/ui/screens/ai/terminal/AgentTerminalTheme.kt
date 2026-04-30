@@ -59,17 +59,6 @@ val AgentTerminalDarkColors = AgentTerminalColors(
     syntaxNumber = Color(0xFFD19A66),
 )
 
-/**
- * JetBrains Mono — bundled in `res/font/` so the agent screen renders
- * identically regardless of the device's installed fonts. Falls back to
- * the platform monospace if the font asset is missing for any reason.
- */
-val JetBrainsMono = FontFamily(
-    Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
-    Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
-    Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
-)
-
 @Immutable
 data class AgentTerminalTypography(
     val topBarTitle: TextUnit = 16.sp,
