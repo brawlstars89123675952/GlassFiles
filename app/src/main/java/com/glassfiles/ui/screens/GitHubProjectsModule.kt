@@ -40,6 +40,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleGlyph
+import com.glassfiles.ui.components.AiModuleGlyphAction
+import com.glassfiles.ui.components.AiModuleSearchField
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
+import com.glassfiles.ui.theme.JetBrainsMono
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -145,19 +152,25 @@ internal fun ProjectsTab(repo: GHRepo) {
     ) {
         item { ProjectsSummaryCard(classicProjects, v2Projects) }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("Search projects") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary) }
-                )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.weight(1f)) {
+                    AiModuleSearchField(
+                        value = query,
+                        onValueChange = { query = it },
+                        placeholder = "search projects",
+                    )
+                }
                 if (repo.canWrite()) {
-                    IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Rounded.Add, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
-                    }
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.PLUS,
+                        onClick = { showCreateDialog = true },
+                        tint = AiModuleTheme.colors.accent,
+                        contentDescription = "new project",
+                    )
                 }
             }
         }
@@ -467,14 +480,14 @@ private fun ProjectV2DetailScreen(project: GHProjectV2, onBack: () -> Unit) {
             )
         }
         deleteSchemaField?.let { field ->
-            AlertDialog(
+            AiModuleAlertDialog(
                 onDismissRequest = { deleteSchemaField = null },
-                containerColor = AiModuleTheme.colors.surface,
-                title = { Text("Delete Field?", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-                text = { Text("Delete ${field.name}? Existing values for this field will be removed from the project.", fontSize = 14.sp, color = AiModuleTheme.colors.textSecondary) },
+                title = "delete field?",
                 confirmButton = {
-                    TextButton(
+                    AiModuleTextAction(
+                        label = "delete",
                         enabled = !actionInFlight,
+                        tint = AiModuleTheme.colors.error,
                         onClick = {
                             actionInFlight = true
                             scope.launch {
@@ -484,11 +497,24 @@ private fun ProjectV2DetailScreen(project: GHProjectV2, onBack: () -> Unit) {
                                 deleteSchemaField = null
                                 if (ok) loadDetail()
                             }
-                        }
-                    ) { Text("Delete", color = Color(0xFFFF3B30)) }
+                        },
+                    )
                 },
-                dismissButton = { TextButton(onClick = { deleteSchemaField = null }) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-            )
+                dismissButton = {
+                    AiModuleTextAction(
+                        label = "cancel",
+                        onClick = { deleteSchemaField = null },
+                        tint = AiModuleTheme.colors.textSecondary,
+                    )
+                },
+            ) {
+                Text(
+                    "Delete ${field.name}? Existing values for this field will be removed from the project.",
+                    fontSize = 13.sp,
+                    color = AiModuleTheme.colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                )
+            }
         }
         editDraft?.let { item ->
             DraftIssueDialog(
@@ -531,14 +557,14 @@ private fun ProjectV2DetailScreen(project: GHProjectV2, onBack: () -> Unit) {
             )
         }
         deleteItem?.let { item ->
-            AlertDialog(
+            AiModuleAlertDialog(
                 onDismissRequest = { deleteItem = null },
-                containerColor = AiModuleTheme.colors.surface,
-                title = { Text("Delete Item?", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-                text = { Text("Remove ${item.title.ifBlank { "this item" }} from the project?", fontSize = 14.sp, color = AiModuleTheme.colors.textSecondary) },
+                title = "delete item?",
                 confirmButton = {
-                    TextButton(
+                    AiModuleTextAction(
+                        label = "delete",
                         enabled = !actionInFlight,
+                        tint = AiModuleTheme.colors.error,
                         onClick = {
                             actionInFlight = true
                             scope.launch {
@@ -548,11 +574,24 @@ private fun ProjectV2DetailScreen(project: GHProjectV2, onBack: () -> Unit) {
                                 deleteItem = null
                                 if (ok) loadDetail()
                             }
-                        }
-                    ) { Text("Delete", color = Color(0xFFFF3B30)) }
+                        },
+                    )
                 },
-                dismissButton = { TextButton(onClick = { deleteItem = null }) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-            )
+                dismissButton = {
+                    AiModuleTextAction(
+                        label = "cancel",
+                        onClick = { deleteItem = null },
+                        tint = AiModuleTheme.colors.textSecondary,
+                    )
+                },
+            ) {
+                Text(
+                    "Remove ${item.title.ifBlank { "this item" }} from the project?",
+                    fontSize = 13.sp,
+                    color = AiModuleTheme.colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                )
+            }
         }
     }
 }
@@ -725,25 +764,36 @@ private fun ProjectV2EditorDialog(
     var readme by remember(project.id) { mutableStateOf(project.readme) }
     var closed by remember(project.id) { mutableStateOf(project.closed) }
     var isPublic by remember(project.id) { mutableStateOf(project.isPublic) }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text("Edit Project V2", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(description, { description = it }, label = { Text("Description") }, minLines = 2, maxLines = 4, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(readme, { readme = it }, label = { Text("Readme") }, minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ProjectChip("Open", !closed) { closed = false }
-                    ProjectChip("Closed", closed) { closed = true }
-                    ProjectChip("Public", isPublic) { isPublic = !isPublic }
-                }
-            }
+        title = "edit project v2",
+        confirmButton = {
+            AiModuleTextAction(
+                label = "save",
+                enabled = title.isNotBlank(),
+                onClick = { onSave(title, description, readme, closed, isPublic) },
+                tint = AiModuleTheme.colors.accent,
+            )
         },
-        confirmButton = { TextButton(enabled = title.isNotBlank(), onClick = { onSave(title, description, readme, closed, isPublic) }) { Text("Save", color = AiModuleTheme.colors.accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        dismissButton = {
+            AiModuleTextAction(
+                label = "cancel",
+                onClick = onDismiss,
+                tint = AiModuleTheme.colors.textSecondary,
+            )
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AiModuleTextField(title, { title = it }, label = "Title")
+            AiModuleTextField(description, { description = it }, label = "Description", minLines = 2, maxLines = 4)
+            AiModuleTextField(readme, { readme = it }, label = "Readme", minLines = 3, maxLines = 6)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ProjectChip("Open", !closed) { closed = false }
+                ProjectChip("Closed", closed) { closed = true }
+                ProjectChip("Public", isPublic) { isPublic = !isPublic }
+            }
+        }
+    }
 }
 
 @Composable
@@ -757,19 +807,26 @@ private fun DraftIssueDialog(
 ) {
     var itemTitle by remember(initialTitle) { mutableStateOf(initialTitle) }
     var body by remember(initialBody) { mutableStateOf(initialBody) }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(itemTitle, { itemTitle = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(body, { body = it }, label = { Text("Body") }, minLines = 4, maxLines = 8, modifier = Modifier.fillMaxWidth())
-            }
+        title = title.lowercase(),
+        confirmButton = {
+            AiModuleTextAction(
+                label = confirmLabel.lowercase(),
+                enabled = itemTitle.isNotBlank(),
+                onClick = { onSave(itemTitle, body) },
+                tint = AiModuleTheme.colors.accent,
+            )
         },
-        confirmButton = { TextButton(enabled = itemTitle.isNotBlank(), onClick = { onSave(itemTitle, body) }) { Text(confirmLabel, color = AiModuleTheme.colors.accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AiModuleTextField(itemTitle, { itemTitle = it }, label = "Title")
+            AiModuleTextField(body, { body = it }, label = "Body", minLines = 4, maxLines = 8)
+        }
+    }
 }
 
 @Composable
@@ -784,49 +841,58 @@ private fun ProjectV2FieldDialog(
     var value by remember(item.id, selectedField?.id) {
         mutableStateOf(item.fieldValues.firstOrNull { it.fieldId == selectedField?.id }?.value.orEmpty())
     }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text("Edit Field", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (editableFields.isEmpty()) {
-                    Text("No editable Project V2 fields returned", fontSize = 13.sp, color = AiModuleTheme.colors.textSecondary)
-                } else {
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        editableFields.forEach { field ->
-                            ProjectChip(field.name, selectedField?.id == field.id) {
-                                selectedField = field
-                                value = item.fieldValues.firstOrNull { it.fieldId == field.id }?.value.orEmpty()
-                            }
-                        }
-                    }
-                    selectedField?.let { field ->
-                        if (field.dataType == "SINGLE_SELECT") {
-                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                field.options.forEach { option ->
-                                    ProjectChip(option.name, value.equals(option.name, ignoreCase = true) || value == option.id) { value = option.name }
-                                }
-                            }
-                        } else {
-                            OutlinedTextField(
-                                value = value,
-                                onValueChange = { value = it },
-                                label = { Text(fieldValueLabel(field)) },
-                                singleLine = field.dataType != "TEXT",
-                                minLines = if (field.dataType == "TEXT") 3 else 1,
-                                modifier = Modifier.fillMaxWidth()
-                            )
+        title = "edit field",
+        confirmButton = {
+            AiModuleTextAction(
+                label = "save",
+                enabled = selectedField != null,
+                onClick = { selectedField?.let { onSave(it, value) } },
+                tint = AiModuleTheme.colors.accent,
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (editableFields.isEmpty()) {
+                Text(
+                    "No editable Project V2 fields returned",
+                    fontSize = 13.sp,
+                    color = AiModuleTheme.colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                )
+            } else {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    editableFields.forEach { field ->
+                        ProjectChip(field.name, selectedField?.id == field.id) {
+                            selectedField = field
+                            value = item.fieldValues.firstOrNull { it.fieldId == field.id }?.value.orEmpty()
                         }
                     }
                 }
+                selectedField?.let { field ->
+                    if (field.dataType == "SINGLE_SELECT") {
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            field.options.forEach { option ->
+                                ProjectChip(option.name, value.equals(option.name, ignoreCase = true) || value == option.id) { value = option.name }
+                            }
+                        }
+                    } else {
+                        AiModuleTextField(
+                            value = value,
+                            onValueChange = { value = it },
+                            label = fieldValueLabel(field),
+                            minLines = if (field.dataType == "TEXT") 3 else 1,
+                            maxLines = if (field.dataType == "TEXT") 6 else 1,
+                        )
+                    }
+                }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = selectedField != null, onClick = { selectedField?.let { onSave(it, value) } }) { Text("Save", color = AiModuleTheme.colors.accent) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        }
+    }
 }
 
 @Composable
@@ -844,38 +910,52 @@ private fun ProjectV2SchemaFieldDialog(
         optionsRaw.split('\n', ',').map { it.trim() }.filter { it.isNotBlank() }.distinct()
     }
     val canSave = name.isNotBlank() && (dataType != "SINGLE_SELECT" || optionList.isNotEmpty())
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Field name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("TEXT", "NUMBER", "DATE", "SINGLE_SELECT").forEach { type ->
-                        ProjectChip(type.replace('_', ' '), dataType == type, enabled = initialField == null) { dataType = type }
-                    }
-                }
-                if (dataType == "SINGLE_SELECT") {
-                    OutlinedTextField(
-                        optionsRaw,
-                        { optionsRaw = it },
-                        label = { Text("Single-select options") },
-                        minLines = 4,
-                        maxLines = 8,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text("One option per line. Saving replaces the current option set.", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
-                } else if (initialField != null) {
-                    Text("GitHub does not allow changing a field data type after creation.", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
+        title = title.lowercase(),
+        confirmButton = {
+            AiModuleTextAction(
+                label = confirmLabel.lowercase(),
+                enabled = canSave,
+                onClick = { onSave(name.trim(), dataType, optionList) },
+                tint = AiModuleTheme.colors.accent,
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AiModuleTextField(name, { name = it }, label = "Field name")
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("TEXT", "NUMBER", "DATE", "SINGLE_SELECT").forEach { type ->
+                    ProjectChip(type.replace('_', ' '), dataType == type, enabled = initialField == null) { dataType = type }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = canSave, onClick = { onSave(name.trim(), dataType, optionList) }) { Text(confirmLabel, color = AiModuleTheme.colors.accent) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+            if (dataType == "SINGLE_SELECT") {
+                AiModuleTextField(
+                    value = optionsRaw,
+                    onValueChange = { optionsRaw = it },
+                    label = "Single-select options",
+                    minLines = 4,
+                    maxLines = 8,
+                )
+                Text(
+                    "One option per line. Saving replaces the current option set.",
+                    fontSize = 11.sp,
+                    color = AiModuleTheme.colors.textMuted,
+                    fontFamily = JetBrainsMono,
+                )
+            } else if (initialField != null) {
+                Text(
+                    "GitHub does not allow changing a field data type after creation.",
+                    fontSize = 11.sp,
+                    color = AiModuleTheme.colors.textMuted,
+                    fontFamily = JetBrainsMono,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1030,14 +1110,14 @@ private fun ClassicProjectDetail(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            containerColor = AiModuleTheme.colors.surface,
-            title = { Text("Delete Project?", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-            text = { Text("Delete ${currentProject.name} and its cards?", fontSize = 14.sp, color = AiModuleTheme.colors.textSecondary) },
+            title = "delete project?",
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "delete",
                     enabled = !actionInFlight,
+                    tint = AiModuleTheme.colors.error,
                     onClick = {
                         actionInFlight = true
                         scope.launch {
@@ -1047,11 +1127,24 @@ private fun ClassicProjectDetail(
                             showDeleteDialog = false
                             if (ok) onDeleted()
                         }
-                    }
-                ) { Text("Delete", color = Color(0xFFFF3B30)) }
+                    },
+                )
             },
-            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-        )
+            dismissButton = {
+                AiModuleTextAction(
+                    label = "cancel",
+                    onClick = { showDeleteDialog = false },
+                    tint = AiModuleTheme.colors.textSecondary,
+                )
+            },
+        ) {
+            Text(
+                "Delete ${currentProject.name} and its cards?",
+                fontSize = 13.sp,
+                color = AiModuleTheme.colors.textSecondary,
+                fontFamily = JetBrainsMono,
+            )
+        }
     }
 
     if (showColumnDialog) {
@@ -1191,27 +1284,32 @@ private fun ProjectEditorDialog(
     var name by remember(initialName) { mutableStateOf(initialName) }
     var body by remember(initialBody) { mutableStateOf(initialBody) }
     var state by remember(initialState) { mutableStateOf(initialState.ifBlank { "open" }) }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = body, onValueChange = { body = it }, label = { Text("Description") }, minLines = 3, maxLines = 6, modifier = Modifier.fillMaxWidth())
-                if (showState) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        ProjectChip("Open", state == "open") { state = "open" }
-                        ProjectChip("Closed", state == "closed") { state = "closed" }
-                    }
+        title = title.lowercase(),
+        confirmButton = {
+            AiModuleTextAction(
+                label = confirmLabel.lowercase(),
+                enabled = name.isNotBlank(),
+                onClick = { onSave(name, body, state) },
+                tint = AiModuleTheme.colors.accent,
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AiModuleTextField(name, { name = it }, label = "Name")
+            AiModuleTextField(body, { body = it }, label = "Description", minLines = 3, maxLines = 6)
+            if (showState) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ProjectChip("Open", state == "open") { state = "open" }
+                    ProjectChip("Closed", state == "closed") { state = "closed" }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, body, state) }) { Text(confirmLabel, color = AiModuleTheme.colors.accent) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        }
+    }
 }
 
 @Composable
@@ -1224,23 +1322,29 @@ private fun TextInputDialog(
     onConfirm: (String) -> Unit
 ) {
     var value by remember { mutableStateOf("") }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text(title, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            OutlinedTextField(
-                value = value,
-                onValueChange = { value = it },
-                label = { Text(label) },
-                minLines = minLines,
-                maxLines = if (minLines > 1) 8 else 1,
-                modifier = Modifier.fillMaxWidth()
+        title = title.lowercase(),
+        confirmButton = {
+            AiModuleTextAction(
+                label = confirmLabel.lowercase(),
+                enabled = value.isNotBlank(),
+                onClick = { onConfirm(value) },
+                tint = AiModuleTheme.colors.accent,
             )
         },
-        confirmButton = { TextButton(enabled = value.isNotBlank(), onClick = { onConfirm(value) }) { Text(confirmLabel, color = AiModuleTheme.colors.accent) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        AiModuleTextField(
+            value = value,
+            onValueChange = { value = it },
+            label = label,
+            minLines = minLines,
+            maxLines = if (minLines > 1) 8 else 1,
+        )
+    }
 }
 
 @Composable
@@ -1251,28 +1355,35 @@ private fun MoveCardDialog(
     onDismiss: () -> Unit,
     onMove: (GHProjectColumn) -> Unit
 ) {
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = AiModuleTheme.colors.surface,
-        title = { Text("Move Card", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(card.note.ifBlank { "Linked card" }, fontSize = 13.sp, color = AiModuleTheme.colors.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                columns.filter { it.id != fromColumn.id }.forEach { column ->
-                    Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).clickable { onMove(column) }.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(Icons.Rounded.ArrowForward, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
-                        Text(column.name, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary)
-                    }
+        title = "move card",
+        confirmButton = {},
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                card.note.ifBlank { "Linked card" },
+                fontSize = 13.sp,
+                color = AiModuleTheme.colors.textSecondary,
+                fontFamily = JetBrainsMono,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            columns.filter { it.id != fromColumn.id }.forEach { column ->
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).clickable { onMove(column) }.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AiModuleGlyph(GhGlyphs.ARROW_RIGHT, tint = AiModuleTheme.colors.accent)
+                    Text(column.name, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = AiModuleTheme.colors.textSecondary) } }
-    )
+        }
+    }
 }
 
 @Composable

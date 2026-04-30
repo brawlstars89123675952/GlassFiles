@@ -67,6 +67,10 @@ internal object GhGlyphs {
     const val EDIT = "e"
     const val DELETE = "d"
     const val DUPLICATE = "d+"
+    const val PLUS = "+"
+    const val MINUS = "-"
+    const val SEND = "\u00BB"            // »
+    const val DOT = "\u00B7"             // ·
 
     // Meta
     const val SETTINGS = "\u2261"       // ≡
