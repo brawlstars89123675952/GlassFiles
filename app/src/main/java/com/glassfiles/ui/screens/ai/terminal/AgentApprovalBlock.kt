@@ -42,6 +42,10 @@ fun AgentApprovalBlock(
     onReject: () -> Unit,
     destructive: Boolean = false,
     approveEnabled: Boolean = true,
+    approveLabel: String = "[ y \u00B7 approve ]",
+    rejectLabel: String = "[ n \u00B7 reject ]",
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
     extra: (@Composable () -> Unit)? = null,
 ) {
     val colors = AgentTerminal.colors
@@ -86,13 +90,21 @@ fun AgentApprovalBlock(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             AgentTextButton(
-                label = "[ y \u00B7 approve ]",
+                label = approveLabel,
                 color = if (approveEnabled) colors.accent else colors.textMuted,
                 enabled = approveEnabled,
                 onClick = onApprove,
             )
+            if (secondaryActionLabel != null && onSecondaryAction != null) {
+                AgentTextButton(
+                    label = secondaryActionLabel,
+                    color = colors.warning,
+                    enabled = true,
+                    onClick = onSecondaryAction,
+                )
+            }
             AgentTextButton(
-                label = "[ n \u00B7 reject ]",
+                label = rejectLabel,
                 color = colors.textSecondary,
                 enabled = true,
                 onClick = onReject,

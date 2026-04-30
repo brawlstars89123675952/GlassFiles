@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.util.Base64
+import android.widget.Toast
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -62,9 +65,11 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -78,17 +83,25 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiChatSessionStore
+import com.glassfiles.data.ai.AiAgentApprovalPrefs
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.ModelRegistry
+import com.glassfiles.data.ai.agent.AiAgentApprovalCategory
+import com.glassfiles.data.ai.agent.AiAgentApprovalCheck
+import com.glassfiles.data.ai.agent.AiAgentApprovalPolicy
+import com.glassfiles.data.ai.agent.AiAgentApprovalSettings
 import com.glassfiles.data.ai.agent.AgentTools
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.data.ai.agent.AiToolResult
@@ -103,9 +116,13 @@ import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
 import com.glassfiles.ui.components.AiPickerChip
+import com.glassfiles.service.AgentProgress
+import com.glassfiles.service.AgentTask
+import com.glassfiles.service.AiAgentService
 import com.glassfiles.ui.screens.ai.ExpensiveActionWarningDialog
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -149,6 +166,7 @@ fun AiAgentScreen(
     onClose: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
 
@@ -193,7 +211,25 @@ fun AiAgentScreen(
     val transcript = remember { mutableStateListOf<AgentEntry>() }
     var input by remember { mutableStateOf(TextFieldValue(initialPrompt.orEmpty())) }
     var pendingImage by remember { mutableStateOf<String?>(null) }
-    var autoApproveReads by remember { mutableStateOf(true) }
+    var autoApproveReads by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveReads(context)) }
+    var autoApproveEdits by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveEdits(context)) }
+    var autoApproveWrites by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveWrites(context)) }
+    var autoApproveCommits by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveCommits(context)) }
+    var autoApproveDestructive by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveDestructive(context)) }
+    var yoloMode by remember { mutableStateOf(AiAgentApprovalPrefs.getYoloMode(context)) }
+    var yoloConfirmed by remember { mutableStateOf(false) }
+    var pendingYoloConfirm by remember { mutableStateOf(false) }
+    var sessionTrustEnabled by remember { mutableStateOf(AiAgentApprovalPrefs.getSessionTrust(context)) }
+    var writeLimitPerTask by remember { mutableStateOf(AiAgentApprovalPrefs.getWriteLimit(context)) }
+    var backgroundExecution by remember { mutableStateOf(AiAgentApprovalPrefs.getBackgroundExecution(context)) }
+    var keepCpuAwake by remember { mutableStateOf(AiAgentApprovalPrefs.getKeepCpuAwake(context)) }
+    var protectedPathsText by remember {
+        mutableStateOf(AiAgentApprovalPrefs.getProtectedPaths(context).joinToString("\n"))
+    }
+    var sessionTrustGranted by remember { mutableStateOf(false) }
+    var consecutiveAutoApprovals by remember { mutableStateOf(0) }
+    var writesThisTask by remember { mutableStateOf(0) }
+    val fileEditCounts = remember { mutableStateMapOf<String, Int>() }
     var running by remember { mutableStateOf(false) }
     var runJob by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -241,6 +277,63 @@ fun AiAgentScreen(
     // Pending approvals: tool calls awaiting user decision. The agent loop
     // suspends on these CompletableDeferred until Approve/Reject flips them.
     val approvals = remember { mutableStateListOf<PendingApproval>() }
+
+    fun resetApprovalSessionState() {
+        sessionTrustGranted = false
+        consecutiveAutoApprovals = 0
+        writesThisTask = 0
+        fileEditCounts.clear()
+    }
+
+    fun requestYoloConfirm() {
+        pendingYoloConfirm = true
+    }
+
+    fun applyYoloPreset() {
+        autoApproveReads = true
+        autoApproveEdits = true
+        autoApproveWrites = true
+        autoApproveCommits = true
+        yoloMode = true
+        AiAgentApprovalPrefs.setAutoApproveReads(context, true)
+        AiAgentApprovalPrefs.setAutoApproveEdits(context, true)
+        AiAgentApprovalPrefs.setAutoApproveWrites(context, true)
+        AiAgentApprovalPrefs.setAutoApproveCommits(context, true)
+        AiAgentApprovalPrefs.setYoloMode(context, true)
+        transcript += AgentEntry.Assistant(
+            "[system: YOLO mode enabled. Agent will skip approval for most actions.]",
+        )
+        persistSession()
+        Toast.makeText(
+            context,
+            "YOLO mode enabled. Agent will not ask for most actions.",
+            Toast.LENGTH_LONG,
+        ).show()
+        scope.launch {
+            AiAgentApprovalPrefs.setYoloModeConfirmed(context, true)
+            yoloConfirmed = true
+        }
+    }
+
+    fun updateAutoApproveToggles(
+        reads: Boolean = autoApproveReads,
+        edits: Boolean = autoApproveEdits,
+        writes: Boolean = autoApproveWrites,
+        commits: Boolean = autoApproveCommits,
+    ) {
+        if (!yoloMode && reads && edits && writes && commits) {
+            requestYoloConfirm()
+            return
+        }
+        autoApproveReads = reads
+        autoApproveEdits = edits
+        autoApproveWrites = writes
+        autoApproveCommits = commits
+        AiAgentApprovalPrefs.setAutoApproveReads(context, reads)
+        AiAgentApprovalPrefs.setAutoApproveEdits(context, edits)
+        AiAgentApprovalPrefs.setAutoApproveWrites(context, writes)
+        AiAgentApprovalPrefs.setAutoApproveCommits(context, commits)
+    }
 
     // ─── Initial loads ────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
@@ -392,6 +485,10 @@ fun AiAgentScreen(
             .getPending(context, activeSessionId)
     }
 
+    LaunchedEffect(Unit) {
+        yoloConfirmed = AiAgentApprovalPrefs.isYoloModeConfirmed(context)
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────
     fun refreshSessions() {
         sessions = AiChatSessionStore.list(context, AGENT_SESSION_MODE)
@@ -446,6 +543,7 @@ fun AiAgentScreen(
         transcript.clear()
         transcript.addAll(session.messages.toAgentEntries())
         approvals.clear()
+        resetApprovalSessionState()
         // Reset selection so the restore effect picks up this session's
         // repo / branch / model. The branch is pre-seeded so the
         // branches-loading effect can honour it.
@@ -467,6 +565,7 @@ fun AiAgentScreen(
         sessionCreatedAt = System.currentTimeMillis()
         transcript.clear()
         approvals.clear()
+        resetApprovalSessionState()
         // Don't drop repo / branch / model — keep the user's working
         // context so they can fire off another task in the same repo
         // without re-picking everything.
@@ -485,12 +584,38 @@ fun AiAgentScreen(
         }
     }
 
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (!granted && !AiAgentApprovalPrefs.getNotificationDeniedNoticeShown(context)) {
+            transcript += AgentEntry.Assistant(
+                "Notifications are disabled. Agent can still work in background, but you won't see progress updates in notification.",
+            )
+            AiAgentApprovalPrefs.setNotificationDeniedNoticeShown(context, true)
+            persistSession()
+        }
+    }
+
     fun stop() {
         runJob?.cancel()
+        if (backgroundExecution) {
+            AiAgentService.stop("Stopped by user")
+        }
         runJob = null
         running = false
         approvals.forEach { it.deferred.complete(false) }
         approvals.clear()
+        resetApprovalSessionState()
+    }
+
+    DisposableEffect(lifecycleOwner, backgroundExecution, running) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE && running && !backgroundExecution) {
+                stop()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     /**
@@ -512,8 +637,14 @@ fun AiAgentScreen(
         fallbackNotice = null
         input = TextFieldValue("")
         pendingImage = null
+        resetApprovalSessionState()
         transcript += AgentEntry.User(text, image)
         persistSession()
+        if (backgroundExecution && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
         // D2: persist a "task started, not finished" pointer so a
         // process kill mid-run leaves a recoverable trail. Cleared in
         // the finally block when the run completes (success, error,
@@ -531,8 +662,21 @@ fun AiAgentScreen(
             ),
         )
         running = true
+        if (backgroundExecution) {
+            AiAgentService.begin(
+                context = context,
+                task = AgentTask(
+                    repo = repo.fullName,
+                    branch = branch,
+                    prompt = text.take(120),
+                ),
+                keepCpuAwake = keepCpuAwake,
+                onCancel = { stop() },
+            )
+        }
 
         runJob = scope.launch {
+            var completedNormally = false
             // Cost-policy estimate for this task. Limits come from the
             // user's selected mode (Eco / Balanced / MaxQuality). The
             // executor uses it to cap individual file sizes / log lines /
@@ -615,7 +759,28 @@ fun AiAgentScreen(
                     executor = executor,
                     transcript = transcript,
                     approvals = approvals,
-                    autoApproveReads = autoApproveReads,
+                    approvalSettings = AiAgentApprovalSettings(
+                        autoApproveReads = autoApproveReads,
+                        autoApproveEdits = autoApproveEdits,
+                        autoApproveWrites = autoApproveWrites,
+                        autoApproveCommits = autoApproveCommits,
+                        autoApproveDestructive = autoApproveDestructive,
+                        yoloMode = yoloMode,
+                        sessionTrust = sessionTrustEnabled,
+                        writeLimitPerTask = writeLimitPerTask,
+                        protectedPaths = protectedPathsText.lineSequence()
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .toList(),
+                        activeBranch = branch,
+                    ),
+                    isSessionTrusted = { sessionTrustGranted },
+                    onSessionTrustGranted = { sessionTrustGranted = true },
+                    consecutiveAutoApprovals = { consecutiveAutoApprovals },
+                    setConsecutiveAutoApprovals = { consecutiveAutoApprovals = it },
+                    writesThisTask = { writesThisTask },
+                    setWritesThisTask = { writesThisTask = it },
+                    fileEditCounts = fileEditCounts,
                     context = context,
                     fallbackCandidates = fallbacks,
                     estimate = estimate,
@@ -628,13 +793,31 @@ fun AiAgentScreen(
                         fallbackNotice = Strings.aiAgentFallbackToast
                             .replace("{model}", newModel.displayName)
                     },
+                    onToolStatus = { status, current, total ->
+                        if (backgroundExecution) {
+                            AiAgentService.update(status, AgentProgress(current, total))
+                        }
+                    },
                 )
+                completedNormally = true
+            } catch (e: CancellationException) {
+                if (backgroundExecution) {
+                    AiAgentService.stop("Stopped by user")
+                }
+                throw e
             } catch (e: Exception) {
                 error = e.message ?: e.javaClass.simpleName
+                if (backgroundExecution) {
+                    AiAgentService.complete("Task failed: ${error.orEmpty().take(80)}")
+                }
             } finally {
                 persistSession()
                 running = false
                 runJob = null
+                if (backgroundExecution && completedNormally) {
+                    AiAgentService.complete("Task completed")
+                }
+                resetApprovalSessionState()
                 // Persist the executor's file cache so the next session
                 // on this (repo, branch) starts warm. Failures are
                 // logged inside the store and do not affect the agent
@@ -716,6 +899,10 @@ fun AiAgentScreen(
         val text = userText.trim()
         val image = imageBase64?.takeIf { selectedModel?.let { m -> AiCapability.VISION in m.capabilities } == true }
         if (text.isEmpty() && image == null) return
+        if (running) {
+            error = "Agent is busy, finish current task first."
+            return
+        }
         val repo = selectedRepo ?: return
         val branch = selectedBranch ?: return
         val model = selectedModel ?: return
@@ -814,11 +1001,32 @@ fun AiAgentScreen(
             selectedBranch?.takeIf { it.isNotBlank() }
                 ?.let { "@$it" }
         ).joinToString("").ifBlank { null }
+        val autoApproveParts = buildList {
+            if (yoloMode) {
+                add("yolo")
+            } else {
+                if (autoApproveReads) add("r")
+                if (autoApproveEdits) add("e")
+                if (autoApproveWrites) add("w")
+                if (autoApproveCommits) add("c")
+            }
+        }
+        val autoApproveIndicator = autoApproveParts
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString("\u00B7", prefix = "[auto: ", postfix = "]")
+        val autoApproveTone = when {
+            yoloMode -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
+            autoApproveCommits -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
+            autoApproveEdits || autoApproveWrites -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
+            else -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
+        }
         com.glassfiles.ui.screens.ai.terminal.AgentTopBar(
             title = Strings.aiAgent,
             subtitle = subtitle,
             cost = costLabel,
             tokens = tokenLabel,
+            autoApproveIndicator = autoApproveIndicator,
+            autoApproveTone = autoApproveTone,
             embedded = embedded,
             running = running,
             onBack = onBack,
@@ -1120,7 +1328,22 @@ fun AiAgentScreen(
         // dialogs so the gear icon in the topbar always surfaces it.
         if (showSettings) {
             val terminalSettingsState = remember(
-                selectedRepo, selectedBranch, selectedModel, costMode, autoApproveReads, instantRender,
+                selectedRepo,
+                selectedBranch,
+                selectedModel,
+                costMode,
+                autoApproveReads,
+                autoApproveEdits,
+                autoApproveWrites,
+                autoApproveCommits,
+                autoApproveDestructive,
+                yoloMode,
+                sessionTrustEnabled,
+                writeLimitPerTask,
+                protectedPathsText,
+                backgroundExecution,
+                keepCpuAwake,
+                instantRender,
             ) {
                 com.glassfiles.ui.screens.ai.terminal.AgentSettingsState(
                     repoLabel = selectedRepo?.fullName ?: "—",
@@ -1137,6 +1360,17 @@ fun AiAgentScreen(
                         com.glassfiles.data.ai.cost.AiCostMode.MaxQuality -> Strings.aiCostModeMaxHint
                     },
                     autoApproveReads = autoApproveReads,
+                    autoApproveEdits = autoApproveEdits,
+                    autoApproveWrites = autoApproveWrites,
+                    autoApproveCommits = autoApproveCommits,
+                    autoApproveDestructive = autoApproveDestructive,
+                    yoloMode = yoloMode,
+                    sessionTrust = sessionTrustEnabled,
+                    writeLimitPerTask = writeLimitPerTask,
+                    protectedPathsText = protectedPathsText,
+                    protectedPathsCount = protectedPathsText.lineSequence().count { it.trim().isNotBlank() },
+                    backgroundExecution = backgroundExecution,
+                    keepCpuAwake = keepCpuAwake,
                     instantRender = instantRender,
                 )
             }
@@ -1206,7 +1440,52 @@ fun AiAgentScreen(
                     costMode = cm
                     com.glassfiles.data.ai.cost.AiCostModeStore.setMode(context, cm)
                 },
-                onAutoApproveChange = { autoApproveReads = it },
+                onAutoApproveReadsChange = {
+                    updateAutoApproveToggles(reads = it)
+                },
+                onAutoApproveEditsChange = {
+                    updateAutoApproveToggles(edits = it)
+                },
+                onAutoApproveWritesChange = {
+                    updateAutoApproveToggles(writes = it)
+                },
+                onAutoApproveCommitsChange = {
+                    updateAutoApproveToggles(commits = it)
+                },
+                onAutoApproveDestructiveChange = {
+                    autoApproveDestructive = it
+                    AiAgentApprovalPrefs.setAutoApproveDestructive(context, it)
+                },
+                onYoloModeChange = { enabled ->
+                    if (enabled) {
+                        requestYoloConfirm()
+                    } else {
+                        yoloMode = false
+                        AiAgentApprovalPrefs.setYoloMode(context, false)
+                        transcript += AgentEntry.Assistant("[system: YOLO mode disabled. Approval policy is active again.]")
+                        persistSession()
+                    }
+                },
+                onSessionTrustChange = {
+                    sessionTrustEnabled = it
+                    AiAgentApprovalPrefs.setSessionTrust(context, it)
+                },
+                onWriteLimitChange = {
+                    writeLimitPerTask = it
+                    AiAgentApprovalPrefs.setWriteLimit(context, it)
+                },
+                onProtectedPathsChange = {
+                    protectedPathsText = it
+                    AiAgentApprovalPrefs.setProtectedPaths(context, it)
+                },
+                onBackgroundExecutionChange = {
+                    backgroundExecution = it
+                    AiAgentApprovalPrefs.setBackgroundExecution(context, it)
+                },
+                onKeepCpuAwakeChange = {
+                    keepCpuAwake = it
+                    AiAgentApprovalPrefs.setKeepCpuAwake(context, it)
+                },
                 onInstantRenderChange = { instantRender = it },
                 onClearChat = {
                     showSettings = false
@@ -1219,6 +1498,16 @@ fun AiAgentScreen(
                     showSettings = false
                 },
                 onDismiss = { showSettings = false },
+            )
+        }
+        if (pendingYoloConfirm) {
+            com.glassfiles.ui.screens.ai.terminal.YoloModeConfirmDialog(
+                previouslyConfirmed = yoloConfirmed,
+                onEnable = {
+                    applyYoloPreset()
+                    pendingYoloConfirm = false
+                },
+                onDismiss = { pendingYoloConfirm = false },
             )
         }
     }
@@ -1386,8 +1675,8 @@ private fun TerminalTranscriptEntry(
         is AgentEntry.Pending -> {
             val pending = entry.pending
             val name = pending.call.name
-            val destructive = name in DESTRUCTIVE_TOOLS
-            val fields = buildList {
+            val destructive = pending.destructive ?: (name in DESTRUCTIVE_TOOLS)
+            val fields = pending.fields ?: buildList {
                 add("call" to name)
                 runCatching {
                     val obj = org.json.JSONObject(pending.call.argsJson)
@@ -1404,8 +1693,17 @@ private fun TerminalTranscriptEntry(
             ) {
                 com.glassfiles.ui.screens.ai.terminal.AgentApprovalBlock(
                     tool = name,
-                    fields = fields.drop(1),
+                    fields = if (pending.fields == null) fields.drop(1) else fields,
                     destructive = destructive,
+                    approveLabel = pending.approveLabel,
+                    rejectLabel = pending.rejectLabel,
+                    secondaryActionLabel = pending.secondaryLabel,
+                    onSecondaryAction = pending.secondaryLabel?.let {
+                        {
+                            pending.secondarySelected = true
+                            pending.deferred.complete(false)
+                        }
+                    },
                     onApprove = { pending.deferred.complete(true) },
                     onReject = { pending.deferred.complete(false) },
                 )
@@ -1415,8 +1713,7 @@ private fun TerminalTranscriptEntry(
 }
 
 private val DESTRUCTIVE_TOOLS = setOf(
-    "write_file", "create_branch", "commit", "open_pr", "delete_file",
-    "commit_changes", "create_pull_request",
+    "delete_file", "reset_hard", "force_push",
 )
 
 /**
@@ -1803,10 +2100,18 @@ private suspend fun runAgentLoop(
     executor: GitHubToolExecutor,
     transcript: androidx.compose.runtime.snapshots.SnapshotStateList<AgentEntry>,
     approvals: androidx.compose.runtime.snapshots.SnapshotStateList<PendingApproval>,
-    autoApproveReads: Boolean,
+    approvalSettings: AiAgentApprovalSettings,
+    isSessionTrusted: () -> Boolean,
+    onSessionTrustGranted: () -> Unit,
+    consecutiveAutoApprovals: () -> Int,
+    setConsecutiveAutoApprovals: (Int) -> Unit,
+    writesThisTask: () -> Int,
+    setWritesThisTask: (Int) -> Unit,
+    fileEditCounts: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Int>,
     context: android.content.Context,
     fallbackCandidates: List<FallbackCandidate>,
     onFallback: (AiModel) -> Unit,
+    onToolStatus: (String, Int, Int) -> Unit = { _, _, _ -> },
     /**
      * Cost-policy accumulator for this task. The loop:
      *  - bumps [com.glassfiles.data.ai.cost.AiContextEstimate.toolCallsExecuted]
@@ -1831,6 +2136,30 @@ private suspend fun runAgentLoop(
     // user resumes it.
     estimate?.addInput(seedMessages.sumOf { it.content.length })
     val maxIterations = estimate?.limits?.maxToolCalls ?: MAX_ITERATIONS
+
+    suspend fun awaitApproval(
+        call: AiToolCall,
+        check: AiAgentApprovalCheck,
+        fields: List<Pair<String, String>>,
+        approveLabel: String = "[ y \u00B7 approve ]",
+        rejectLabel: String = "[ n \u00B7 reject ]",
+        secondaryLabel: String? = null,
+    ): Pair<Boolean, Boolean> {
+        val pending = PendingApproval(
+            call = call,
+            deferred = CompletableDeferred(),
+            fields = fields,
+            destructive = check.destructive,
+            approveLabel = approveLabel,
+            rejectLabel = rejectLabel,
+            secondaryLabel = secondaryLabel,
+        )
+        approvals += pending
+        val ok = pending.deferred.await()
+        approvals.remove(pending)
+        return ok to pending.secondarySelected
+    }
+
     repeat(maxIterations) {
         // Cost-policy backstops. If the user's selected mode says
         // "you've burned enough already" we drop a final assistant
@@ -1913,24 +2242,116 @@ private suspend fun runAgentLoop(
             toolCalls = turn.toolCalls,
         )
         val results = mutableListOf<AiMessage>()
-        for (call in turn.toolCalls) {
+        for ((callIndex, call) in turn.toolCalls.withIndex()) {
             transcript += AgentEntry.ToolCall(call)
             val tool = AgentTools.byName(call.name)
+            onToolStatus(describeToolStatus(call), callIndex + 1, turn.toolCalls.size)
             estimate?.bumpToolCall()
             if (tool?.readOnly == false) estimate?.bumpWriteProposal()
-            val approved = if (tool?.readOnly == true && autoApproveReads) {
-                true
-            } else {
-                val pending = PendingApproval(call = call, deferred = CompletableDeferred())
-                approvals += pending
-                val ok = pending.deferred.await()
-                approvals.remove(pending)
-                ok
+            val check = AiAgentApprovalPolicy.check(
+                call = call,
+                tool = tool,
+                settings = approvalSettings,
+                sessionTrusted = isSessionTrusted(),
+            )
+            val approvalFields = buildList {
+                add("reason" to check.reason)
+                add("category" to check.category.name.lowercase())
+                if (check.targetPaths.isNotEmpty()) add("path" to check.targetPaths.joinToString(", ").take(120))
+            }
+            var rejectedForReread = false
+            val approved = when {
+                approvalSettings.yoloMode && check.autoApproved -> true
+                approvalSettings.sessionTrust &&
+                    !isSessionTrusted() &&
+                    !check.protected &&
+                    !check.destructive &&
+                    (check.category == AiAgentApprovalCategory.EDIT || check.category == AiAgentApprovalCategory.WRITE) -> {
+                    val (ok, _) = awaitApproval(
+                        call = call,
+                        check = check,
+                        fields = approvalFields + ("trust" to "allow edits/writes for this task"),
+                        approveLabel = "[ y \u00B7 trust task ]",
+                    )
+                    if (ok) onSessionTrustGranted()
+                    setConsecutiveAutoApprovals(0)
+                    ok
+                }
+                check.countsAsWrite &&
+                    !check.protected &&
+                    !check.destructive &&
+                    approvalSettings.writeLimitPerTask > 0 &&
+                    writesThisTask() >= approvalSettings.writeLimitPerTask -> {
+                    val (ok, _) = awaitApproval(
+                        call = call,
+                        check = check,
+                        fields = approvalFields + ("limit" to "${approvalSettings.writeLimitPerTask} writes reached"),
+                        approveLabel = "[ y \u00B7 allow next batch ]",
+                    )
+                    if (ok) setWritesThisTask(0)
+                    setConsecutiveAutoApprovals(0)
+                    ok
+                }
+                check.category == AiAgentApprovalCategory.EDIT &&
+                    !check.protected &&
+                    !check.destructive &&
+                    check.targetPaths.firstOrNull()?.let { (fileEditCounts[it] ?: 0) >= 3 } == true -> {
+                    val path = check.targetPaths.first()
+                    val (ok, reread) = awaitApproval(
+                        call = call,
+                        check = check,
+                        fields = approvalFields + ("file guard" to "$path edited 3 times"),
+                        secondaryLabel = "[ r \u00B7 re-read + consolidate ]",
+                    )
+                    rejectedForReread = reread
+                    setConsecutiveAutoApprovals(0)
+                    ok
+                }
+                check.autoApproved && consecutiveAutoApprovals() >= 50 -> {
+                    val (ok, _) = awaitApproval(
+                        call = call,
+                        check = check,
+                        fields = approvalFields + ("auto guard" to "MANY ACTIONS AUTO-APPROVED"),
+                        approveLabel = "[ y \u00B7 continue ]",
+                    )
+                    if (ok) setConsecutiveAutoApprovals(0)
+                    ok
+                }
+                check.autoApproved -> {
+                    setConsecutiveAutoApprovals(consecutiveAutoApprovals() + 1)
+                    true
+                }
+                else -> {
+                    val (ok, _) = awaitApproval(
+                        call = call,
+                        check = check,
+                        fields = approvalFields,
+                    )
+                    setConsecutiveAutoApprovals(0)
+                    ok
+                }
             }
             val result = if (!approved) {
-                AiToolResult(callId = call.id, name = call.name, output = Strings.aiAgentRejected, isError = true)
+                AiToolResult(
+                    callId = call.id,
+                    name = call.name,
+                    output = if (rejectedForReread) {
+                        "Approval paused: re-read the file, consolidate the edit plan, then request approval again."
+                    } else {
+                        Strings.aiAgentRejected
+                    },
+                    isError = true,
+                )
             } else {
                 executor.execute(context, call)
+            }
+            if (approved && !result.isError && check.countsAsWrite) {
+                setWritesThisTask(writesThisTask() + 1)
+                if (check.category == AiAgentApprovalCategory.EDIT) {
+                    check.targetPaths.firstOrNull()?.let { path ->
+                        fileEditCounts[path] = (fileEditCounts[path] ?: 0) + 1
+                    }
+                }
             }
             // Accumulate the size of the tool result against the
             // per-task context budget. We cap each individual result
@@ -2002,6 +2423,22 @@ private const val CONTEXT_COMPACT_CHARS = 2_000_000
  * summarising the head. 20 ≈ 10 user/assistant turns — enough room
  * for a multi-step refactor or a PR-sized review thread. */
 private const val CONTEXT_KEEP_TAIL = 20
+
+private fun describeToolStatus(call: AiToolCall): String {
+    val path = runCatching {
+        val obj = org.json.JSONObject(call.argsJson)
+        obj.optString("path").takeIf { it.isNotBlank() }
+    }.getOrNull()
+    return when (call.name) {
+        "edit_file" -> "Editing ${path ?: "file"}"
+        "write_file" -> "Writing ${path ?: "file"}"
+        "read_file", "read_file_range" -> "Reading ${path ?: "file"}"
+        "commit" -> "Committing changes"
+        "open_pr" -> "Opening pull request"
+        "create_branch" -> "Creating branch"
+        else -> call.name
+    }
+}
 
 /**
  * If [messages] exceeds [CONTEXT_COMPACT_CHARS] in total payload size,
@@ -2272,5 +2709,10 @@ private fun newAssistantId(): String = "a_${System.nanoTime()}"
 private data class PendingApproval(
     val call: AiToolCall,
     val deferred: CompletableDeferred<Boolean>,
+    val fields: List<Pair<String, String>>? = null,
+    val destructive: Boolean? = null,
+    val approveLabel: String = "[ y \u00B7 approve ]",
+    val rejectLabel: String = "[ n \u00B7 reject ]",
+    val secondaryLabel: String? = null,
+    var secondarySelected: Boolean = false,
 )
-

@@ -26,6 +26,7 @@ object NotificationChannels {
     const val CHANNEL_STORAGE = "app_storage"
     const val CHANNEL_APP_SECURITY = "app_security"
     const val CHANNEL_TERMINAL = "app_terminal"
+    const val CHANNEL_AI_AGENT_WORK = "ai_agent_work"
     const val CHANNEL_DRIVE = "app_drive"
     const val CHANNEL_SHIZUKU = "app_shizuku"
     const val CHANNEL_SYSTEM = "app_system"
@@ -81,6 +82,9 @@ object NotificationChannels {
             appChannel(CHANNEL_TERMINAL, "Terminal",
                 "Terminal command notifications.",
                 NotificationManager.IMPORTANCE_DEFAULT),
+            appChannel(CHANNEL_AI_AGENT_WORK, "AI Agent work",
+                "Foreground progress for long-running AI Agent tasks.",
+                NotificationManager.IMPORTANCE_LOW),
             appChannel(CHANNEL_DRIVE, "Google Drive",
                 "Drive upload, download and sync results.",
                 NotificationManager.IMPORTANCE_DEFAULT),

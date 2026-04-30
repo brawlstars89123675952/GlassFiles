@@ -10,6 +10,7 @@ data class AppNotificationTarget(
         const val DEST_STORAGE = "storage"
         const val DEST_SETTINGS = "settings"
         const val DEST_TERMINAL = "terminal"
+        const val DEST_AI_AGENT = "ai_agent"
         const val DEST_GITHUB = "github"
         const val DEST_PATH = "path"
         const val DEST_NOTIFICATIONS = "notifications"

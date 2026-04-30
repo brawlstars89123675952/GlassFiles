@@ -231,6 +231,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleAppNotificationIntent(intent: Intent) {
+        if (intent.getBooleanExtra(com.glassfiles.service.AiAgentService.EXTRA_OPEN_AI_AGENT, false)) {
+            pendingAppNotificationTarget.value = AppNotificationTarget(
+                destination = AppNotificationTarget.DEST_AI_AGENT
+            )
+            intent.removeExtra(com.glassfiles.service.AiAgentService.EXTRA_OPEN_AI_AGENT)
+            return
+        }
         val appAction = intent.getStringExtra(AppNotifications.EXTRA_ACTION) ?: return
         if (appAction != AppNotifications.ACTION_OPEN_TARGET) return
         intent.getStringExtra(AppNotifications.EXTRA_INBOX_ID)

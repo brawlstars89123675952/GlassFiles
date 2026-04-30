@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -34,7 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.glassfiles.ui.components.AiPickerSheet
@@ -51,7 +55,17 @@ fun AgentSettingsBottomSheet(
     onBranchSelected: (String) -> Unit,
     onModelSelected: (ModelDisplay) -> Unit,
     onModeChange: (AgentMode) -> Unit,
-    onAutoApproveChange: (Boolean) -> Unit,
+    onAutoApproveReadsChange: (Boolean) -> Unit,
+    onAutoApproveEditsChange: (Boolean) -> Unit,
+    onAutoApproveWritesChange: (Boolean) -> Unit,
+    onAutoApproveCommitsChange: (Boolean) -> Unit,
+    onAutoApproveDestructiveChange: (Boolean) -> Unit,
+    onYoloModeChange: (Boolean) -> Unit,
+    onSessionTrustChange: (Boolean) -> Unit,
+    onWriteLimitChange: (Int) -> Unit,
+    onProtectedPathsChange: (String) -> Unit,
+    onBackgroundExecutionChange: (Boolean) -> Unit,
+    onKeepCpuAwakeChange: (Boolean) -> Unit,
     onInstantRenderChange: (Boolean) -> Unit,
     onClearChat: () -> Unit,
     onExportChat: () -> Unit,
@@ -59,6 +73,7 @@ fun AgentSettingsBottomSheet(
 ) {
     val sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val colors = AgentTerminal.colors
+    var showProtectedPaths by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -135,9 +150,60 @@ fun AgentSettingsBottomSheet(
             }
             AgentSheetDivider()
             AgentSheetCheckbox(
+                label = "YOLO mode (no confirmations)",
+                checked = state.yoloMode,
+                onChange = onYoloModeChange,
+            )
+            AgentSheetCheckbox(
                 label = "auto-approve reads",
                 checked = state.autoApproveReads,
-                onChange = onAutoApproveChange,
+                onChange = onAutoApproveReadsChange,
+            )
+            AgentSheetCheckbox(
+                label = "auto-approve edits",
+                checked = state.autoApproveEdits,
+                onChange = onAutoApproveEditsChange,
+            )
+            AgentSheetCheckbox(
+                label = "auto-approve writes / new files",
+                checked = state.autoApproveWrites,
+                onChange = onAutoApproveWritesChange,
+            )
+            AgentSheetCheckbox(
+                label = "auto-approve commits / PRs",
+                checked = state.autoApproveCommits,
+                onChange = onAutoApproveCommitsChange,
+            )
+            AgentSheetCheckbox(
+                label = "destructive option (approval always required)",
+                checked = state.autoApproveDestructive,
+                onChange = onAutoApproveDestructiveChange,
+            )
+            AgentSheetCheckbox(
+                label = "session trust for edits/writes",
+                checked = state.sessionTrust,
+                onChange = onSessionTrustChange,
+            )
+            AgentWriteLimitRow(
+                selected = state.writeLimitPerTask,
+                onSelect = onWriteLimitChange,
+            )
+            AgentSheetCommand(
+                label = "[ protected paths: ${state.protectedPathsCount} ]",
+                color = colors.warning,
+                onClick = { showProtectedPaths = true },
+            )
+            AgentSheetDivider()
+            AgentSheetLabel("BACKGROUND EXECUTION")
+            AgentSheetCheckbox(
+                label = "continue working when app is in background",
+                checked = state.backgroundExecution,
+                onChange = onBackgroundExecutionChange,
+            )
+            AgentSheetCheckbox(
+                label = "keep CPU awake during long tasks",
+                checked = state.keepCpuAwake,
+                onChange = onKeepCpuAwakeChange,
             )
             AgentSheetCheckbox(
                 label = "instant render (no streaming animation)",
@@ -159,6 +225,13 @@ fun AgentSettingsBottomSheet(
             }
             Spacer(Modifier.height(8.dp))
         }
+    }
+    if (showProtectedPaths) {
+        AgentProtectedPathsDialog(
+            value = state.protectedPathsText,
+            onChange = onProtectedPathsChange,
+            onDismiss = { showProtectedPaths = false },
+        )
     }
 }
 
@@ -261,6 +334,87 @@ private fun AgentSheetCommand(
     )
 }
 
+@Composable
+private fun AgentWriteLimitRow(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    val colors = AgentTerminal.colors
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        AgentSheetLabel("WRITE LIMIT PER TASK")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(20, 50, 100, 0).forEach { limit ->
+                val isSelected = selected == limit
+                val label = if (limit == 0) "\u221E" else limit.toString()
+                Text(
+                    text = if (isSelected) "[\u25A3 $label]" else "[ $label ]",
+                    color = if (isSelected) colors.accent else colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = AgentTerminal.type.message,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onSelect(limit) }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentProtectedPathsDialog(
+    value: String,
+    onChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = AgentTerminal.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.warning, RoundedCornerShape(8.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AgentSheetHeader("PROTECTED PATHS")
+            Text(
+                text = "one glob pattern per line",
+                color = colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = AgentTerminal.type.label,
+            )
+            BasicTextField(
+                value = value,
+                onValueChange = onChange,
+                textStyle = TextStyle(
+                    color = colors.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = AgentTerminal.type.toolCall,
+                    lineHeight = 1.35.em,
+                ),
+                cursorBrush = SolidColor(colors.accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 220.dp, max = 360.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(6.dp))
+                    .padding(10.dp),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AgentSheetCommand(
+                    label = "[ done ]",
+                    color = colors.accent,
+                    onClick = onDismiss,
+                )
+            }
+        }
+    }
+}
+
 /**
  * Terminal-flavoured wrapper around [AiPickerSheet]: a labelled chip
  * that opens the existing search-able list when tapped. Handles its
@@ -341,6 +495,17 @@ data class AgentSettingsState(
     val mode: AgentMode,
     val modeHint: String,
     val autoApproveReads: Boolean,
+    val autoApproveEdits: Boolean,
+    val autoApproveWrites: Boolean,
+    val autoApproveCommits: Boolean,
+    val autoApproveDestructive: Boolean,
+    val yoloMode: Boolean,
+    val sessionTrust: Boolean,
+    val writeLimitPerTask: Int,
+    val protectedPathsText: String,
+    val protectedPathsCount: Int,
+    val backgroundExecution: Boolean,
+    val keepCpuAwake: Boolean,
     val instantRender: Boolean,
 )
 

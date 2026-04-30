@@ -47,6 +47,8 @@ fun AgentTopBar(
     subtitle: String? = null,
     cost: String? = null,
     tokens: String? = null,
+    autoApproveIndicator: String? = null,
+    autoApproveTone: AgentAutoApproveTone = AgentAutoApproveTone.NEUTRAL,
     embedded: Boolean,
     running: Boolean,
     onBack: () -> Unit,
@@ -94,6 +96,13 @@ fun AgentTopBar(
             Spacer(Modifier.width(10.dp))
             if (cost != null || tokens != null) {
                 AgentCostChip(cost = cost, tokens = tokens)
+                Spacer(Modifier.width(6.dp))
+            }
+            if (!autoApproveIndicator.isNullOrBlank()) {
+                AgentAutoApproveChip(
+                    label = autoApproveIndicator,
+                    tone = autoApproveTone,
+                )
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onSettings, modifier = Modifier.size(36.dp)) {
@@ -161,6 +170,12 @@ fun AgentTopBar(
     }
 }
 
+enum class AgentAutoApproveTone {
+    NEUTRAL,
+    WARNING,
+    ERROR,
+}
+
 @Composable
 private fun AgentCostChip(cost: String?, tokens: String?) {
     val colors = AgentTerminal.colors
@@ -197,5 +212,30 @@ private fun AgentCostChip(cost: String?, tokens: String?) {
                 fontSize = AgentTerminal.type.costChip,
             )
         }
+    }
+}
+
+@Composable
+private fun AgentAutoApproveChip(label: String, tone: AgentAutoApproveTone) {
+    val colors = AgentTerminal.colors
+    val color = when (tone) {
+        AgentAutoApproveTone.NEUTRAL -> colors.textSecondary
+        AgentAutoApproveTone.WARNING -> colors.warning
+        AgentAutoApproveTone.ERROR -> colors.error
+    }
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.surface)
+            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontFamily = JetBrainsMono,
+            fontSize = AgentTerminal.type.costChip,
+        )
     }
 }

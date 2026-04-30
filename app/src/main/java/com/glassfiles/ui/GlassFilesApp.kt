@@ -142,6 +142,7 @@ fun GlassFilesApp(
                 terminalWasOpened = true
                 navigateTo(AppScreen.TERMINAL)
             }
+            AppNotificationTarget.DEST_AI_AGENT -> navigateTo(AppScreen.AI_AGENT)
             AppNotificationTarget.DEST_GITHUB -> navigateTo(AppScreen.GITHUB)
             AppNotificationTarget.DEST_PATH -> {
                 val file = File(target.path)
