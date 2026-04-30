@@ -49,12 +49,12 @@ import com.glassfiles.data.ai.ModelRegistry
 import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiModel
 import com.glassfiles.data.ai.models.AiProviderId
-import com.glassfiles.ui.screens.ai.terminal.AgentTerminal
-import com.glassfiles.ui.screens.ai.terminal.AgentTerminalSurface
-import com.glassfiles.ui.screens.ai.terminal.JetBrainsMono
-import com.glassfiles.ui.screens.ai.terminal.TerminalChip
-import com.glassfiles.ui.screens.ai.terminal.TerminalHairline
-import com.glassfiles.ui.screens.ai.terminal.TerminalPageBar
+import com.glassfiles.ui.components.AiModuleChip
+import com.glassfiles.ui.components.AiModuleHairline
+import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.theme.AiModuleSurface
+import com.glassfiles.ui.theme.AiModuleTheme
+import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 
 /**
