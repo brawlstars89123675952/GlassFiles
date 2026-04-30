@@ -123,7 +123,13 @@ import com.glassfiles.ui.theme.Purple
 import com.glassfiles.ui.theme.Red
 import com.glassfiles.ui.theme.Teal
 import com.glassfiles.ui.components.AiModuleDestructiveButton
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleGlyph
+import com.glassfiles.ui.components.AiModuleGlyphAction
 import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.components.AiModuleSearchField
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.components.AiModulePrimaryButton
 import com.glassfiles.ui.components.AiModuleSecondaryButton
 import com.glassfiles.ui.components.AiModuleSpinner
@@ -568,71 +574,23 @@ private fun ActionsRunsHistoryScreen(
                                 AiModuleSpinner()
                             }
                         } else {
-                            IconButton(onClick = { scope.launch { load(reset = true) } }) {
-                                Icon(
-                                    Icons.Rounded.Refresh,
-                                    null,
-                                    tint = palette.textSecondary,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                            }
+                            AiModuleGlyphAction(
+                                glyph = GhGlyphs.REFRESH,
+                                onClick = { scope.launch { load(reset = true) } },
+                                tint = palette.textSecondary,
+                                contentDescription = "refresh",
+                            )
                         }
                     },
                 )
             }
 
-            // mono search row
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(palette.surface)
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    "search:",
-                    color = palette.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 12.sp,
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                AiModuleSearchField(
+                    value = query.text,
+                    onValueChange = { query = TextFieldValue(it) },
+                    placeholder = "name / branch / sha / actor",
                 )
-                Box(Modifier.weight(1f)) {
-                    if (query.text.isEmpty()) {
-                        Text(
-                            "name / branch / sha / actor",
-                            color = palette.textMuted,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 13.sp,
-                        )
-                    }
-                    BasicTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            color = palette.textPrimary,
-                            fontSize = 13.sp,
-                            fontFamily = JetBrainsMono,
-                        ),
-                        singleLine = true,
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (query.text.isNotEmpty()) {
-                    Text(
-                        "x",
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable { query = TextFieldValue("") }
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        color = palette.textMuted,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 12.sp,
-                    )
-                }
             }
 
             ActionsTerminalFilterRow {
@@ -2321,86 +2279,97 @@ internal fun WorkflowRunDetailScreen(
                         AiModuleSpinner()
                     }
                 } else {
-                    IconButton(onClick = { scope.launch { refreshAll() } }) {
-                        Icon(
-                            Icons.Rounded.Refresh,
-                            null,
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.REFRESH,
+                        onClick = { scope.launch { refreshAll() } },
+                        tint = palette.textSecondary,
+                        contentDescription = "refresh",
+                    )
                 }
                 run?.htmlUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                    IconButton(onClick = { openExternalUrl(context, url) }) {
-                        Icon(
-                            Icons.Rounded.Article,
-                            null,
-                            tint = palette.textSecondary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.OUTLINE,
+                        onClick = { openExternalUrl(context, url) },
+                        tint = palette.textSecondary,
+                        contentDescription = "open in browser",
+                    )
                 }
-                IconButton(onClick = {
-                    scope.launch {
-                        val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
-                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                        refreshAll()
-                    }
-                }) {
-                    Icon(Icons.Rounded.PlayArrow, null, tint = palette.accent, modifier = Modifier.size(18.dp))
-                }
-                IconButton(onClick = {
-                    scope.launch {
-                        val ok = GitHubManager.rerunFailedJobs(context, repo.owner, repo.name, runId)
-                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                        refreshAll()
-                    }
-                }) {
-                    Icon(Icons.Rounded.Error, null, tint = palette.warning, modifier = Modifier.size(18.dp))
-                }
-                if (onSuggestFix != null && run?.conclusion == "failure") {
-                    IconButton(onClick = {
-                        val r = run
-                        val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
-                        val prompt = buildString {
-                            append(Strings.aiAgentSuggestFixPrompt)
-                            append("\n\n")
-                            append("Workflow: ").append(r?.name ?: "?").append('\n')
-                            append("Run: #").append(r?.runNumber ?: runId).append('\n')
-                            if (firstFailed != null) {
-                                append("Failed job: ").append(firstFailed.name).append('\n')
-                            }
-                            r?.branch?.takeIf { it.isNotBlank() }?.let {
-                                append("Branch: ").append(it).append('\n')
-                            }
-                            r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
-                                append("URL: ").append(it).append('\n')
-                            }
+                AiModuleGlyphAction(
+                    glyph = GhGlyphs.PLAY,
+                    onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            refreshAll()
                         }
-                        onSuggestFix(prompt)
-                    }) {
-                        Icon(Icons.Rounded.AutoAwesome, null, tint = palette.accent, modifier = Modifier.size(18.dp))
-                    }
+                    },
+                    tint = palette.accent,
+                    contentDescription = "rerun",
+                )
+                AiModuleGlyphAction(
+                    glyph = GhGlyphs.WARN,
+                    onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.rerunFailedJobs(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            refreshAll()
+                        }
+                    },
+                    tint = palette.warning,
+                    contentDescription = "rerun failed jobs",
+                )
+                if (onSuggestFix != null && run?.conclusion == "failure") {
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.AI,
+                        onClick = {
+                            val r = run
+                            val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
+                            val prompt = buildString {
+                                append(Strings.aiAgentSuggestFixPrompt)
+                                append("\n\n")
+                                append("Workflow: ").append(r?.name ?: "?").append('\n')
+                                append("Run: #").append(r?.runNumber ?: runId).append('\n')
+                                if (firstFailed != null) {
+                                    append("Failed job: ").append(firstFailed.name).append('\n')
+                                }
+                                r?.branch?.takeIf { it.isNotBlank() }?.let {
+                                    append("Branch: ").append(it).append('\n')
+                                }
+                                r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
+                                    append("URL: ").append(it).append('\n')
+                                }
+                            }
+                            onSuggestFix(prompt)
+                        },
+                        tint = palette.accent,
+                        contentDescription = "ai suggest fix",
+                    )
                 }
                 if (run != null && isRunActive(run!!)) {
-                    IconButton(onClick = {
-                        scope.launch {
-                            val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            refreshAll()
-                        }
-                    }) {
-                        Icon(Icons.Rounded.Cancel, null, tint = palette.error, modifier = Modifier.size(18.dp))
-                    }
-                    IconButton(onClick = {
-                        scope.launch {
-                            val ok = GitHubManager.forceCancelWorkflowRun(context, repo.owner, repo.name, runId)
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            refreshAll()
-                        }
-                    }) {
-                        Icon(Icons.Rounded.Warning, null, tint = palette.error, modifier = Modifier.size(18.dp))
-                    }
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.CLOSE,
+                        onClick = {
+                            scope.launch {
+                                val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)
+                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                                refreshAll()
+                            }
+                        },
+                        tint = palette.error,
+                        contentDescription = "cancel run",
+                    )
+                    AiModuleGlyphAction(
+                        glyph = GhGlyphs.STOP,
+                        onClick = {
+                            scope.launch {
+                                val ok = GitHubManager.forceCancelWorkflowRun(context, repo.owner, repo.name, runId)
+                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                                refreshAll()
+                            }
+                        },
+                        tint = palette.error,
+                        contentDescription = "force cancel",
+                    )
                 }
             },
         )
@@ -2474,24 +2443,12 @@ internal fun WorkflowRunDetailScreen(
                 }
             }
 
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    if (loadedLogsFilter.text.isEmpty()) {
-                        Text("Filter loaded logs", color = TextTertiary, fontSize = 14.sp)
-                    }
-                    BasicTextField(
-                        value = loadedLogsFilter,
-                        onValueChange = { loadedLogsFilter = it },
-                        textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-                Icon(Icons.Rounded.Search, null, tint = Blue)
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                AiModuleSearchField(
+                    value = loadedLogsFilter.text,
+                    onValueChange = { loadedLogsFilter = TextFieldValue(it) },
+                    placeholder = "filter loaded logs\u2026",
+                )
             }
             }
 
