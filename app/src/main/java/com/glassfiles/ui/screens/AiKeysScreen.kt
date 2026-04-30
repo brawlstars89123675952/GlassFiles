@@ -83,7 +83,7 @@ fun AiKeysScreen(onBack: () -> Unit) {
         AiProviderId.entries.forEach { keyValues[it] = AiKeyStore.getKey(context, it) }
     }
 
-    TerminalScreenScaffold(
+    AiModuleScreenScaffold(
         title = Strings.aiKeys,
         onBack = onBack,
         subtitle = "providers · " + AiProviderId.entries.size + " endpoints",
