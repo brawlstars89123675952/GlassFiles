@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Bridges the global Material theme to the AI module terminal palette so
