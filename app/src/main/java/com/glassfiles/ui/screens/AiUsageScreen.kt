@@ -138,16 +138,16 @@ fun AiUsageScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
                 item {
-                    TerminalKeyValueRow(Strings.aiUsageRecords, summary.recordCount.toString())
-                    TerminalKeyValueRow(
+                    AiModuleKeyValueRow(Strings.aiUsageRecords, summary.recordCount.toString())
+                    AiModuleKeyValueRow(
                         Strings.aiUsageTokens,
                         if (summary.totalTokens > 0) summary.totalTokens.toString()
                         else Strings.aiUsageTokensEstimateOnly,
                     )
-                    TerminalKeyValueRow(Strings.aiUsageChars, summary.totalChars.toString())
-                    TerminalKeyValueRow(Strings.aiUsageToolCalls, summary.toolCallsCount.toString())
-                    TerminalKeyValueRow(Strings.aiUsageFilesRead, summary.filesReadCount.toString())
-                    TerminalKeyValueRow(
+                    AiModuleKeyValueRow(Strings.aiUsageChars, summary.totalChars.toString())
+                    AiModuleKeyValueRow(Strings.aiUsageToolCalls, summary.toolCallsCount.toString())
+                    AiModuleKeyValueRow(Strings.aiUsageFilesRead, summary.filesReadCount.toString())
+                    AiModuleKeyValueRow(
                         Strings.aiUsageFilesWritten,
                         summary.filesWrittenCount.toString(),
                     )
