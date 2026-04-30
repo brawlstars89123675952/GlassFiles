@@ -265,7 +265,7 @@ private fun SyntaxThemeCard(
     selected: Boolean,
     onSelect: () -> Unit,
 ) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
