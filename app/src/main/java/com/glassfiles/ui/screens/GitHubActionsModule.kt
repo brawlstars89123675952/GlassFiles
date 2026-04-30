@@ -943,7 +943,7 @@ private fun ActionsOverviewHeader(
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, top = 8.dp, bottom = 6.dp),
+                .padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 6.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -2308,80 +2308,106 @@ internal fun WorkflowRunDetailScreen(
         1 + (if (maxAttempt > 1) 1 else 0) + (if (firstFailedJob != null) 1 else 0)
     }
 
-    Column(Modifier.fillMaxSize().background(SurfaceLight)) {
-        GHTopBar(run?.let { "${it.name} #${it.runNumber}" } ?: "Run #$runId", onBack = onBack) {
-            IconButton(onClick = { scope.launch { refreshAll() } }) {
-                if (refreshing) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
-                else Icon(Icons.Rounded.Refresh, null, tint = Blue)
-            }
-            run?.htmlUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                IconButton(onClick = { openExternalUrl(context, url) }) {
-                    Icon(Icons.Rounded.Article, null, tint = Blue)
-                }
-            }
-            IconButton(onClick = {
-                scope.launch {
-                    val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
-                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                    refreshAll()
-                }
-            }) { Icon(Icons.Rounded.PlayArrow, null, tint = Blue) }
-            IconButton(onClick = {
-                scope.launch {
-                    val ok = GitHubManager.rerunFailedJobs(context, repo.owner, repo.name, runId)
-                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                    refreshAll()
-                }
-            }) { Icon(Icons.Rounded.Error, null, tint = Orange) }
-            // B — "Suggest fix" handoff to AI Agent. Only shown when
-            // (a) the agent integration is wired (onSuggestFix != null)
-            // and (b) this run actually failed; succeeded runs don't
-            // need a fix. Prompt is built from the run's name + the
-            // first failed job (when available) to give the agent a
-            // concrete starting point instead of a generic ask.
-            if (onSuggestFix != null && run?.conclusion == "failure") {
-                IconButton(onClick = {
-                    val r = run
-                    val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
-                    val prompt = buildString {
-                        append(Strings.aiAgentSuggestFixPrompt)
-                        append("\n\n")
-                        append("Workflow: ").append(r?.name ?: "?").append('\n')
-                        append("Run: #").append(r?.runNumber ?: runId).append('\n')
-                        if (firstFailed != null) {
-                            append("Failed job: ").append(firstFailed.name).append('\n')
-                        }
-                        r?.branch?.takeIf { it.isNotBlank() }?.let {
-                            append("Branch: ").append(it).append('\n')
-                        }
-                        r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
-                            append("URL: ").append(it).append('\n')
-                        }
+    AiModuleSurface {
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        AiModulePageBar(
+            title = "> ${run?.name?.ifBlank { "run" } ?: "run"} #${run?.runNumber ?: runId}",
+            subtitle = run?.let { displayRunStatus(it) },
+            onBack = onBack,
+            trailing = {
+                if (refreshing) {
+                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                        AiModuleSpinner()
                     }
-                    onSuggestFix(prompt)
+                } else {
+                    IconButton(onClick = { scope.launch { refreshAll() } }) {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            null,
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                run?.htmlUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                    IconButton(onClick = { openExternalUrl(context, url) }) {
+                        Icon(
+                            Icons.Rounded.Article,
+                            null,
+                            tint = palette.textSecondary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                IconButton(onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        refreshAll()
+                    }
                 }) {
-                    Icon(Icons.Rounded.AutoAwesome, null, tint = Blue)
+                    Icon(Icons.Rounded.PlayArrow, null, tint = palette.accent, modifier = Modifier.size(18.dp))
                 }
-            }
-            IconButton(onClick = {
-                scope.launch {
-                    val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)
-                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                    refreshAll()
+                IconButton(onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.rerunFailedJobs(context, repo.owner, repo.name, runId)
+                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                        refreshAll()
+                    }
+                }) {
+                    Icon(Icons.Rounded.Error, null, tint = palette.warning, modifier = Modifier.size(18.dp))
                 }
-            }) { Icon(Icons.Rounded.Cancel, null, tint = Red) }
-            IconButton(onClick = {
-                scope.launch {
-                    val ok = GitHubManager.forceCancelWorkflowRun(context, repo.owner, repo.name, runId)
-                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                    refreshAll()
+                if (onSuggestFix != null && run?.conclusion == "failure") {
+                    IconButton(onClick = {
+                        val r = run
+                        val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
+                        val prompt = buildString {
+                            append(Strings.aiAgentSuggestFixPrompt)
+                            append("\n\n")
+                            append("Workflow: ").append(r?.name ?: "?").append('\n')
+                            append("Run: #").append(r?.runNumber ?: runId).append('\n')
+                            if (firstFailed != null) {
+                                append("Failed job: ").append(firstFailed.name).append('\n')
+                            }
+                            r?.branch?.takeIf { it.isNotBlank() }?.let {
+                                append("Branch: ").append(it).append('\n')
+                            }
+                            r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
+                                append("URL: ").append(it).append('\n')
+                            }
+                        }
+                        onSuggestFix(prompt)
+                    }) {
+                        Icon(Icons.Rounded.AutoAwesome, null, tint = palette.accent, modifier = Modifier.size(18.dp))
+                    }
                 }
-            }) { Icon(Icons.Rounded.Warning, null, tint = Red) }
-        }
+                if (run != null && isRunActive(run!!)) {
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            refreshAll()
+                        }
+                    }) {
+                        Icon(Icons.Rounded.Cancel, null, tint = palette.error, modifier = Modifier.size(18.dp))
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.forceCancelWorkflowRun(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            refreshAll()
+                        }
+                    }) {
+                        Icon(Icons.Rounded.Warning, null, tint = palette.error, modifier = Modifier.size(18.dp))
+                    }
+                }
+            },
+        )
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading run\u2026")
             }
         } else {
             val successCount = jobs.count { it.conclusion == "success" }
@@ -2794,37 +2820,96 @@ internal fun WorkflowRunDetailScreen(
             }
         )
     }
+    }
 }
 
 @Composable
 private fun WorkflowRunDetailHeader(run: GHWorkflowRun, nowMs: Long) {
-    val statusColor = runStatusColor(run)
+    val palette = AiModuleTheme.colors
+    val badge = aiModuleStatusBadge(run.status, run.conclusion, palette)
     val elapsed = calcRunDuration(run, nowMs)
+    val started = run.createdAt.take(19).replace('T', ' ')
+
     Column(
-        Modifier.fillMaxWidth().ghGlassCard(16.dp).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(runStatusIcon(run), null, tint = statusColor, modifier = Modifier.size(22.dp))
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(run.displayTitle.ifBlank { run.name }, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(
-                    buildRunSummary(run, elapsed),
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                    lineHeight = 17.sp
-                )
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                badge.glyph,
+                color = badge.color.copy(alpha = badge.alpha),
+                fontFamily = JetBrainsMono,
+                fontSize = 16.sp,
+            )
+            Text(
+                run.displayTitle.ifBlank { run.name }.ifBlank { "workflow" } + " #${run.runNumber}",
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MiniActionsBadge(displayRunStatus(run), statusColor)
-            MiniActionsBadge("#${run.runNumber}", TextSecondary)
-            if (run.runAttempt > 1) MiniActionsBadge("attempt ${run.runAttempt}", Orange)
-            if (run.branch.isNotBlank()) MiniActionsBadge(run.branch, Blue)
-            if (run.event.isNotBlank()) MiniActionsBadge(run.event, Purple)
-            if (run.headSha.length >= 7) MiniActionsBadge(run.headSha.take(7), TextSecondary)
-            if (run.headRepository.isNotBlank()) MiniActionsBadge(run.headRepository, TextSecondary)
+        Spacer(Modifier.height(4.dp))
+        ActionsHeaderField("status", "${badge.glyph} ${displayRunStatus(run)}", badge.color.copy(alpha = badge.alpha), palette)
+        if (run.event.isNotBlank()) {
+            ActionsHeaderField("trigger", run.event, palette.textPrimary, palette)
         }
+        if (run.branch.isNotBlank()) {
+            ActionsHeaderField("branch", run.branch, palette.textPrimary, palette)
+        }
+        if (run.headSha.length >= 7) {
+            ActionsHeaderField("commit", run.headSha.take(7), palette.textPrimary, palette)
+        }
+        if (run.actor.isNotBlank()) {
+            ActionsHeaderField("actor", run.actor, palette.textPrimary, palette)
+        }
+        if (run.runAttempt > 1) {
+            ActionsHeaderField("attempt", run.runAttempt.toString(), palette.warning, palette)
+        }
+        if (started.isNotBlank()) {
+            ActionsHeaderField("started", started, palette.textSecondary, palette)
+        }
+        if (elapsed.isNotBlank()) {
+            ActionsHeaderField("duration", elapsed, palette.textPrimary, palette)
+        }
+        if (run.headRepository.isNotBlank()) {
+            ActionsHeaderField("repo", run.headRepository, palette.textMuted, palette)
+        }
+    }
+}
+
+@Composable
+private fun ActionsHeaderField(
+    label: String,
+    value: String,
+    valueColor: Color,
+    palette: com.glassfiles.ui.theme.AiModuleColors,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "${label.padEnd(8)}: ",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            letterSpacing = 0.2.sp,
+        )
+        Text(
+            value,
+            color = valueColor,
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -3370,16 +3455,17 @@ private fun StepStatusPill(status: String, color: Color) {
 
 @Composable
 private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
+    val palette = AiModuleTheme.colors
     val lines = remember(log) { log.lineSequence().toList() }
     LazyColumn(modifier) {
         items(lines) { line ->
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                 Text(
                     line.ifEmpty { " " },
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 13.sp
+                    fontSize = 10.sp,
+                    fontFamily = JetBrainsMono,
+                    color = palette.textPrimary,
+                    lineHeight = 14.sp,
                 )
             }
         }
