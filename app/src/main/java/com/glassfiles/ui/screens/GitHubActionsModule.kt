@@ -3276,8 +3276,9 @@ private fun WorkflowJobCard(
     setLoadingJobId: (Long?) -> Unit,
     onRefreshRun: () -> Unit
 ) {
+    val palette = AiModuleTheme.colors
     val status = displayJobStatus(job)
-    val jColor = jobStatusColor(status)
+    val jobBadge = aiModuleStatusBadge(job.status, job.conclusion, palette)
     val jobElapsed = calcJobDuration(job, nowMs)
     val logMeta = jobLogMeta[job.id]
 
@@ -3293,30 +3294,55 @@ private fun WorkflowJobCard(
     }
 
     val statusBarColor = when (status) {
-        "failed", "failure", "timed_out", "action_required" -> MaterialTheme.colorScheme.error
-        "running", "in_progress" -> MaterialTheme.colorScheme.primary
+        "failed", "failure", "timed_out", "action_required" -> palette.error
+        "running", "in_progress" -> palette.warning
         else -> Color.Transparent
     }
-    Row(Modifier.fillMaxWidth().padding(bottom = 10.dp).ghGlassCard(14.dp)) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 8.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(6.dp)),
+    ) {
         Box(
-            Modifier.width(3.dp).fillMaxHeight().background(statusBarColor)
+            Modifier.width(2.dp).fillMaxHeight().background(statusBarColor)
         )
-        Column(Modifier.weight(1f).padding(12.dp)) {
+        Column(Modifier.weight(1f).padding(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(jobStatusIcon(status), null, Modifier.size(18.dp), tint = jColor)
-                Text(job.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(jobElapsed, fontSize = 10.sp, color = if (isJobActive(job)) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, letterSpacing = 0.4.sp)
+                Text(
+                    jobBadge.glyph,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 14.sp,
+                    color = jobBadge.color.copy(alpha = jobBadge.alpha),
+                )
+                Text(
+                    job.name,
+                    fontSize = 13.sp,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.textPrimary,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    jobElapsed,
+                    fontSize = 11.sp,
+                    color = if (isJobActive(job)) palette.warning else palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             if (loadingJobId == job.id && jobLogs[job.id] == null) {
                 Row(
                     Modifier.fillMaxWidth().padding(bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    CircularProgressIndicator(Modifier.size(14.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
-                    Text("Loading job log...", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    AiModuleSpinner(label = "loading job log\u2026")
                 }
             }
             job.steps.forEach { step ->
@@ -3333,7 +3359,15 @@ private fun WorkflowJobCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         StepStatusMark(stepStatus, sColor)
-                        Text(step.name, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text(
+                            step.name,
+                            fontSize = 12.sp,
+                            fontFamily = JetBrainsMono,
+                            color = palette.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
                         StepStatusPill(stepStatus, sColor)
                     }
                     if (expandedStepKey == stepKey) {
@@ -3347,10 +3381,13 @@ private fun WorkflowJobCard(
                         }
                         Box(
                             Modifier.fillMaxWidth().padding(start = 28.dp, top = 4.dp, bottom = 8.dp)
-                                .clip(RoundedCornerShape(9.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(palette.surfaceElevated)
+                                .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                                .padding(8.dp)
                         ) {
                             if (jobLogs[job.id] == null || loadingJobId == job.id) {
-                                CircularProgressIndicator(Modifier.size(16.dp), color = MaterialTheme.colorScheme.primary, strokeWidth = 2.dp)
+                                AiModuleSpinner()
                             } else {
                                 LogLinesView(shownStepLog, Modifier.fillMaxWidth().heightIn(max = 220.dp))
                             }
@@ -3410,12 +3447,21 @@ private fun WorkflowJobCard(
             if (expandedJobId == job.id && jobLogs[job.id] != null) {
                 Spacer(Modifier.height(8.dp))
                 Box(
-                    Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant).padding(10.dp)
+                    Modifier.fillMaxWidth().heightIn(max = 420.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                        .padding(10.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         logMeta?.warning?.let {
-                            Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.error, lineHeight = 15.sp)
+                            Text(
+                                it,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                color = palette.error,
+                                lineHeight = 15.sp,
+                            )
                         }
                         LogLinesView(compactLogForDisplay(jobLogs[job.id]!!), Modifier.fillMaxWidth().heightIn(max = 390.dp))
                     }
@@ -3902,15 +3948,26 @@ private fun FilterRow(content: @Composable () -> Unit) {
 
 @Composable
 private fun ActionsFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
+    val palette = AiModuleTheme.colors
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.primary.copy(alpha = 0.12f) else colors.surface)
-            .border(1.dp, if (selected) colors.primary.copy(alpha = 0.28f) else colors.outlineVariant, RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(4.dp))
+            .background(if (selected) palette.accent.copy(alpha = 0.10f) else palette.surface)
+            .border(
+                1.dp,
+                if (selected) palette.accent.copy(alpha = 0.55f) else palette.border,
+                RoundedCornerShape(4.dp),
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
-        Text(label, fontSize = 12.sp, color = if (selected) colors.primary else colors.onSurfaceVariant, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+        Text(
+            label,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            color = if (selected) palette.accent else palette.textSecondary,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            letterSpacing = 0.2.sp,
+        )
     }
 }
 
