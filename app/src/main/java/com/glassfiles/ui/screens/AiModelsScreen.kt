@@ -318,7 +318,7 @@ private fun ModelRow(model: AiModel) {
             ) {
                 model.capabilities.sortedBy { it.ordinal }.forEach { cap ->
                     val (label, color) = capabilityStyle(cap)
-                    TerminalChip(label = label, color = color)
+                    AiModuleChip(label = label, color = color)
                 }
             }
         }
