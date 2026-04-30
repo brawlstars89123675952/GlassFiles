@@ -104,6 +104,7 @@ import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
 import com.glassfiles.ui.components.AiPickerChip
 import com.glassfiles.ui.screens.ai.ExpensiveActionWarningDialog
+import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -904,7 +905,7 @@ fun AiAgentScreen(
                         Text(
                             Strings.aiAgentEmptyChat,
                             color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textMuted,
-                            fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                            fontFamily = JetBrainsMono,
                             fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.message,
                             modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
                         )
@@ -930,13 +931,13 @@ fun AiAgentScreen(
                             Text(
                                 "$ ",
                                 color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.accentDim,
-                                fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                                fontFamily = JetBrainsMono,
                                 fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
                             )
                             Text(
                                 Strings.aiAgentRunning,
                                 color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textSecondary,
-                                fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                                fontFamily = JetBrainsMono,
                                 fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
                             )
                             Spacer(Modifier.width(4.dp))
@@ -1265,7 +1266,7 @@ private fun TerminalBanner(
         Text(
             text = "[$glyph]",
             color = tint,
-            fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+            fontFamily = JetBrainsMono,
             fontWeight = FontWeight.Bold,
             fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
         )
@@ -1275,7 +1276,7 @@ private fun TerminalBanner(
                 Text(
                     text = title,
                     color = colors.textPrimary,
-                    fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                    fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Bold,
                     fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
                 )
@@ -1283,7 +1284,7 @@ private fun TerminalBanner(
             Text(
                 text = text,
                 color = colors.textSecondary,
-                fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                fontFamily = JetBrainsMono,
                 fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
             )
         }
@@ -1309,7 +1310,7 @@ private fun TerminalEmptyState(message: String, modifier: Modifier = Modifier) {
         Text(
             text = message,
             color = colors.textMuted,
-            fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+            fontFamily = JetBrainsMono,
             fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.message,
         )
     }
@@ -1341,7 +1342,7 @@ private fun TerminalTranscriptEntry(
                     Text(
                         text = "[image attached]",
                         color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textMuted,
-                        fontFamily = com.glassfiles.ui.screens.ai.terminal.JetBrainsMono,
+                        fontFamily = JetBrainsMono,
                         fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.label,
                     )
                 }
