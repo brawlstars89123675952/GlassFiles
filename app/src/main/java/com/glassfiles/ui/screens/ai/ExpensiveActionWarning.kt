@@ -62,7 +62,7 @@ fun ExpensiveActionWarningDialog(
     onContinueOnce: () -> Unit,
     onContinueAndRemember: () -> Unit,
 ) {
-    val colors = AgentTerminalDarkColors
+    val colors = AiModuleDarkColors
     var rememberChecked by remember { mutableStateOf(false) }
 
     AlertDialog(
