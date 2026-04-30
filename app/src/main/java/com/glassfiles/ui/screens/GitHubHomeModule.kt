@@ -117,6 +117,14 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
                 IconButton(onClick = onSettings, modifier = Modifier.size(36.dp)) {
                     Icon(Icons.Rounded.Settings, null, Modifier.size(18.dp), tint = palette.textSecondary)
                 }
+                IconButton(onClick = onMinimize, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(18.dp), tint = palette.textSecondary)
+                }
+                if (onClose != null) {
+                    IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = palette.error)
+                    }
+                }
             },
         )
         LazyColumn(
