@@ -50,6 +50,8 @@ import androidx.compose.material.icons.outlined.Link
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.*
 import com.glassfiles.notifications.GitHubNotificationTarget
+import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -457,65 +459,173 @@ internal fun RepoDetailScreen(
     val canWrite = repo.canWrite()
     val canAdmin = repo.canAdmin()
 
-    Column(Modifier.fillMaxSize().background(SurfaceLight)) {
-        GHTopBar(repo.name, subtitle = if (currentPath.isNotBlank()) currentPath else repo.owner, onBack = ::handleRepoBack, onMinimize = onMinimize, onClose = onClose) {
-            val ic = if (LocalGHCompact.current) 16.dp else 20.dp
-            if (onOpenAiAgent != null) {
-                IconButton(
-                    onClick = { onOpenAiAgent(repo.fullName, selectedBranch, null) },
-                    modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier,
-                ) {
-                    Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(ic), tint = colors.primary)
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        AiModulePageBar(
+            title = "> ${repo.name}",
+            subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
+            onBack = ::handleRepoBack,
+            trailing = {
+                if (onOpenAiAgent != null) {
+                    IconButton(
+                        onClick = { onOpenAiAgent(repo.fullName, selectedBranch, null) },
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = palette.accent)
+                    }
                 }
-            }
-            IconButton(onClick = { scope.launch { if (isStarred) GitHubManager.unstarRepo(context, repo.owner, repo.name) else GitHubManager.starRepo(context, repo.owner, repo.name); isStarred = !isStarred } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder, null, Modifier.size(ic), tint = Color(0xFFFFCC00)) }
-            IconButton(onClick = { scope.launch { if (isWatching) GitHubManager.unwatchRepo(context, repo.owner, repo.name) else GitHubManager.watchRepo(context, repo.owner, repo.name); isWatching = !isWatching } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(if (isWatching) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, null, Modifier.size(ic), tint = if (isWatching) colors.primary else colors.onSurfaceVariant) }
-            if (canAdmin) IconButton(onClick = { showRepoSettings = true }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.Settings, null, Modifier.size(ic), tint = TextSecondary) }
-            IconButton(onClick = { showCompare = true }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.CompareArrows, null, Modifier.size(ic), tint = colors.primary) }
-            IconButton(onClick = { scope.launch { val ok = GitHubManager.forkRepo(context, repo.owner, repo.name); Toast.makeText(context, if (ok) Strings.ghForked else Strings.error, Toast.LENGTH_SHORT).show() } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.CallSplit, null, Modifier.size(ic), tint = colors.primary) }
-            IconButton(onClick = { cloneProgress = "Starting..."; scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git"); val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it }; Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); cloneProgress = null } }, modifier = if (LocalGHCompact.current) Modifier.size(32.dp) else Modifier) { Icon(Icons.Rounded.Download, null, Modifier.size(ic), tint = colors.primary) }
-        }
+                IconButton(
+                    onClick = { scope.launch { if (isStarred) GitHubManager.unstarRepo(context, repo.owner, repo.name) else GitHubManager.starRepo(context, repo.owner, repo.name); isStarred = !isStarred } },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(if (isStarred) Icons.Rounded.Star else Icons.Rounded.StarBorder, null, Modifier.size(18.dp), tint = if (isStarred) palette.warning else palette.textSecondary)
+                }
+                IconButton(
+                    onClick = { scope.launch { if (isWatching) GitHubManager.unwatchRepo(context, repo.owner, repo.name) else GitHubManager.watchRepo(context, repo.owner, repo.name); isWatching = !isWatching } },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(if (isWatching) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff, null, Modifier.size(18.dp), tint = if (isWatching) palette.accent else palette.textSecondary)
+                }
+                if (canAdmin) IconButton(onClick = { showRepoSettings = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Settings, null, Modifier.size(18.dp), tint = palette.textSecondary)
+                }
+                IconButton(onClick = { showCompare = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.CompareArrows, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                IconButton(
+                    onClick = { scope.launch { val ok = GitHubManager.forkRepo(context, repo.owner, repo.name); Toast.makeText(context, if (ok) Strings.ghForked else Strings.error, Toast.LENGTH_SHORT).show() } },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Rounded.CallSplit, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                IconButton(
+                    onClick = { cloneProgress = "Starting..."; scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git"); val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it }; Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); cloneProgress = null } },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Rounded.Download, null, Modifier.size(18.dp), tint = palette.accent)
+                }
+                if (onMinimize != null) IconButton(onClick = onMinimize, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.PictureInPictureAlt, null, Modifier.size(18.dp), tint = palette.textSecondary)
+                }
+                if (onClose != null) IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = palette.error)
+                }
+            },
+        )
         if (!canWrite && repo.permissions != null) {
-            // Match the surrounding bg (toolbar above, branch row below) so the
-            // parent Column's SurfaceLight — which is pure black in AMOLED —
-            // doesn't leak through as a contrasting band.
             Row(
                 Modifier.fillMaxWidth()
-                    .background(colors.surface)
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+                    .background(palette.surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(Icons.Rounded.Visibility, null, Modifier.size(14.dp), tint = colors.onSurfaceVariant)
                 Text(
-                    "Read-only",
+                    "\u26A0  read-only",
+                    color = palette.warning,
+                    fontFamily = JetBrainsMono,
                     fontSize = 11.sp,
-                    color = colors.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.4.sp
                 )
             }
         }
-        if (cloneProgress != null) Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp).clip(RoundedCornerShape(8.dp)).background(colors.primary.copy(0.10f)).padding(horizontal = 12.dp, vertical = 8.dp)) { Text(cloneProgress!!, fontSize = 13.sp, color = colors.primary, fontWeight = FontWeight.Medium) }
+        if (cloneProgress != null) {
+            Row(
+                Modifier.fillMaxWidth()
+                    .background(palette.surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "\u23F3  cloning: ${cloneProgress!!}",
+                    color = palette.warning,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                )
+            }
+        }
         // Branch + actions
-        val cmp = LocalGHCompact.current
-        Row(Modifier.fillMaxWidth().background(colors.surface).padding(horizontal = if (cmp) 8.dp else 16.dp, vertical = if (cmp) 3.dp else 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (cmp) 4.dp else 6.dp)) {
-            Box(Modifier.clip(RoundedCornerShape(6.dp)).background(colors.primary.copy(0.08f)).clickable { showBranchPicker = true }.padding(horizontal = if (cmp) 6.dp else 10.dp, vertical = if (cmp) 3.dp else 6.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) { Icon(Icons.Rounded.AccountTree, null, Modifier.size(if (cmp) 12.dp else 14.dp), tint = colors.primary); Text(selectedBranch, fontSize = if (cmp) 10.sp else 12.sp, color = colors.primary, fontWeight = FontWeight.Medium); Icon(Icons.Rounded.ArrowDropDown, null, Modifier.size(if (cmp) 12.dp else 14.dp), tint = colors.primary) }
+        Row(
+            Modifier.fillMaxWidth()
+                .background(palette.surface)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(palette.accent.copy(alpha = 0.10f))
+                    .border(1.dp, palette.accent.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                    .clickable { showBranchPicker = true }
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "\u2442 ${selectedBranch} \u25BE",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                )
             }
             Spacer(Modifier.weight(1f))
             when (selectedTab) {
-                RepoTab.FILES -> if (canWrite) { SmallAction(Icons.Rounded.NoteAdd, Strings.ghCreateFile) { showCreateFile = true }; SmallAction(Icons.Rounded.Upload, Strings.ghUpload) { showUpload = true } }
-                RepoTab.ISSUES -> if (canWrite || repo.permissions == null) SmallAction(Icons.Rounded.Add, Strings.ghNewIssue) { showCreateIssue = true }
-                RepoTab.PULLS -> if (canWrite || repo.permissions == null) SmallAction(Icons.Rounded.Add, Strings.ghNewPR) { showCreatePR = true }
-                RepoTab.ACTIONS -> if (canWrite) SmallAction(Icons.Rounded.PlayArrow, Strings.ghRunWorkflow) { showDispatch = true }
+                RepoTab.FILES -> if (canWrite) {
+                    AiModulePillButton(label = "+ file", onClick = { showCreateFile = true })
+                    AiModulePillButton(label = "upload \u2191", onClick = { showUpload = true })
+                }
+                RepoTab.ISSUES -> if (canWrite || repo.permissions == null) {
+                    AiModulePillButton(label = "+ issue", onClick = { showCreateIssue = true })
+                }
+                RepoTab.PULLS -> if (canWrite || repo.permissions == null) {
+                    AiModulePillButton(label = "+ pr", onClick = { showCreatePR = true })
+                }
+                RepoTab.ACTIONS -> if (canWrite) {
+                    AiModulePillButton(label = "run \u25B6", onClick = { showDispatch = true })
+                }
                 else -> {}
             }
         }
         // Tabs
-        Row(Modifier.fillMaxWidth().background(colors.surface).horizontalScroll(rememberScrollState()).padding(horizontal = if (cmp) 8.dp else 16.dp, vertical = if (cmp) 3.dp else 6.dp), horizontalArrangement = Arrangement.spacedBy(if (cmp) 4.dp else 6.dp)) {
-            RepoTab.entries.forEach { tab -> val sel = selectedTab == tab; val label = when (tab) { RepoTab.FILES -> Strings.ghGistFiles; RepoTab.COMMITS -> Strings.ghCommits; RepoTab.ISSUES -> "Issues"; RepoTab.PULLS -> Strings.ghPulls; RepoTab.RELEASES -> Strings.ghReleases; RepoTab.ACTIONS -> Strings.ghActions; RepoTab.BUILDS -> "Сборки"; RepoTab.HISTORY -> "История"; RepoTab.PROJECTS -> "Projects"; RepoTab.README -> Strings.ghReadme; RepoTab.CODE_SEARCH -> Strings.ghSearchCode }
-                Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) colors.primary.copy(0.12f) else Color.Transparent).border(1.dp, if (sel) colors.primary.copy(0.30f) else colors.outlineVariant, RoundedCornerShape(6.dp)).clickable { selectedTab = tab; repoQuery = "" }.padding(horizontal = if (cmp) 6.dp else 10.dp, vertical = if (cmp) 3.dp else 6.dp)) { Text(label, fontSize = if (cmp) 10.sp else 12.sp, fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal, color = if (sel) colors.primary else colors.onSurfaceVariant) }
+        Row(
+            Modifier.fillMaxWidth()
+                .background(palette.surface)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            RepoTab.entries.forEach { tab ->
+                val sel = selectedTab == tab
+                val label = when (tab) {
+                    RepoTab.FILES -> "files"
+                    RepoTab.COMMITS -> "commits"
+                    RepoTab.ISSUES -> "issues"
+                    RepoTab.PULLS -> "pulls"
+                    RepoTab.RELEASES -> "releases"
+                    RepoTab.ACTIONS -> "actions"
+                    RepoTab.BUILDS -> "builds"
+                    RepoTab.HISTORY -> "history"
+                    RepoTab.PROJECTS -> "projects"
+                    RepoTab.README -> "readme"
+                    RepoTab.CODE_SEARCH -> "search"
+                }
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (sel) palette.accent.copy(alpha = 0.12f) else Color.Transparent)
+                        .border(1.dp, if (sel) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(4.dp))
+                        .clickable { selectedTab = tab; repoQuery = "" }
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                ) {
+                    Text(
+                        label,
+                        color = if (sel) palette.accent else palette.textSecondary,
+                        fontFamily = JetBrainsMono,
+                        fontWeight = if (sel) FontWeight.Medium else FontWeight.Normal,
+                        fontSize = 11.sp,
+                    )
+                }
             }
         }
         if (selectedTab in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
@@ -595,8 +705,6 @@ internal fun RepoDetailScreen(
     if (showBranchPicker) BranchPickerDialog(branches, selectedBranch, canWrite, { selectedBranch = it; showBranchPicker = false }, { showBranchPicker = false }) { showBranchPicker = false; showCreateBranch = true }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
 }
-
-@Composable private fun SmallAction(icon: ImageVector, label: String, onClick: () -> Unit) { val c = LocalGHCompact.current; Row(Modifier.clip(RoundedCornerShape(if (c) 6.dp else 8.dp)).background(SurfaceWhite).border(0.5.dp, SeparatorColor, RoundedCornerShape(if (c) 6.dp else 8.dp)).clickable(onClick = onClick).padding(horizontal = if (c) 5.dp else 8.dp, vertical = if (c) 3.dp else 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (c) 2.dp else 4.dp)) { Icon(icon, null, Modifier.size(if (c) 11.dp else 14.dp), tint = Blue); Text(label, fontSize = if (c) 9.sp else 11.sp, color = Blue) } }
 
 @Composable
 internal fun FilesTab(contents: List<GHContent>, listState: LazyListState, canWrite: Boolean = true, onDirClick: (GHContent) -> Unit, onFileClick: (GHContent) -> Unit, onEdit: (GHContent) -> Unit, onDelete: (GHContent) -> Unit, onDownload: (GHContent) -> Unit) {
