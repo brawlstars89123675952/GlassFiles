@@ -230,9 +230,9 @@ private fun UsageSectionHeader(label: String) {
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
             )
-            TerminalSectionLabel(text = label)
+            AiModuleSectionLabel(text = label)
         }
-        TerminalHairline(Modifier.padding(horizontal = 12.dp))
+        AiModuleHairline(Modifier.padding(horizontal = 12.dp))
     }
 }
 
