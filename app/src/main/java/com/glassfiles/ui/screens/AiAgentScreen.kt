@@ -601,7 +601,22 @@ fun AiAgentScreen(
             val planFirst = com.glassfiles.data.ai.AiAgentPrefs
                 .getPlanThenExecute(context, repo.fullName)
             val baseMessages = transcript.toAiMessages()
+            // Working memory (BUGS_FIX.md Section 3). When the user has the
+            // toggle on AND working_memory.md is non-empty for this repo we
+            // prepend its contents as a system message — BEFORE the plan-
+            // first / system-override messages — so the agent sees its own
+            // task plan / progress / decisions before it picks the next
+            // tool call. Capped at ~2 KB inside [workingMemoryPrompt] so a
+            // long working memory file can never blow the prompt budget on
+            // its own.
+            val workingMemoryEnabled = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context)
+            val workingMemoryBlock = if (workingMemoryEnabled) {
+                com.glassfiles.data.ai.AiAgentMemoryStore.workingMemoryPrompt(context, repo.fullName)
+            } else ""
             val systemMessages = buildList {
+                if (workingMemoryBlock.isNotBlank()) {
+                    add(AiMessage(role = "system", content = workingMemoryBlock))
+                }
                 if (systemOverride != null) {
                     add(AiMessage(role = "system", content = systemOverride))
                 }
@@ -653,6 +668,9 @@ fun AiAgentScreen(
                     context = context,
                     fallbackCandidates = fallbacks,
                     estimate = estimate,
+                    workingMemoryRepo = if (workingMemoryEnabled) repo.fullName else "",
+                    workingMemoryReminders = workingMemoryEnabled &&
+                        com.glassfiles.data.ai.AiWorkingMemoryPrefs.getReminders(context),
                     onFallback = { newModel ->
                         // Reflect the swap in the UI so the user
                         // immediately sees which model is now in
@@ -753,6 +771,32 @@ fun AiAgentScreen(
         val repo = selectedRepo ?: return
         val branch = selectedBranch ?: return
         val model = selectedModel ?: return
+        // Manual working-memory chat commands (BUGS_FIX.md Section 3
+        // "Manual control"). We handle them here, BEFORE the message
+        // hits the model, so they never burn tokens. The user sees
+        // their own line in the transcript followed by the system's
+        // response, exactly like a normal turn.
+        val command = text.lowercase().trim().trim('.')
+        when (command) {
+            "clear working memory" -> {
+                transcript += AgentEntry.User(text = userText, imageBase64 = image)
+                com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(context, repo.fullName)
+                transcript += AgentEntry.Assistant(text = "[system] working_memory.md cleared.")
+                input = TextFieldValue("")
+                pendingImage = null
+                return
+            }
+            "show working memory", "what are you working on", "what are you working on?" -> {
+                transcript += AgentEntry.User(text = userText, imageBase64 = image)
+                val blob = com.glassfiles.data.ai.AiAgentMemoryStore
+                    .readWorkingMemory(context, repo.fullName)
+                    .ifBlank { "[system] working_memory.md is empty." }
+                transcript += AgentEntry.Assistant(text = blob)
+                input = TextFieldValue("")
+                pendingImage = null
+                return
+            }
+        }
         // Approximate context size = current transcript char count +
         // pending user text. This is what gets shipped to the provider
         // on the very next call, so it's the most honest number we
@@ -875,6 +919,20 @@ fun AiAgentScreen(
                 else -> null to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
             }
         }
+        // BUGS_FIX.md Section 3 — `▸ N files` indicator. Recomputed every
+        // recomposition by reading working_memory.md from disk; not great
+        // if the file was huge but we cap reads in
+        // [workingMemoryActiveFileCount]. We intentionally re-read instead
+        // of caching because the agent updates the file via memory_write
+        // during the run and caching would lag the indicator.
+        val workingFiles = remember(running, transcript.size, selectedRepo?.fullName) {
+            val repoFull = selectedRepo?.fullName.orEmpty()
+            if (repoFull.isBlank() ||
+                !com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context)
+            ) 0 else com.glassfiles.data.ai.AiAgentMemoryStore.workingMemoryActiveFileCount(
+                context, repoFull,
+            )
+        }
         com.glassfiles.ui.screens.ai.terminal.AgentTopBar(
             title = Strings.aiAgent,
             subtitle = subtitle,
@@ -882,6 +940,7 @@ fun AiAgentScreen(
             tokens = tokenLabel,
             autoApproveIndicator = approvalIndicator.first,
             autoApproveTone = approvalIndicator.second,
+            workingFiles = workingFiles.takeIf { it > 0 },
             embedded = embedded,
             running = running,
             onBack = onBack,
@@ -1246,6 +1305,8 @@ fun AiAgentScreen(
                 memoryUserPreferences = com.glassfiles.data.ai.AiAgentMemoryPrefs.getUserPreferences(context),
                 memoryChatSummaries = com.glassfiles.data.ai.AiAgentMemoryPrefs.getChatSummaries(context),
                 memorySemanticSearch = com.glassfiles.data.ai.AiAgentMemoryPrefs.getSemanticSearch(context),
+                workingMemoryEnabled = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context),
+                workingMemoryReminders = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getReminders(context),
                 instantRender = instantRender,
             )
             val repoOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
@@ -1372,6 +1433,20 @@ fun AiAgentScreen(
                 },
                 onMemorySemanticSearchChange = {
                     com.glassfiles.data.ai.AiAgentMemoryPrefs.setSemanticSearch(context, it)
+                },
+                onWorkingMemoryEnabledChange = {
+                    com.glassfiles.data.ai.AiWorkingMemoryPrefs.setEnabled(context, it)
+                },
+                onWorkingMemoryRemindersChange = {
+                    com.glassfiles.data.ai.AiWorkingMemoryPrefs.setReminders(context, it)
+                },
+                onViewWorkingMemory = {
+                    // The view-working-memory link reuses the standard
+                    // memory-files dialog; the working_memory.md tab
+                    // shows up automatically because [editableFiles]
+                    // returns a "working" entry now.
+                    showSettings = false
+                    showMemoryFiles = true
                 },
                 onViewMemoryFiles = {
                     showSettings = false
@@ -2440,7 +2515,43 @@ private suspend fun runAgentLoop(
      *    fire. When `null`, behaviour matches pre-cost-policy code.
      */
     estimate: com.glassfiles.data.ai.cost.AiContextEstimate? = null,
+    /**
+     * Repo full name used for working-memory bookkeeping (BUGS_FIX.md
+     * Section 3). Empty string disables the feature for this run, e.g.
+     * when the user is talking to the agent without a repo selected.
+     */
+    workingMemoryRepo: String = "",
+    /**
+     * When true, the loop:
+     *  • injects a `[system] Update working memory…` reminder after a
+     *    write_file / edit_file / memory_write (other than to
+     *    working_memory.md itself) call when more than 3 tool calls have
+     *    elapsed since the last working-memory update OR when the file
+     *    being edited is new for this task,
+     *  • passes those reminders straight to the model on the next turn.
+     *
+     * The blob itself is prepended to the system prompt by the caller
+     * (see seed-message construction inside [AiAgentScreen]). This
+     * parameter only controls the in-loop reminder cadence.
+     */
+    workingMemoryReminders: Boolean = false,
 ) {
+    // Files that have been touched by write_file / edit_file in this run.
+    // Used to detect "new file in working memory" for the reminder rule
+    // ("if file was not in working memory" — BUGS_FIX.md Section 3 auto-
+    // update logic).
+    val filesEditedThisTask = mutableSetOf<String>()
+    // Number of tool calls since the agent last wrote / appended to
+    // working_memory.md. We start at infinity so the very first edit
+    // always triggers a reminder.
+    var callsSinceWorkingMemoryUpdate = Int.MAX_VALUE / 2
+    /**
+     * Pending working-memory reminder to inject as a system message on
+     * the next turn. Drained at the top of each iteration so the model
+     * sees it before it picks the next tool. Null when there's nothing
+     * to remind about.
+     */
+    var pendingWorkingMemoryReminder: String? = null
     var messages = seedMessages
     var provider = initialProvider
     var modelId = initialModelId
@@ -2483,6 +2594,17 @@ private suspend fun runAgentLoop(
                     "Stopping to avoid runaway edits.]",
             )
             return
+        }
+        // Drain any pending working-memory reminder (BUGS_FIX.md Section
+        // 3 — "Reminder появляется как system message"). We add it as a
+        // role=system message so providers that distinguish system vs
+        // user instructions still treat it as a directive instead of
+        // user input. The agent is expected to respond by issuing a
+        // memory_write / memory_append against working_memory.md before
+        // its next file edit.
+        pendingWorkingMemoryReminder?.let { reminder ->
+            messages = messages + AiMessage(role = "system", content = reminder)
+            pendingWorkingMemoryReminder = null
         }
         // Compact older turns when the rolling transcript grows past the
         // soft limit — without this the next provider call eventually
@@ -2627,6 +2749,33 @@ private suspend fun runAgentLoop(
                 )
                 return
             }
+            // Working-memory bookkeeping (BUGS_FIX.md Section 3 auto-update
+            // logic). Counts of "calls since last working-memory update"
+            // increment on every approved tool call; updates to
+            // working_memory.md itself reset the counter to 0. After a
+            // file-modifying call we queue a reminder for the NEXT turn
+            // when more than 3 calls have elapsed OR the file is new for
+            // this task. Only fires when approved AND when the caller
+            // opted into reminders (working memory toggle ON).
+            if (approved && workingMemoryReminders && workingMemoryRepo.isNotBlank()) {
+                callsSinceWorkingMemoryUpdate += 1
+                val isMemoryWriteToWorkingMemory = call.name in setOf("memory_write", "memory_append") &&
+                    extractMemoryPathArg(call) == com.glassfiles.data.ai.AiAgentMemoryStore.WORKING_MEMORY_FILE
+                val isFileEdit = call.name in setOf("write_file", "edit_file")
+                if (isMemoryWriteToWorkingMemory) {
+                    callsSinceWorkingMemoryUpdate = 0
+                } else if (isFileEdit) {
+                    val path = extractFilePathArg(call)
+                    val isNewFile = path.isNotBlank() && filesEditedThisTask.add(path)
+                    if (isNewFile || callsSinceWorkingMemoryUpdate > 3) {
+                        val target = if (path.isNotBlank()) "`$path`" else "this file"
+                        pendingWorkingMemoryReminder =
+                            "[system] Update working memory: $target was just edited. " +
+                                "Note your plan / done / next / decisions for it in working_memory.md " +
+                                "before continuing with the next tool call."
+                    }
+                }
+            }
         }
         // Approximate the assistant text against the running total too,
         // so the loop stops fairly even when the model just monologues.
@@ -2657,6 +2806,32 @@ private const val AGENT_SESSION_MODE = "agent"
  */
 private fun writeLimitLabel(limit: Int): String =
     if (limit <= com.glassfiles.data.ai.AiAgentApprovalPrefs.WRITE_LIMIT_UNLIMITED) "\u221E" else limit.toString()
+
+/**
+ * Best-effort extractor for the `path` argument of a memory_* tool call.
+ * Returns the raw string after stripping surrounding quotes / whitespace.
+ * Empty when the call doesn't carry a `path` arg or the JSON fails to
+ * parse — both cases are treated as "not a working_memory.md update" by
+ * the auto-update logic.
+ */
+private fun extractMemoryPathArg(call: com.glassfiles.data.ai.agent.AiToolCall): String =
+    runCatching {
+        org.json.JSONObject(call.argsJson).optString("path", "").trim()
+    }.getOrDefault("")
+
+/**
+ * Best-effort extractor for the `path` argument of a write_file /
+ * edit_file tool call. We try the conventional key names for both tools
+ * because providers occasionally rename `file` to `path` and back.
+ */
+private fun extractFilePathArg(call: com.glassfiles.data.ai.agent.AiToolCall): String =
+    runCatching {
+        val obj = org.json.JSONObject(call.argsJson)
+        listOf("path", "file", "filename", "filepath")
+            .firstNotNullOfOrNull { key -> obj.optString(key, "").takeIf { it.isNotBlank() } }
+            ?.trim()
+            .orEmpty()
+    }.getOrDefault("")
 
 /**
  * C3 — plan-first preamble used when the per-repo plan-then-execute

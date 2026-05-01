@@ -71,6 +71,9 @@ fun AgentSettingsBottomSheet(
     onMemoryUserPreferencesChange: (Boolean) -> Unit,
     onMemoryChatSummariesChange: (Boolean) -> Unit,
     onMemorySemanticSearchChange: (Boolean) -> Unit,
+    onWorkingMemoryEnabledChange: (Boolean) -> Unit,
+    onWorkingMemoryRemindersChange: (Boolean) -> Unit,
+    onViewWorkingMemory: () -> Unit,
     onViewMemoryFiles: () -> Unit,
     onClearMemory: () -> Unit,
     onInstantRenderChange: (Boolean) -> Unit,
@@ -235,6 +238,25 @@ fun AgentSettingsBottomSheet(
                 checked = state.memorySemanticSearch,
                 onChange = onMemorySemanticSearchChange,
             )
+            AgentSheetDivider()
+            AgentSheetLabel("WORKING MEMORY")
+            AgentSheetCheckbox(
+                label = "maintain working memory during tasks",
+                checked = state.workingMemoryEnabled,
+                onChange = onWorkingMemoryEnabledChange,
+            )
+            AgentSheetCheckbox(
+                label = "auto-remind agent to update after edits",
+                checked = state.workingMemoryReminders,
+                onChange = onWorkingMemoryRemindersChange,
+            )
+            AgentSheetCommand(
+                label = "[ view working memory \u2192 ]",
+                color = colors.warning,
+                onClick = onViewWorkingMemory,
+            )
+            AgentSheetDivider()
+            AgentSheetLabel("MEMORY FILES")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentSheetCommand(
                     label = "[ view memory files \u2192 ]",
@@ -552,6 +574,20 @@ data class AgentSettingsState(
     val memoryUserPreferences: Boolean,
     val memoryChatSummaries: Boolean,
     val memorySemanticSearch: Boolean,
+    /**
+     * Working memory toggle (BUGS_FIX.md Section 3 — "Maintain working
+     * memory during tasks"). When ON, the agent loop prepends
+     * working_memory.md to the system prompt and injects auto-update
+     * reminders. When OFF the file is left in place but ignored at
+     * runtime.
+     */
+    val workingMemoryEnabled: Boolean,
+    /**
+     * Auto-reminder cadence toggle. Independent from
+     * [workingMemoryEnabled] so power users can ship working memory to
+     * the system prompt without nagging the model on every edit.
+     */
+    val workingMemoryReminders: Boolean,
     val instantRender: Boolean,
 )
 
