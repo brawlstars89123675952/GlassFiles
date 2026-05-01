@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
@@ -53,6 +52,7 @@ fun AgentTopBar(
     running: Boolean,
     onBack: () -> Unit,
     onSettings: () -> Unit,
+    onHistory: () -> Unit,
     onNewChat: () -> Unit,
     onSystemPrompt: () -> Unit,
     onStop: () -> Unit,
@@ -113,12 +113,22 @@ fun AgentTopBar(
                     tint = colors.textSecondary,
                 )
             }
+            IconButton(onClick = onHistory, modifier = Modifier.size(36.dp)) {
+                Text(
+                    "≡",
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = AgentTerminal.type.topBarTitle,
+                )
+            }
             IconButton(onClick = onNewChat, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Rounded.Add,
-                    contentDescription = "new chat",
-                    modifier = Modifier.size(18.dp),
-                    tint = colors.textSecondary,
+                Text(
+                    "+",
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = AgentTerminal.type.topBarTitle,
                 )
             }
             IconButton(onClick = onSystemPrompt, modifier = Modifier.size(36.dp)) {

@@ -12,9 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -89,6 +92,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
@@ -198,6 +202,8 @@ fun AiAgentScreen(
         mutableStateOf(sessions.firstOrNull { it.id == activeSessionId }?.createdAt ?: System.currentTimeMillis())
     }
     var showHistory by remember { mutableStateOf(false) }
+    var memoryChats by remember { mutableStateOf<List<AiAgentMemoryStore.ChatRecord>>(emptyList()) }
+    var historyError by remember { mutableStateOf("") }
     // Per-repo system-prompt override editor visibility. Opens an
     // AlertDialog with a multi-line text field; saves to AiAgentPrefs
     // on confirm so subsequent runs in this repo prepend it as a
@@ -285,6 +291,11 @@ fun AiAgentScreen(
     // Pending approvals: tool calls awaiting user decision. The agent loop
     // suspends on these CompletableDeferred until Approve/Reject flips them.
     val approvals = remember { mutableStateListOf<PendingApproval>() }
+
+    fun refreshMemoryChats() {
+        val repoFull = selectedRepo?.fullName.orEmpty()
+        memoryChats = if (repoFull.isBlank()) emptyList() else AiAgentMemoryStore.listChats(context, repoFull)
+    }
 
     fun resetApprovalSessionState() {
         sessionTrustGranted = false
@@ -400,6 +411,7 @@ fun AiAgentScreen(
     // the conversation the user can still see and reference.
     LaunchedEffect(selectedRepo) {
         val repo = selectedRepo
+        refreshMemoryChats()
         if (repo == null) {
             branches.clear()
             selectedBranch = null
@@ -495,9 +507,19 @@ fun AiAgentScreen(
                         AiAgentMemoryPrefs.getSemanticSearch(context))
             }
             ?.let { repoFull ->
-            AiAgentMemoryStore.saveChatFull(context, repoFull, id, messages)
+            AiAgentMemoryStore.saveChatFull(
+                context = context,
+                repoFullName = repoFull,
+                chatId = id,
+                messages = messages,
+                branch = selectedBranch.orEmpty(),
+                providerId = selectedModel?.providerId?.name.orEmpty(),
+                modelId = selectedModel?.id.orEmpty(),
+                createdAt = sessionCreatedAt,
+            )
         }
         refreshSessions()
+        refreshMemoryChats()
     }
 
     fun requestYoloConfirm() {
@@ -573,6 +595,55 @@ fun AiAgentScreen(
         showHistory = false
     }
 
+    fun openMemoryChat(record: AiAgentMemoryStore.ChatRecord) {
+        val repoFull = selectedRepo?.fullName.orEmpty()
+        if (repoFull.isBlank()) {
+            historyError = "Pick a repository before opening memory chats."
+            return
+        }
+        val loaded = runCatching {
+            AiAgentMemoryStore.loadChat(context, repoFull, record.id)
+        }.getOrElse { error ->
+            historyError = error.message ?: error.javaClass.simpleName
+            return
+        }
+        stopActiveAgent(runJob, approvals)
+        runJob = null
+        running = false
+        error = null
+        input = TextFieldValue("")
+        pendingImage = null
+        activeSessionId = loaded.chatId
+        sessionCreatedAt = loaded.createdAt
+        transcript.clear()
+        transcript.addAll(loaded.messages.toAgentEntries())
+        approvals.clear()
+        resetApprovalSessionState()
+        val sessionFallback = AiChatSessionStore.get(context, AGENT_SESSION_MODE, loaded.chatId)
+        AiChatSessionStore.upsert(
+            context = context,
+            session = AiChatSessionStore.Session(
+                id = loaded.chatId,
+                mode = AGENT_SESSION_MODE,
+                title = AiChatSessionStore.deriveTitle(loaded.messages),
+                providerId = loaded.providerId.ifBlank { sessionFallback?.providerId.orEmpty() },
+                modelId = loaded.modelId.ifBlank { sessionFallback?.modelId.orEmpty() },
+                messages = loaded.messages,
+                createdAt = loaded.createdAt,
+                updatedAt = loaded.updatedAt,
+                repoFullName = loaded.repoFullName.ifBlank { repoFull },
+                branch = loaded.branch.ifBlank { sessionFallback?.branch.orEmpty() },
+            ),
+        )
+        refreshSessions()
+        selectedRepo = repos.firstOrNull { it.fullName == loaded.repoFullName.ifBlank { repoFull } } ?: selectedRepo
+        selectedBranch = loaded.branch.ifBlank { sessionFallback?.branch.orEmpty() }.takeIf { it.isNotBlank() }
+        selectedModel = null
+        pendingRestoreSessionId = loaded.chatId
+        historyError = ""
+        showHistory = false
+    }
+
     fun startNewSession() {
         stopActiveAgent(runJob, approvals)
         runJob = null
@@ -589,6 +660,7 @@ fun AiAgentScreen(
         // context so they can fire off another task in the same repo
         // without re-picking everything.
         showHistory = false
+        refreshMemoryChats()
     }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -849,6 +921,9 @@ fun AiAgentScreen(
                             provider = provider,
                             modelId = model.id,
                             apiKey = key,
+                            branch = selectedBranch.orEmpty(),
+                            providerId = model.providerId.name,
+                            createdAt = sessionCreatedAt,
                         )
                     }
                 }
@@ -1071,6 +1146,10 @@ fun AiAgentScreen(
             running = running,
             onBack = onBack,
             onSettings = { showSettings = true },
+            onHistory = {
+                refreshMemoryChats()
+                showHistory = true
+            },
             onNewChat = ::startNewSession,
             onSystemPrompt = {
                 if (selectedRepo != null) showSystemPrompt = true else showSettings = true
@@ -1281,18 +1360,25 @@ fun AiAgentScreen(
         )
         if (showHistory) {
             AgentHistorySheet(
-                sessions = sessions,
-                onOpen = ::openSession,
+                repoFullName = selectedRepo?.fullName.orEmpty(),
+                chats = memoryChats,
+                error = historyError,
+                onOpen = ::openMemoryChat,
                 onNew = ::startNewSession,
-                onDelete = { session ->
-                    AiChatSessionStore.delete(context, AGENT_SESSION_MODE, session.id)
-                    refreshSessions()
-                    if (session.id == activeSessionId) startNewSession()
+                onRefresh = ::refreshMemoryChats,
+                onSearch = { query ->
+                    AiAgentMemoryStore.searchChats(context, selectedRepo?.fullName.orEmpty(), query)
                 },
-                onDeleteAll = {
-                    AiChatSessionStore.clear(context, AGENT_SESSION_MODE)
+                onRename = { chat, title ->
+                    AiAgentMemoryStore.renameChat(context, selectedRepo?.fullName.orEmpty(), chat.id, title)
+                    refreshMemoryChats()
+                },
+                onDelete = { chat ->
+                    AiAgentMemoryStore.deleteChat(context, selectedRepo?.fullName.orEmpty(), chat.id)
+                    AiChatSessionStore.delete(context, AGENT_SESSION_MODE, chat.id)
                     refreshSessions()
-                    startNewSession()
+                    refreshMemoryChats()
+                    if (chat.id == activeSessionId) startNewSession()
                 },
                 onDismiss = { showHistory = false },
             )
@@ -1940,158 +2026,302 @@ private fun AgentAttachmentPreview(base64: String, visionAvailable: Boolean, onR
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun AgentHistorySheet(
-    sessions: List<AiChatSessionStore.Session>,
-    onOpen: (AiChatSessionStore.Session) -> Unit,
+    repoFullName: String,
+    chats: List<AiAgentMemoryStore.ChatRecord>,
+    error: String,
+    onOpen: (AiAgentMemoryStore.ChatRecord) -> Unit,
     onNew: () -> Unit,
-    onDelete: (AiChatSessionStore.Session) -> Unit,
-    onDeleteAll: () -> Unit,
+    onRefresh: () -> Unit,
+    onSearch: (String) -> List<AiAgentMemoryStore.ChatSearchResult>,
+    onRename: (AiAgentMemoryStore.ChatRecord, String) -> Unit,
+    onDelete: (AiAgentMemoryStore.ChatRecord) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     val sdf = remember { SimpleDateFormat("dd.MM.yy HH:mm", Locale.getDefault()) }
     var query by remember { mutableStateOf("") }
-    // Filter on title / repo / branch / model / first user message. Each
-    // session is matched once per token (whitespace-split), so the user
-    // can type multiple keywords ("kotlin main") and progressively narrow
-    // the list. Empty query short-circuits to the full list.
-    val filteredSessions = remember(sessions, query) {
-        val tokens = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
-        if (tokens.isEmpty()) sessions
-        else sessions.filter { session ->
-            val haystack = buildString {
-                appendLine(session.title)
-                appendLine(session.repoFullName)
-                appendLine(session.branch)
-                appendLine(session.modelId)
-                session.messages.take(6).forEach { appendLine(it.content.take(400)) }
-            }.lowercase()
-            tokens.all { haystack.contains(it) }
+    var searchMode by remember { mutableStateOf(false) }
+    var menuTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
+    var renameTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var deleteTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
+    val searchResults = remember(query, searchMode, repoFullName, chats) {
+        if (searchMode && query.trim().isNotBlank()) onSearch(query) else emptyList()
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.86f)
+                    .background(colors.background)
+                    .border(1.dp, colors.border)
+                    .padding(14.dp),
+            ) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("▸ Chats", color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+                    Text(
+                        repoFullName.ifBlank { "no repository selected" },
+                        color = colors.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                    )
+                    if (error.isNotBlank()) {
+                        Text("// $error", color = colors.error, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                    }
+                    if (searchMode) {
+                        TerminalHistorySearchField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            placeholder = "search chats",
+                        )
+                    }
+                    LazyColumn(
+                        Modifier.weight(1f).fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (repoFullName.isBlank()) {
+                            item {
+                                Text("// pick repo in settings first", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                            }
+                        } else if (searchMode && query.trim().isNotBlank()) {
+                            if (searchResults.isEmpty()) {
+                                item { Text("// no matches", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp) }
+                            } else {
+                                items(searchResults, key = { it.chatId }) { result ->
+                                    ChatHistorySearchRow(
+                                        result = result,
+                                        date = sdf.format(Date(result.updatedAt)),
+                                        onOpen = { chats.firstOrNull { it.id == result.chatId }?.let(onOpen) },
+                                    )
+                                }
+                            }
+                        } else if (chats.isEmpty()) {
+                            item {
+                                Text("// no saved chats", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                            }
+                        } else {
+                            items(chats, key = { it.id }) { chat ->
+                                ChatHistoryRow(
+                                    chat = chat,
+                                    date = sdf.format(Date(chat.updatedAt)),
+                                    onOpen = { onOpen(chat) },
+                                    onLongPress = { menuTarget = chat },
+                                )
+                            }
+                        }
+                    }
+                    TerminalHistoryButton("[ + new chat ]", colors.accent) { onNew() }
+                    TerminalHistoryButton(if (searchMode) "[ × close search ]" else "[ ⌕ search chats ]", colors.textSecondary) {
+                        searchMode = !searchMode
+                        query = ""
+                    }
+                    TerminalHistoryButton("[ refresh ]", colors.textSecondary) { onRefresh() }
+                    TerminalHistoryButton("[ × close ]", colors.textMuted) { onDismiss() }
+                }
+            }
         }
     }
+
+    menuTarget?.let { chat ->
+        TerminalConfirmMenu(
+            title = chat.title,
+            actions = listOf(
+                "open" to { menuTarget = null; onOpen(chat) },
+                "rename" to {
+                    renameTarget = chat
+                    renameText = chat.title
+                    menuTarget = null
+                },
+                "× delete" to {
+                    deleteTarget = chat
+                    menuTarget = null
+                },
+            ),
+            onDismiss = { menuTarget = null },
+        )
+    }
+    renameTarget?.let { chat ->
+        TerminalRenameDialog(
+            value = renameText,
+            onValueChange = { renameText = it },
+            onSave = {
+                onRename(chat, renameText)
+                renameTarget = null
+            },
+            onDismiss = { renameTarget = null },
+        )
+    }
+    deleteTarget?.let { chat ->
+        TerminalDeleteChatDialog(
+            title = chat.title,
+            onDelete = {
+                onDelete(chat)
+                deleteTarget = null
+            },
+            onDismiss = { deleteTarget = null },
+        )
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun ChatHistoryRow(
+    chat: AiAgentMemoryStore.ChatRecord,
+    date: String,
+    onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("●", color = if (chat.corrupted) colors.error else colors.accent, fontFamily = JetBrainsMono, fontSize = 12.sp)
+            Text(date, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            Text(chat.title, color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
+        Text(
+            chat.preview.ifBlank { "// empty summary" },
+            color = if (chat.corrupted) colors.error else colors.textSecondary,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 20.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChatHistorySearchRow(
+    result: AiAgentMemoryStore.ChatSearchResult,
+    date: String,
+    onOpen: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text("● $date  ${result.title}", color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, maxLines = 1)
+        Text(result.snippet, color = colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(start = 20.dp))
+    }
+}
+
+@Composable
+private fun TerminalHistoryButton(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = color,
+        fontFamily = JetBrainsMono,
+        fontSize = 13.sp,
+        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 3.dp),
+    )
+}
+
+@Composable
+private fun TerminalHistorySearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.textMuted)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+    ) {
+        if (query.isEmpty()) {
+            Text(placeholder, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        }
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = TextStyle(color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp),
+            cursorBrush = SolidColor(colors.accent),
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun TerminalConfirmMenu(
+    title: String,
+    actions: List<Pair<String, () -> Unit>>,
+    onDismiss: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(colors.surface)
-                .border(1.dp, colors.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
-                .padding(vertical = 12.dp),
+                .background(colors.background)
+                .border(1.dp, colors.border)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(Strings.aiAgentHistoryTitle, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
-                    val counter = if (query.isBlank()) {
-                        "${sessions.size} ${Strings.aiHistoryCount}"
-                    } else {
-                        "${filteredSessions.size}/${sessions.size} ${Strings.aiHistoryCount}"
-                    }
-                    Text(counter, fontSize = 11.sp, color = colors.onSurfaceVariant)
-                }
-                if (sessions.isNotEmpty()) {
-                    IconButton(onClick = onDeleteAll) {
-                        Icon(Icons.Rounded.DeleteSweep, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
-                    }
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
-                }
+            Text(title, color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+            actions.forEach { (label, action) ->
+                TerminalHistoryButton("[ $label ]", if (label.contains("delete")) colors.error else colors.accent, action)
             }
-            if (sessions.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                HistorySearchField(
-                    query = query,
-                    onQueryChange = { query = it },
-                    modifier = Modifier.padding(horizontal = 12.dp),
-                )
+            TerminalHistoryButton("[ cancel ]", colors.textMuted, onDismiss)
+        }
+    }
+}
+
+@Composable
+private fun TerminalRenameDialog(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().background(colors.background).border(1.dp, colors.border).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("rename chat", color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            TerminalHistorySearchField(query = value, onQueryChange = onValueChange, placeholder = "title")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TerminalHistoryButton("[ save ]", colors.accent, onSave)
+                TerminalHistoryButton("[ cancel ]", colors.textMuted, onDismiss)
             }
-            Spacer(Modifier.height(8.dp))
-            if (sessions.isEmpty()) {
-                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                    Text(Strings.aiHistoryEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
-                }
-            } else if (filteredSessions.isEmpty()) {
-                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                    Text(Strings.aiHistorySearchEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
-                }
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 360.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(filteredSessions, key = { it.id }) { session ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(colors.surfaceVariant.copy(alpha = 0.5f))
-                                .clickable { onOpen(session) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Icon(Icons.Rounded.Chat, null, Modifier.size(18.dp), tint = colors.onSurfaceVariant)
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    session.title,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = colors.onSurface,
-                                    maxLines = 1,
-                                )
-                                val repoLine = buildString {
-                                    val repo = session.repoFullName.takeIf { it.isNotBlank() }
-                                        ?: Strings.aiAgentHistoryNoRepo
-                                    append(repo)
-                                    if (session.branch.isNotBlank()) {
-                                        append(" · ")
-                                        append(session.branch)
-                                    }
-                                    if (session.modelId.isNotBlank()) {
-                                        append(" · ")
-                                        append(session.modelId)
-                                    }
-                                }
-                                Text(
-                                    repoLine,
-                                    fontSize = 11.sp,
-                                    color = colors.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                                Text(
-                                    "${sdf.format(Date(session.updatedAt))} · ${session.messages.size} msgs",
-                                    fontSize = 10.sp,
-                                    color = colors.onSurfaceVariant,
-                                    fontFamily = FontFamily.Monospace,
-                                    maxLines = 1,
-                                )
-                            }
-                            IconButton(onClick = { onDelete(session) }, modifier = Modifier.size(28.dp)) {
-                                Icon(Icons.Rounded.Close, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(colors.primary)
-                    .clickable(onClick = onNew)
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Rounded.Add, null, Modifier.size(18.dp), tint = colors.onPrimary)
-                Spacer(Modifier.width(8.dp))
-                Text(Strings.aiAgentHistoryNew, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
+        }
+    }
+}
+
+@Composable
+private fun TerminalDeleteChatDialog(
+    title: String,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().background(colors.background).border(1.dp, colors.error).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("delete chat?", color = colors.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Text(title, color = colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, maxLines = 2)
+            Text("This removes memory chat files and cannot be undone.", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TerminalHistoryButton("[ × delete ]", colors.error, onDelete)
+                TerminalHistoryButton("[ no · cancel ]", colors.textMuted, onDismiss)
             }
         }
     }

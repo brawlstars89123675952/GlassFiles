@@ -27,6 +27,34 @@ object AiAgentMemoryStore {
         val content: String,
     )
 
+    data class ChatRecord(
+        val id: String,
+        val title: String,
+        val preview: String,
+        val updatedAt: Long,
+        val messages: Int,
+        val corrupted: Boolean = false,
+        val error: String = "",
+    )
+
+    data class ChatSearchResult(
+        val chatId: String,
+        val title: String,
+        val snippet: String,
+        val updatedAt: Long,
+    )
+
+    data class LoadedChat(
+        val chatId: String,
+        val repoFullName: String,
+        val branch: String,
+        val providerId: String,
+        val modelId: String,
+        val createdAt: Long,
+        val updatedAt: Long,
+        val messages: List<AiChatSessionStore.Message>,
+    )
+
     fun buildMemoryPrompt(context: Context, repoFullName: String): String {
         if (repoFullName.isBlank()) return ""
         ensureDefaults(context, repoFullName)
@@ -202,6 +230,10 @@ object AiAgentMemoryStore {
         repoFullName: String,
         chatId: String,
         messages: List<AiChatSessionStore.Message>,
+        branch: String = "",
+        providerId: String = "",
+        modelId: String = "",
+        createdAt: Long = 0L,
     ) {
         if (repoFullName.isBlank() || chatId.isBlank()) return
         ensureDefaults(context, repoFullName)
@@ -221,9 +253,90 @@ object AiAgentMemoryStore {
         JSONObject()
             .put("repoFullName", repoFullName)
             .put("chatId", chatId)
+            .put("branch", branch)
+            .put("providerId", providerId)
+            .put("modelId", modelId)
+            .put("createdAt", createdAt.takeIf { it > 0L } ?: System.currentTimeMillis())
             .put("updatedAt", System.currentTimeMillis())
             .put("messages", arr)
             .let { File(chatDir, "full.json").writeText(it.toString(2)) }
+    }
+
+    fun listChats(context: Context, repoFullName: String): List<ChatRecord> {
+        if (repoFullName.isBlank()) return emptyList()
+        ensureDefaults(context, repoFullName)
+        val chatsDir = File(repoDir(context, repoFullName), "chats")
+        return chatsDir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory }
+            ?.map { dir -> chatRecordFromDir(dir) }
+            ?.sortedByDescending { it.updatedAt }
+            ?.toList()
+            ?: emptyList()
+    }
+
+    fun loadChat(context: Context, repoFullName: String, chatId: String): LoadedChat {
+        if (repoFullName.isBlank() || chatId.isBlank()) throw IllegalArgumentException("chat id is blank")
+        ensureDefaults(context, repoFullName)
+        val file = File(File(File(repoDir(context, repoFullName), "chats"), chatId), "full.json")
+        if (!file.isFile) throw IllegalArgumentException("full.json not found for $chatId")
+        return parseLoadedChat(file.readText(), repoFullName, chatId, file.lastModified())
+    }
+
+    fun renameChat(context: Context, repoFullName: String, chatId: String, title: String) {
+        if (repoFullName.isBlank() || chatId.isBlank()) return
+        ensureDefaults(context, repoFullName)
+        val clean = title.trim().take(120)
+        if (clean.isBlank()) return
+        val chatDir = File(File(repoDir(context, repoFullName), "chats"), chatId).apply { mkdirs() }
+        File(chatDir, "title.md").writeText(clean)
+        val full = File(chatDir, "full.json")
+        if (full.isFile) {
+            runCatching {
+                val obj = JSONObject(full.readText())
+                obj.put("title", clean)
+                obj.put("updatedAt", System.currentTimeMillis())
+                full.writeText(obj.toString(2))
+            }
+        }
+    }
+
+    fun deleteChat(context: Context, repoFullName: String, chatId: String): Boolean {
+        if (repoFullName.isBlank() || chatId.isBlank()) return false
+        ensureDefaults(context, repoFullName)
+        val chatDir = File(File(repoDir(context, repoFullName), "chats"), chatId)
+        return chatDir.exists() && chatDir.deleteRecursively()
+    }
+
+    fun searchChats(context: Context, repoFullName: String, query: String): List<ChatSearchResult> {
+        val needle = query.trim()
+        if (repoFullName.isBlank() || needle.isBlank()) return emptyList()
+        ensureDefaults(context, repoFullName)
+        val chatsDir = File(repoDir(context, repoFullName), "chats")
+        return chatsDir.listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { dir ->
+                val record = chatRecordFromDir(dir)
+                val files = listOf(File(dir, "summary.md"), File(dir, "full.json"))
+                files.asSequence()
+                    .filter { it.isFile }
+                    .flatMap { file -> file.readLines().asSequence() }
+                    .firstOrNull { it.contains(needle, ignoreCase = true) }
+                    ?.trim()
+                    ?.take(160)
+                    ?.let { snippet ->
+                        ChatSearchResult(
+                            chatId = dir.name,
+                            title = record.title,
+                            snippet = snippet,
+                            updatedAt = record.updatedAt,
+                        )
+                    }
+            }
+            ?.sortedByDescending { it.updatedAt }
+            ?.toList()
+            ?: emptyList()
     }
 
     suspend fun summarizeAndUpdate(
@@ -234,10 +347,13 @@ object AiAgentMemoryStore {
         provider: AiProvider?,
         modelId: String,
         apiKey: String,
+        branch: String = "",
+        providerId: String = "",
+        createdAt: Long = 0L,
     ) = withContext(Dispatchers.IO) {
         if (repoFullName.isBlank() || chatId.isBlank() || messages.isEmpty()) return@withContext
         ensureDefaults(context, repoFullName)
-        saveChatFull(context, repoFullName, chatId, messages)
+        saveChatFull(context, repoFullName, chatId, messages, branch, providerId, modelId, createdAt)
         if (!AiAgentMemoryPrefs.getChatSummaries(context)) {
             return@withContext
         }
@@ -320,6 +436,87 @@ object AiAgentMemoryStore {
             ?.toList()
             ?: emptyList()
     }
+
+    private fun chatRecordFromDir(dir: File): ChatRecord {
+        val summary = File(dir, "summary.md").takeIf { it.isFile }?.readText().orEmpty()
+        val full = File(dir, "full.json")
+        val customTitle = File(dir, "title.md").takeIf { it.isFile }?.readText()?.trim().orEmpty()
+        return runCatching {
+            val loaded = if (full.isFile) parseLoadedChat(full.readText(), "", dir.name, full.lastModified()) else null
+            ChatRecord(
+                id = dir.name,
+                title = customTitle.ifBlank { summaryTitle(summary).ifBlank { firstUserTitle(loaded?.messages.orEmpty()) } },
+                preview = summaryPreview(summary, loaded?.messages.orEmpty()),
+                updatedAt = listOf(dir.lastModified(), full.lastModified(), File(dir, "summary.md").lastModified()).maxOrNull() ?: dir.lastModified(),
+                messages = loaded?.messages?.size ?: 0,
+            )
+        }.getOrElse { error ->
+            ChatRecord(
+                id = dir.name,
+                title = customTitle.ifBlank { dir.name },
+                preview = error.message ?: "corrupted full.json",
+                updatedAt = dir.lastModified(),
+                messages = 0,
+                corrupted = true,
+                error = error.message ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun parseLoadedChat(raw: String, fallbackRepoFullName: String, fallbackChatId: String, fallbackUpdatedAt: Long): LoadedChat {
+        val obj = JSONObject(raw)
+        val messagesArr = obj.optJSONArray("messages") ?: JSONArray()
+        val messages = buildList<AiChatSessionStore.Message> {
+            for (i in 0 until messagesArr.length()) {
+                val item = messagesArr.optJSONObject(i) ?: continue
+                add(
+                    AiChatSessionStore.Message(
+                        role = item.optString("role", "assistant"),
+                        content = item.optString("content", ""),
+                        imageBase64 = item.optString("imageBase64", "").takeIf { it.isNotBlank() },
+                        isError = item.optBoolean("isError", false),
+                    ),
+                )
+            }
+        }
+        return LoadedChat(
+            chatId = obj.optString("chatId", fallbackChatId).ifBlank { fallbackChatId },
+            repoFullName = obj.optString("repoFullName", fallbackRepoFullName).ifBlank { fallbackRepoFullName },
+            branch = obj.optString("branch", ""),
+            providerId = obj.optString("providerId", ""),
+            modelId = obj.optString("modelId", ""),
+            createdAt = obj.optLong("createdAt", 0L).takeIf { it > 0L } ?: fallbackUpdatedAt,
+            updatedAt = obj.optLong("updatedAt", 0L).takeIf { it > 0L } ?: fallbackUpdatedAt,
+            messages = messages,
+        )
+    }
+
+    private fun summaryTitle(summary: String): String {
+        val lines = summary.lineSequence().map { it.trim() }.toList()
+        val mainTaskIndex = lines.indexOfFirst { it.equals("## Main task", ignoreCase = true) || it.equals("## Main task/topic", ignoreCase = true) }
+        if (mainTaskIndex >= 0) {
+            lines.drop(mainTaskIndex + 1).firstOrNull { it.isNotBlank() }?.let { return it.removePrefix("- ").take(80) }
+        }
+        return lines.firstOrNull { it.isNotBlank() }?.removePrefix("- ")?.take(80).orEmpty()
+    }
+
+    private fun summaryPreview(summary: String, messages: List<AiChatSessionStore.Message>): String {
+        return summary.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() && !it.startsWith("#") }
+            ?.take(80)
+            ?: messages.firstOrNull { it.role == "user" }?.content?.replace(Regex("\\s+"), " ")?.take(80)
+            ?: ""
+    }
+
+    private fun firstUserTitle(messages: List<AiChatSessionStore.Message>): String =
+        messages.firstOrNull { it.role == "user" }
+            ?.content
+            ?.replace(Regex("\\s+"), " ")
+            ?.trim()
+            ?.take(60)
+            ?.ifBlank { null }
+            ?: "Untitled chat"
 
     private fun ensureDefaults(context: Context, repoFullName: String) {
         memoryRoot(context).mkdirs()
