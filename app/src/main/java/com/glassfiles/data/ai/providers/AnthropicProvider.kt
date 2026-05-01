@@ -234,8 +234,13 @@ object AnthropicProvider : AiProvider {
                 "message_start" -> {
                     val usage = event.optJSONObject("message")?.optJSONObject("usage")
                     if (usage != null) {
-                        inputTokens = usage.optInt("input_tokens", inputTokens)
-                        outputTokens = usage.optInt("output_tokens", outputTokens)
+                        val parsed = parseAnthropicUsage(usage)
+                        if (parsed != null) {
+                            inputTokens = parsed.inputTokens
+                            outputTokens = parsed.outputTokens
+                            cacheCreationTokens = parsed.cacheCreationTokens
+                            cacheReadTokens = parsed.cacheReadTokens
+                        }
                     }
                 }
                 "message_delta" -> {
