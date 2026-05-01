@@ -300,8 +300,12 @@ object AnthropicProvider : AiProvider {
         AiToolTurn(
             assistantText = text.toString(),
             toolCalls = finishedCalls,
-            usage = AiTokenUsage(inputTokens = inputTokens, outputTokens = outputTokens)
-                .takeIf { it.totalTokens > 0 },
+            usage = AiTokenUsage(
+                inputTokens = inputTokens,
+                outputTokens = outputTokens,
+                cacheCreationTokens = cacheCreationTokens,
+                cacheReadTokens = cacheReadTokens,
+            ).takeIf { it.totalTokens > 0 },
         )
     }
 
