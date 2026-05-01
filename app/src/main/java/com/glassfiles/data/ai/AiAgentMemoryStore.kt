@@ -143,7 +143,7 @@ object AiAgentMemoryStore {
 
     fun memoryToolOutputHeader(toolName: String, pathOrQuery: String): String {
         val target = pathOrQuery.trim()
-        return if (target.isBlank()) "$ $toolName" else "$ $toolName $target"
+        return if (target.isBlank()) "${'$'} $toolName" else "${'$'} $toolName $target"
     }
 
     fun formatToolResult(toolName: String, target: String, detail: String, body: String = ""): String =
