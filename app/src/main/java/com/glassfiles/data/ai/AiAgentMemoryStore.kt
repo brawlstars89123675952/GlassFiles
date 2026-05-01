@@ -17,6 +17,10 @@ object AiAgentMemoryStore {
     private const val PROJECT_FILE = "project.md"
     private const val PREFERENCES_FILE = "preferences.md"
     private const val DECISIONS_FILE = "decisions.md"
+    /** Per-repo working memory file (BUGS_FIX.md Section 3). */
+    const val WORKING_MEMORY_FILE: String = "working_memory.md"
+    /** Hard cap on the working-memory blob we paste into the system prompt. */
+    private const val WORKING_MEMORY_PROMPT_BUDGET = 2_000
     private const val MAX_CONTEXT_CHARS = 18_000
     private const val MAX_SUMMARY_CHATS = 5
 
@@ -100,6 +104,7 @@ object AiAgentMemoryStore {
             MemoryFile("project", "project.md", File(repo, PROJECT_FILE).absolutePath, readProjectKnowledge(context, repoFullName)),
             MemoryFile("preferences", "preferences.md", globalPreferencesFile(context).absolutePath, readGlobalPreferences(context)),
             MemoryFile("decisions", "decisions.md", File(repo, DECISIONS_FILE).absolutePath, readDecisions(context, repoFullName)),
+            MemoryFile("working", WORKING_MEMORY_FILE, File(repo, WORKING_MEMORY_FILE).absolutePath, readWorkingMemory(context, repoFullName)),
         )
     }
 
@@ -109,12 +114,97 @@ object AiAgentMemoryStore {
             "project" -> File(repoDir(context, repoFullName), PROJECT_FILE)
             "preferences" -> globalPreferencesFile(context)
             "decisions" -> File(repoDir(context, repoFullName), DECISIONS_FILE)
+            "working" -> File(repoDir(context, repoFullName), WORKING_MEMORY_FILE)
             else -> return
         }
         file.parentFile?.mkdirs()
         file.writeText(content)
         AiAgentMemoryIndex.markDirtyAndRebuild(context, repoFullName)
     }
+
+    // region Working memory (BUGS_FIX.md Section 3)
+    /**
+     * Read the per-repo working_memory.md verbatim, returning empty string if
+     * the file does not exist. We don't [ensureDefaults] here because callers
+     * that just want to display the blob don't care whether the agent has
+     * written anything yet.
+     */
+    fun readWorkingMemory(context: Context, repoFullName: String): String {
+        if (repoFullName.isBlank()) return ""
+        val file = File(repoDir(context, repoFullName), WORKING_MEMORY_FILE)
+        return if (file.isFile) file.readText() else ""
+    }
+
+    /**
+     * Overwrite working_memory.md with [content]. Used by the agent
+     * (memory_write tool, normally) and by the manual "clear working memory"
+     * chat command.
+     */
+    fun writeWorkingMemory(context: Context, repoFullName: String, content: String) {
+        if (repoFullName.isBlank()) return
+        ensureDefaults(context, repoFullName)
+        val file = File(repoDir(context, repoFullName), WORKING_MEMORY_FILE)
+        file.parentFile?.mkdirs()
+        file.writeText(content)
+        AiAgentMemoryIndex.markDirtyAndRebuild(context, repoFullName)
+    }
+
+    /**
+     * Delete working_memory.md. No-op if it doesn't exist. The memory index
+     * is rebuilt regardless so any cached snippets disappear.
+     */
+    fun clearWorkingMemory(context: Context, repoFullName: String) {
+        if (repoFullName.isBlank()) return
+        val file = File(repoDir(context, repoFullName), WORKING_MEMORY_FILE)
+        if (file.isFile) file.delete()
+        AiAgentMemoryIndex.markDirtyAndRebuild(context, repoFullName)
+    }
+
+    /**
+     * Build the snippet that gets prepended to the system prompt. Empty if
+     * the file is missing OR contains only whitespace OR working memory is
+     * disabled in prefs (caller checks the toggle).
+     *
+     * If the file is larger than [WORKING_MEMORY_PROMPT_BUDGET] chars we
+     * keep the head (active task / currently-editing entries land at the
+     * top) and tail-trim the body. We never paste the whole 4-5 KB blob
+     * into the system prompt — see BUGS_FIX.md "Не подмешивать ВСЁ working
+     * memory если оно >2KB — обрезать до самых свежих entries".
+     */
+    fun workingMemoryPrompt(context: Context, repoFullName: String): String {
+        val raw = readWorkingMemory(context, repoFullName).trim()
+        if (raw.isEmpty()) return ""
+        val trimmed = if (raw.length <= WORKING_MEMORY_PROMPT_BUDGET) raw
+        else raw.substring(0, WORKING_MEMORY_PROMPT_BUDGET).trimEnd() + "\n…"
+        return buildString {
+            appendLine("## Working memory")
+            append(trimmed)
+        }
+    }
+
+    /**
+     * Count "Currently editing" entries in working_memory.md by counting
+     * level-3 (`### `) markdown headings inside the section. Used by the
+     * topbar `▸ N files` indicator (BUGS_FIX.md "$0.50 / 50k tok · ▸ 3
+     * files"). Returns 0 if the file is missing or the section is absent.
+     */
+    fun workingMemoryActiveFileCount(context: Context, repoFullName: String): Int {
+        val raw = readWorkingMemory(context, repoFullName)
+        if (raw.isBlank()) return 0
+        val lines = raw.lines()
+        var inSection = false
+        var count = 0
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.startsWith("## ")) {
+                inSection = trimmed.equals("## Currently editing", ignoreCase = true)
+                continue
+            }
+            if (inSection && trimmed.startsWith("### ")) count++
+        }
+        return count
+    }
+    // endregion
 
     fun clearAll(context: Context) {
         memoryRoot(context).deleteRecursively()
@@ -581,6 +671,14 @@ object AiAgentMemoryStore {
         if (!decisions.exists()) {
             decisions.writeText("# Decisions\n\n")
         }
+        // Seed an empty working memory skeleton so the agent and the
+        // memory-files dialog never have to handle a non-existent file —
+        // they just see a template with empty sections (BUGS_FIX.md
+        // Section 3 "Хранение" — exact structure).
+        val workingMemory = File(repo, WORKING_MEMORY_FILE)
+        if (!workingMemory.exists()) {
+            workingMemory.writeText(defaultWorkingMemory())
+        }
         val preferences = globalPreferencesFile(context)
         if (!preferences.exists()) {
             preferences.parentFile?.mkdirs()
@@ -684,6 +782,24 @@ object AiAgentMemoryStore {
         ## Workflow
 
         ## Tech preferences
+
+    """.trimIndent()
+
+    /**
+     * Skeleton working_memory.md as specified in BUGS_FIX.md Section 3
+     * "Хранение". Sections are intentionally empty — the agent fills them
+     * in via memory_write/memory_append as it edits files.
+     */
+    private fun defaultWorkingMemory(): String = """
+        # Working Memory
+
+        ## Active task
+
+        ## Currently editing
+
+        ## Completed in this task
+
+        ## Open questions
 
     """.trimIndent()
 

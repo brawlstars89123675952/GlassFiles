@@ -48,6 +48,13 @@ fun AgentTopBar(
     tokens: String? = null,
     autoApproveIndicator: String? = null,
     autoApproveTone: AgentAutoApproveTone = AgentAutoApproveTone.NEUTRAL,
+    /**
+     * Number of files in `Currently editing` of working_memory.md
+     * (BUGS_FIX.md Section 3 — `▸ N files` indicator). Renders as
+     * `▸ {n} files` next to the cost / tokens chip when greater than
+     * zero. Zero or null hides the chip entirely.
+     */
+    workingFiles: Int? = null,
     embedded: Boolean,
     running: Boolean,
     onBack: () -> Unit,
@@ -96,6 +103,16 @@ fun AgentTopBar(
             Spacer(Modifier.width(10.dp))
             if (cost != null || tokens != null) {
                 AgentCostChip(cost = cost, tokens = tokens)
+                Spacer(Modifier.width(6.dp))
+            }
+            if (workingFiles != null && workingFiles > 0) {
+                Text(
+                    text = "\u25B8 $workingFiles file" + if (workingFiles == 1) "" else "s",
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = AgentTerminal.type.label,
+                    lineHeight = 1.0.em,
+                )
                 Spacer(Modifier.width(6.dp))
             }
             if (!autoApproveIndicator.isNullOrBlank()) {
