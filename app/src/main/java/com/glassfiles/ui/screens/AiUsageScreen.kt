@@ -151,14 +151,25 @@ fun AiUsageScreen(onBack: () -> Unit) {
                         Strings.aiUsageFilesWritten,
                         summary.filesWrittenCount.toString(),
                     )
+                    AiModuleKeyValueRow(
+                        "reported usage",
+                        "${summary.reportedPercent}% · ${summary.reportedTokens} tok",
+                        valueColor = if (summary.reportedTokens > 0) colors.accent else colors.textMuted,
+                    )
                     if (summary.estimatedRecordCount > 0) {
                         AiModuleKeyValueRow(
                             Strings.aiUsageEstimated,
                             Strings.aiUsageEstimatedFmt
                                 .replace("{n}", summary.estimatedRecordCount.toString())
-                                .replace("{total}", summary.recordCount.toString()),
+                                .replace("{total}", summary.recordCount.toString()) + " · ${summary.estimatedTokens} tok",
                             valueColor = colors.warning,
                         )
+                    }
+                    summary.reportedCostUsd?.let {
+                        AiModuleKeyValueRow("reported cost", com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it), valueColor = colors.accent)
+                    }
+                    summary.estimatedCostUsd?.let {
+                        AiModuleKeyValueRow("estimated cost", com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it, estimated = true), valueColor = colors.warning)
                     }
                 }
                 item { UsageSectionHeader(Strings.aiUsageByProvider) }
