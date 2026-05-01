@@ -156,6 +156,10 @@ class AiUsageDatabase private constructor(context: Context) : SQLiteOpenHelper(
         return (rawTokens * factor).roundToInt().coerceAtLeast(0)
     }
 
+    fun clearUsage() {
+        writableDatabase.delete("message_usage", null, null)
+    }
+
     companion object {
         private const val DB_NAME = "ai_usage.db"
         private const val DB_VERSION = 1
