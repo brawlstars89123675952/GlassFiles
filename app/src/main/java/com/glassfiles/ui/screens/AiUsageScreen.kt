@@ -62,6 +62,7 @@ fun AiUsageScreen(onBack: () -> Unit) {
     var refreshTick by remember { mutableStateOf(0) }
     var confirmClear by remember { mutableStateOf(false) }
     val records = remember(refreshTick) { AiUsageStore.list(context) }
+    val calibrations = remember(refreshTick) { com.glassfiles.data.ai.usage.AiUsageDatabase.get(context).listCalibrations() }
     val summary = remember(records, window) { summarise(records, window) }
 
     AiModuleScreenScaffold(
