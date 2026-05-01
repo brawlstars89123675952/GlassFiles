@@ -133,6 +133,10 @@ data class AiToolTurn(
 data class AiTokenUsage(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
+    val cacheCreationTokens: Int = 0,
+    val cacheReadTokens: Int = 0,
+    val isComplete: Boolean = true,
 ) {
-    val totalTokens: Int get() = inputTokens + outputTokens
+    val totalTokens: Int get() = inputTokens + outputTokens + cacheCreationTokens + cacheReadTokens
+    val hasCacheHit: Boolean get() = cacheCreationTokens > 0 || cacheReadTokens > 0
 }
