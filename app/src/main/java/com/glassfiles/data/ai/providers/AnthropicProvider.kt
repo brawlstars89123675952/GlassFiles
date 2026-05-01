@@ -225,6 +225,8 @@ object AnthropicProvider : AiProvider {
         val finishedCalls = mutableListOf<AiToolCall>()
         var inputTokens = 0
         var outputTokens = 0
+        var cacheCreationTokens = 0
+        var cacheReadTokens = 0
 
         Http.iterateSse(conn) { data ->
             val event = runCatching { JSONObject(data) }.getOrNull() ?: return@iterateSse
