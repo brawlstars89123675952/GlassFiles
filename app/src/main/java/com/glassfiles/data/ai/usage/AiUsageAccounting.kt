@@ -59,14 +59,27 @@ object AiUsageAccounting {
         messages: List<AiMessage>,
         output: String,
         context: Context? = null,
-    ): AiUsageEstimate =
-        estimate(
-            providerId = providerId,
-            modelId = modelId,
+    ): AiUsageEstimate {
+        val tokenizer = TokenizerRegistry.forProvider(providerId, modelId)
+        val rawInputTokens = tokenizer.countMessages(messages)
+        val rawOutputTokens = tokenizer.countTokens(output)
+        val inputTokens = context?.let { AiUsageDatabase.get(it).calibratedTokenCount(providerId, modelId, rawInputTokens) }
+            ?: rawInputTokens
+        val outputTokens = context?.let { AiUsageDatabase.get(it).calibratedTokenCount(providerId, modelId, rawOutputTokens) }
+            ?: rawOutputTokens
+        val cost = ModelPricing.rateFor(providerId, modelId)?.let { rate ->
+            ModelPricing.estimateCostUsdFromTokens(rate, inputTokens, outputTokens)
+        }
+        return AiUsageEstimate(
             inputChars = messageChars(messages),
             outputChars = output.length,
-            context = context,
+            inputTokens = inputTokens,
+            outputTokens = outputTokens,
+            totalTokens = inputTokens + outputTokens,
+            costUsd = cost,
+            estimated = true,
         )
+    }
 
     fun appendEstimated(
         context: Context,
