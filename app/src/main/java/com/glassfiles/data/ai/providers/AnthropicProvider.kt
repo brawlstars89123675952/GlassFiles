@@ -246,7 +246,10 @@ object AnthropicProvider : AiProvider {
                 "message_delta" -> {
                     val usage = event.optJSONObject("usage")
                     if (usage != null) {
-                        outputTokens = usage.optInt("output_tokens", outputTokens)
+                        val parsed = parseAnthropicUsage(usage)
+                        if (parsed != null) {
+                            outputTokens = parsed.outputTokens
+                        }
                     }
                 }
                 "content_block_start" -> {
