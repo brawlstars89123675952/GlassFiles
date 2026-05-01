@@ -111,6 +111,10 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
     val costs = inWindow.mapNotNull { it.effectiveCostUsd() }
     val totalCostUsd = costs.takeIf { it.isNotEmpty() }?.sum()
     val estimated = inWindow.count { it.estimated }
+    val estimatedTokens = inWindow.filter { it.estimated }.sumOf { it.effectiveTotalTokens().toLong() }
+    val reportedTokens = inWindow.filterNot { it.estimated }.sumOf { it.effectiveTotalTokens().toLong() }
+    val estimatedCosts = inWindow.filter { it.estimated }.mapNotNull { it.effectiveCostUsd() }
+    val reportedCosts = inWindow.filterNot { it.estimated }.mapNotNull { it.effectiveCostUsd() }
     val toolCalls = inWindow.sumOf { it.toolCallsCount.toLong() }
     val read = inWindow.sumOf { it.filesReadCount.toLong() }
     val written = inWindow.sumOf { it.filesWrittenCount.toLong() }
