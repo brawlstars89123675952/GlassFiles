@@ -216,7 +216,7 @@ private fun WindowFlag(label: String, active: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun UsageSectionHeader(label: String) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     Column(Modifier.padding(top = 14.dp, bottom = 4.dp)) {
         Row(
             Modifier
