@@ -30,11 +30,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.*
 import com.glassfiles.ui.components.AiModuleGlyphAction
-import com.glassfiles.ui.components.AiModuleScreenScaffold
 import com.glassfiles.ui.components.aiModuleRepoBadge
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
@@ -162,14 +163,77 @@ internal fun GitHubScreenFrame(
     bottomBar: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
-    AiModuleScreenScaffold(
-        title = title,
-        subtitle = subtitle,
-        onBack = onBack,
-        trailing = trailing,
-        bottomBar = bottomBar,
-        content = content,
-    )
+    AiModuleSurface {
+        Column(Modifier.fillMaxSize().background(AiModuleTheme.colors.background)) {
+            GitHubPageBar(
+                title = title,
+                subtitle = subtitle,
+                onBack = onBack,
+                trailing = trailing,
+            )
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                content()
+            }
+            if (bottomBar != null) {
+                Box(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
+                    bottomBar()
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun GitHubPageBar(
+    title: String,
+    onBack: () -> Unit,
+    subtitle: String? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val colors = AiModuleTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.background)
+            .statusBarsPadding()
+            .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            GitHubTopBarAction(
+                glyph = GhGlyphs.BACK,
+                onClick = onBack,
+                tint = colors.textPrimary,
+                contentDescription = "back",
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = title,
+                color = colors.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = AiModuleTheme.type.topBarTitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.weight(1f))
+            if (trailing != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) { trailing() }
+            }
+        }
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                text = subtitle,
+                color = colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 46.dp, top = 1.dp),
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+    }
 }
 
 @Composable
@@ -211,6 +275,145 @@ internal fun GitHubTopBarTextAction(
             fontWeight = FontWeight.Medium,
             fontSize = 12.sp,
         )
+    }
+}
+
+@Composable
+internal fun GitHubTerminalButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    color: Color = AiModuleTheme.colors.textSecondary,
+    enabled: Boolean = true,
+) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(2.dp))
+            .border(1.dp, if (enabled) color else color.copy(alpha = 0.35f), RoundedCornerShape(2.dp))
+            .let { if (enabled) it.clickable(onClick = onClick) else it }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) color else color.copy(alpha = 0.35f),
+            fontFamily = JetBrainsMono,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
+
+@Composable
+internal fun GitHubTerminalTab(label: String, selected: Boolean, onClick: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    GitHubTerminalButton(
+        label = label.lowercase(Locale.US),
+        onClick = onClick,
+        color = if (selected) palette.accent else palette.textMuted,
+    )
+}
+
+@Composable
+internal fun GitHubTerminalTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    minHeight: androidx.compose.ui.unit.Dp = 44.dp,
+    singleLine: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    val palette = AiModuleTheme.colors
+    Box(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = minHeight)
+            .border(1.dp, palette.textMuted)
+            .background(palette.surface)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        if (value.isEmpty() && placeholder.isNotBlank()) {
+            Text(
+                placeholder,
+                color = palette.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            )
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+            ),
+            singleLine = singleLine,
+            maxLines = maxLines,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+internal fun GitHubTerminalCheckbox(
+    label: String,
+    checked: Boolean,
+    onToggle: () -> Unit,
+    enabled: Boolean = true,
+) {
+    val palette = AiModuleTheme.colors
+    val color = when {
+        !enabled -> palette.textMuted.copy(alpha = 0.5f)
+        checked -> GitHubSuccessGreen
+        else -> palette.textMuted
+    }
+    Row(
+        Modifier
+            .let { if (enabled) it.clickable(onClick = onToggle) else it }
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(if (checked) "[✓]" else "[ ]", color = color, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        Text(label.lowercase(Locale.US), color = color, fontFamily = JetBrainsMono, fontSize = 13.sp)
+    }
+}
+
+@Composable
+internal fun GitHubTerminalModal(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp)
+                .background(palette.background)
+                .border(1.dp, palette.accent)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                title,
+                color = palette.accent,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+            )
+            content()
+        }
     }
 }
 

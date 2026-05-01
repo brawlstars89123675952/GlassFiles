@@ -55,7 +55,7 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
 
     AiModuleSurface {
         Column(Modifier.fillMaxSize()) {
-            AiModulePageBar(
+            GitHubPageBar(
                 title = "> github",
                 subtitle = "sign in",
                 onBack = onBack,
@@ -232,7 +232,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> github",
             onBack = onBack,
             trailing = {

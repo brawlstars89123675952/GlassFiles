@@ -564,7 +564,7 @@ private fun ActionsRunsHistoryScreen(
         val palette = AiModuleTheme.colors
         Column(Modifier.fillMaxSize().background(palette.background)) {
             if (showTopBar) {
-                AiModulePageBar(
+                GitHubPageBar(
                     title = "> runs",
                     subtitle = "${visibleRuns.size} workflow runs",
                     onBack = onBack,
@@ -1069,14 +1069,16 @@ private fun ActionsOverviewHeader(
                         if (canWrite) {
                             val isActive = selectedWorkflow.state == "active"
                             if (isActive) {
-                                AiModuleDestructiveButton(
+                                GitHubTerminalButton(
                                     label = "disable",
                                     onClick = { onToggleWorkflowState(selectedWorkflow) },
+                                    color = palette.error,
                                 )
                             } else {
-                                AiModuleSecondaryButton(
+                                GitHubTerminalButton(
                                     label = "enable",
                                     onClick = { onToggleWorkflowState(selectedWorkflow) },
+                                    color = palette.accent,
                                 )
                             }
                         }
@@ -1089,16 +1091,18 @@ private fun ActionsOverviewHeader(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (latestRun != null) {
-                        AiModuleSecondaryButton(
+                        GitHubTerminalButton(
                             label = "latest #${latestRun.runNumber} \u2192",
                             onClick = onOpenLatestRun,
+                            color = palette.textSecondary,
                         )
                     }
                     Spacer(Modifier.weight(1f))
                     if (canWrite) {
-                        AiModulePrimaryButton(
-                            label = if (dispatching) "dispatching\u2026" else "\u23F5 ${Strings.ghRunWorkflow} \u2192",
+                        GitHubTerminalButton(
+                            label = if (dispatching) "dispatching..." else "▶ run →",
                             onClick = onDispatch,
+                            color = palette.accent,
                             enabled = !dispatching &&
                                 workflows.isNotEmpty() &&
                                 dispatchSchema != null &&
@@ -1661,38 +1665,30 @@ private fun ArtifactRunRow(
     onDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceWhite).padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.surface).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Row(
-            Modifier.weight(1f).clickable(enabled = !artifact.expired && !downloading, onClick = onDownload),
+            Modifier.fillMaxWidth().clickable(enabled = !artifact.expired && !downloading, onClick = onDownload),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Rounded.Article, null, Modifier.size(20.dp), tint = if (artifact.expired) TextTertiary else Blue)
-            Column(Modifier.weight(1f)) {
-                Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    artifactKindBadges(artifact).forEach { (label, color) -> MiniActionsBadge(label, color) }
-                    MiniActionsBadge(formatArtifactSize(artifact.sizeInBytes), TextSecondary)
-                    if (artifact.sizeInBytes <= 0L) MiniActionsBadge("suspect", Orange)
-                    if (artifact.expired) MiniActionsBadge(Strings.ghExpired, Red)
-                    else MiniActionsBadge(artifact.createdAt.take(10), TextSecondary)
-                }
+            Text("▸", color = if (artifact.expired) palette.textMuted else palette.accent, fontFamily = JetBrainsMono, fontSize = 13.sp)
+            Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) palette.textMuted else palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (!artifact.expired) {
+                GitHubTerminalButton("⧉ copy", onClick = onCopyName, color = palette.textSecondary)
+                GitHubTerminalButton(if (deleting) "deleting..." else "× delete", onClick = onDelete, color = palette.error, enabled = !deleting)
             }
+            if (downloading) Text("⠋", fontSize = 13.sp, fontFamily = JetBrainsMono, color = palette.accent)
         }
-        if (!artifact.expired) {
-            IconButton(onClick = onCopyName) {
-                Icon(Icons.Rounded.ContentCopy, null, tint = TextSecondary)
-            }
-            IconButton(onClick = onDelete) {
-                if (deleting) CircularProgressIndicator(Modifier.size(16.dp), color = Red, strokeWidth = 2.dp)
-                else Icon(Icons.Rounded.Delete, null, tint = Red)
-            }
-        }
-        if (downloading) CircularProgressIndicator(Modifier.size(18.dp), color = Blue, strokeWidth = 2.dp)
+        Text(
+            listOf(formatArtifactSize(artifact.sizeInBytes), artifact.createdAt.take(10)).filter { it.isNotBlank() }.joinToString(" · "),
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            color = palette.textMuted,
+        )
     }
 }
 
@@ -1731,14 +1727,8 @@ private fun EmptyActionsText(text: String) {
 
 @Composable
 private fun LoadingActionsText(text: String) {
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        CircularProgressIndicator(Modifier.size(16.dp), color = Blue, strokeWidth = 2.dp)
-        Spacer(Modifier.width(8.dp))
-        Text(text, fontSize = 13.sp, color = TextTertiary)
+    Box(Modifier.fillMaxWidth().border(1.dp, AiModuleTheme.colors.border).background(AiModuleTheme.colors.surface).padding(18.dp), contentAlignment = Alignment.Center) {
+        Text("⠋ ${text.lowercase()}", fontSize = 13.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
     }
 }
 
@@ -2269,7 +2259,7 @@ internal fun WorkflowRunDetailScreen(
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> ${run?.name?.ifBlank { "run" } ?: "run"} #${run?.runNumber ?: runId}",
             subtitle = run?.let { displayRunStatus(it) },
             onBack = onBack,
@@ -2651,12 +2641,13 @@ internal fun WorkflowRunDetailScreen(
                         item {
                             Spacer(Modifier.height(8.dp))
                             Row(
-                                Modifier.fillMaxWidth(),
+                                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(Strings.ghArtifacts, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                                TextButton(
+                                Text("▸ artifacts", fontSize = 16.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, color = TextPrimary)
+                                GitHubTerminalButton(
+                                    label = if (downloadingAllArtifacts) "⠋ downloading" else "↓ download all",
                                     enabled = !downloadingAllArtifacts && artifacts.any { !it.expired },
                                     onClick = {
                                         downloadingAllArtifacts = true
@@ -2669,17 +2660,15 @@ internal fun WorkflowRunDetailScreen(
                                             downloadingAllArtifacts = false
                                             Toast.makeText(context, "${Strings.done}: $count/${artifacts.count { !it.expired }}", Toast.LENGTH_SHORT).show()
                                         }
-                                    }
-                                ) {
-                                    if (downloadingAllArtifacts) CircularProgressIndicator(Modifier.size(14.dp), color = Blue, strokeWidth = 2.dp)
-                                    else Text("Download all", color = Blue, fontSize = 12.sp)
-                                }
-                                TextButton(
+                                    },
+                                    color = Blue,
+                                )
+                                GitHubTerminalButton(
+                                    label = "↗ publish release",
                                     enabled = artifacts.any { !it.expired },
-                                    onClick = { showPublishRelease = true }
-                                ) {
-                                    Text("Publish release", color = Green, fontSize = 12.sp)
-                                }
+                                    onClick = { showPublishRelease = true },
+                                    color = Green,
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
                         }
@@ -3049,16 +3038,12 @@ private fun defaultReleaseBody(run: GHWorkflowRun, artifacts: List<GHArtifact>):
 
 @Composable
 private fun WorkflowUsageCard(usage: GHActionsUsage) {
-    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.Timeline, null, tint = Blue, modifier = Modifier.size(18.dp))
-            Text("Usage", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MiniActionsBadge("duration ${formatDuration(usage.runDurationMs)}", Blue)
-            usage.billableMs.forEach { (os, ms) ->
-                MiniActionsBadge("$os ${formatDuration(ms)}", TextSecondary)
-            }
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("▸ usage", fontSize = 15.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
+        Text("duration: ${formatDuration(usage.runDurationMs)}", fontSize = 12.sp, fontFamily = JetBrainsMono, color = palette.textSecondary)
+        usage.billableMs.forEach { (os, ms) ->
+            Text("${os.lowercase().padEnd(8)}: ${formatDuration(ms)}", fontSize = 12.sp, fontFamily = JetBrainsMono, color = palette.textSecondary)
         }
     }
 }
@@ -3077,11 +3062,12 @@ private fun AttemptSelector(maxAttempt: Int, selectedAttempt: Int, onSelect: (In
 
 @Composable
 private fun RunDangerActionsCard(onDeleteLogs: () -> Unit, onDeleteRun: () -> Unit) {
-    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Run management", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("run management", fontSize = 15.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip(Icons.Rounded.Delete, "Delete logs", Orange) { onDeleteLogs() }
-            Chip(Icons.Rounded.Delete, "Delete run", Red) { onDeleteRun() }
+            GitHubTerminalButton("× delete logs", onClick = onDeleteLogs, color = palette.error)
+            GitHubTerminalButton("× delete run", onClick = onDeleteRun, color = palette.error)
         }
     }
 }
@@ -3140,20 +3126,19 @@ private fun CheckRunsCard(
     annotations: Map<Long, List<GHCheckAnnotation>>,
     onLoadAnnotations: (GHCheckRun) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.CheckCircle, null, tint = Blue, modifier = Modifier.size(18.dp))
-            Text("Checks and annotations", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
-        }
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("✓ checks and annotations", fontSize = 15.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
         checkRuns.forEach { checkRun ->
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val checkName = cleanGithubText(checkRun.name)
                     val checkTitle = cleanGithubText(checkRun.title)
                     MiniActionsBadge(displayCheckStatus(checkRun), checkStatusColor(checkRun))
-                    Text(checkName.ifBlank { checkTitle.ifBlank { "Check run" } }, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("▸ ${checkName.ifBlank { checkTitle.ifBlank { "build" } }}", fontSize = 13.sp, fontFamily = JetBrainsMono, color = palette.textPrimary, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("annotations: ${checkRun.annotationsCount}", fontSize = 11.sp, fontFamily = JetBrainsMono, color = palette.textMuted)
                     if (checkRun.annotationsCount > 0 && annotations[checkRun.id] == null) {
-                        TextButton(onClick = { onLoadAnnotations(checkRun) }) { Text("Annotations ${checkRun.annotationsCount}", color = Blue, fontSize = 11.sp) }
+                        GitHubTerminalButton("load", onClick = { onLoadAnnotations(checkRun) }, color = palette.accent)
                     }
                 }
                 cleanGithubText(checkRun.title).takeIf { it.isNotBlank() }?.let { title ->

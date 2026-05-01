@@ -709,7 +709,7 @@ private fun GitHubEditorTopBar(
     onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
     val palette = AiModuleTheme.colors
-    AiModulePageBar(
+    GitHubPageBar(
         title = "> ${fileName}",
         subtitle = subtitle,
         onBack = onBack,

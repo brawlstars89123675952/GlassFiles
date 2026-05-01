@@ -426,7 +426,7 @@ private fun RepoSettingsTopBar(
     onBack: () -> Unit,
     onRefresh: () -> Unit
 ) {
-    AiModulePageBar(
+    GitHubPageBar(
         title = title,
         subtitle = subtitle.ifBlank { null },
         onBack = onBack,
@@ -451,8 +451,8 @@ private fun GeneralTab(
     }
 
     var name by remember(general) { mutableStateOf(general.name) }
-    var description by remember(general) { mutableStateOf(general.description) }
-    var homepage by remember(general) { mutableStateOf(general.homepage) }
+    var description by remember(general) { mutableStateOf(settingsBlankNull(general.description)) }
+    var homepage by remember(general) { mutableStateOf(settingsBlankNull(general.homepage)) }
     var defaultBranch by remember(general) { mutableStateOf(general.defaultBranch) }
     var archived by remember(general) { mutableStateOf(general.archived) }
     var hasIssues by remember(general) { mutableStateOf(general.hasIssues) }
@@ -469,40 +469,46 @@ private fun GeneralTab(
     ) {
         item {
             SettingsCard {
-                Text("Identity", color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                SettingsInfo("Owner", general.owner)
-                SettingsInfo("Visibility", general.visibility)
+                Text("> ${general.name}", color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                Text("${general.defaultBranch} · ${general.visibility.ifBlank { "unknown" }} · 0 topics · 0 tags", color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
                 Spacer(Modifier.height(6.dp))
-                AiModuleTextField(name, { name = it }, label = "Repository name")
+                SettingsInfo("owner", general.owner)
+                SettingsInfo("visibility", general.visibility)
+                Spacer(Modifier.height(6.dp))
+                Text("repository name", color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                GitHubTerminalTextField(name, { name = it }, singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                AiModuleTextField(description, { description = it }, label = "Description", maxLines = 4)
+                Text("description", color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                GitHubTerminalTextField(description, { description = it }, placeholder = "empty", maxLines = 4)
                 Spacer(Modifier.height(8.dp))
-                AiModuleTextField(homepage, { homepage = it }, label = "Homepage")
+                Text("homepage url", color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                GitHubTerminalTextField(homepage, { homepage = it }, placeholder = "empty", singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                AiModuleTextField(defaultBranch, { defaultBranch = it }, label = "Default branch")
+                Text("default branch", color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                GitHubTerminalTextField(defaultBranch, { defaultBranch = it }, singleLine = true)
             }
         }
         item {
             SettingsCard {
-                Text("Features", color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                SettingsSwitchRow("Issues", hasIssues) { hasIssues = it }
+                Text("features", color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                SettingsSwitchRow("issues", hasIssues) { hasIssues = it }
                 DividerMini()
-                SettingsSwitchRow("Projects", hasProjects) { hasProjects = it }
+                SettingsSwitchRow("projects", hasProjects) { hasProjects = it }
                 DividerMini()
-                SettingsSwitchRow("Wiki", hasWiki) { hasWiki = it }
+                SettingsSwitchRow("wiki", hasWiki) { hasWiki = it }
                 DividerMini()
-                SettingsSwitchRow("Discussions", hasDiscussions) { hasDiscussions = it }
+                SettingsSwitchRow("discussions", hasDiscussions) { hasDiscussions = it }
                 DividerMini()
-                SettingsSwitchRow("Allow forking", allowForking) { allowForking = it }
+                SettingsSwitchRow("allow forking", allowForking) { allowForking = it }
                 DividerMini()
-                SettingsSwitchRow("Require signoff on web commits", webCommitSignoffRequired) { webCommitSignoffRequired = it }
+                SettingsSwitchRow("require signoff on web commits", webCommitSignoffRequired) { webCommitSignoffRequired = it }
                 DividerMini()
-                SettingsSwitchRow("Archived", archived) { archived = it }
+                SettingsSwitchRow("archived", archived) { archived = it }
             }
         }
         item {
-            AiModulePillButton(
-                label = "${GhGlyphs.SAVE}  save general settings",
+            GitHubTerminalButton(
+                label = "save general settings",
                 onClick = {
                     onSave(
                         general.copy(
@@ -538,10 +544,7 @@ private fun AccessTab(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            AiModulePillButton(
-                label = "${GhGlyphs.PLUS}  add collaborator",
-                onClick = onAdd,
-            )
+            GitHubTerminalButton("add collaborator", onClick = onAdd, color = AiModuleTheme.colors.accent, modifier = Modifier.fillMaxWidth())
         }
         if (collaborators.isEmpty()) {
             item { EmptyCard("No collaborators returned or token has no access.") }
@@ -582,10 +585,7 @@ private fun VariablesTab(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            AiModulePillButton(
-                label = "${GhGlyphs.PLUS}  add variable",
-                onClick = onAdd,
-            )
+            GitHubTerminalButton("add variable", onClick = onAdd, color = AiModuleTheme.colors.accent, modifier = Modifier.fillMaxWidth())
         }
         if (variables.isEmpty()) {
             item { EmptyCard("No repository variables found.") }
@@ -673,10 +673,7 @@ private fun WebhooksTab(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            AiModulePillButton(
-                label = "${GhGlyphs.PLUS}  add webhook",
-                onClick = onAdd,
-            )
+            GitHubTerminalButton("add webhook", onClick = onAdd, color = AiModuleTheme.colors.accent, modifier = Modifier.fillMaxWidth())
         }
         if (hooks.isEmpty()) {
             item { EmptyCard("No repository webhooks found.") }
@@ -689,9 +686,9 @@ private fun WebhooksTab(
                     Text("Content type: ${hook.contentType} • active=${hook.active}", color = AiModuleTheme.colors.textMuted, fontSize = 11.sp)
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SmallOutlineButton("Edit", AiModuleTheme.colors.accent) { onEdit(hook) }
-                        SmallOutlineButton("Ping", Color(0xFF34C759)) { onPing(hook) }
-                        SmallOutlineButton("Delete", Color(0xFFFF3B30)) { onDelete(hook) }
+                        SmallOutlineButton("edit", AiModuleTheme.colors.accent) { onEdit(hook) }
+                        SmallOutlineButton("ping", GitHubSuccessGreen) { onPing(hook) }
+                        SmallOutlineButton("× delete", GitHubErrorRed) { onDelete(hook) }
                     }
                 }
             }
@@ -801,7 +798,7 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, AiModuleTheme.colors.border)
             .background(AiModuleTheme.colors.surface)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -812,18 +809,22 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun SettingsInfo(label: String, value: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = AiModuleTheme.colors.textSecondary, fontSize = 12.sp, modifier = Modifier.widthIn(min = 120.dp))
-        Text(value.ifBlank { "—" }, color = AiModuleTheme.colors.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, modifier = Modifier.widthIn(min = 120.dp))
+        Text(settingsBlankNull(value).ifBlank { "—" }, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, color = AiModuleTheme.colors.textPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = AiModuleTheme.colors.accent))
-    }
+    GitHubTerminalCheckbox(
+        label = label,
+        checked = checked,
+        onToggle = { onCheckedChange(!checked) },
+    )
 }
+
+private fun settingsBlankNull(value: String): String =
+    value.trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty()
 
 @Composable
 private fun DividerMini() {
@@ -846,16 +847,7 @@ private fun EmptyCard(text: String) {
 
 @Composable
 private fun SmallOutlineButton(label: String, color: Color, onClick: () -> Unit) {
-    Box(
-        Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .border(1.dp, color.copy(0.35f), RoundedCornerShape(8.dp))
-            .background(color.copy(0.08f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-    }
+    GitHubTerminalButton(label, onClick = onClick, color = color)
 }
 
 @Composable

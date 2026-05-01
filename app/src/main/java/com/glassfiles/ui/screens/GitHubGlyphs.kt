@@ -37,7 +37,7 @@ internal object GhGlyphs {
     const val PSYCHOLOGY = "*"
 
     // GitHub object glyphs (from AiModuleStatusGlyph but inline-friendly)
-    const val PR = "\u26A1"             // ⚡  not used; keep PR_OPEN/etc.
+    const val PR = "\u26A1"             // not used; keep PR_OPEN/etc.
     const val PR_OPEN = "PR"
     const val ISSUE_OPEN = "ISS"
     const val COMMIT = "C"

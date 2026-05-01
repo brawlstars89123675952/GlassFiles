@@ -211,7 +211,7 @@ internal fun StarredScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
         loading = false
     }
 
-    AiModuleScreenScaffold(
+    GitHubScreenFrame(
         title = "> ${Strings.ghStarredRepos.lowercase()}",
         onBack = onBack,
         subtitle = if (loading) "loading…" else "${repos.size} starred",
@@ -263,7 +263,7 @@ internal fun OrgsScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
     }
 
     if (selectedOrg != null) {
-        AiModuleScreenScaffold(
+        GitHubScreenFrame(
             title = "@${selectedOrg!!.login}",
             onBack = { selectedOrg = null; orgRepos = emptyList() },
             subtitle = if (loadingRepos) "loading repos…" else "${orgRepos.size} repositories",
@@ -290,7 +290,7 @@ internal fun OrgsScreen(onBack: () -> Unit, onRepoClick: (GHRepo) -> Unit) {
         return
     }
 
-    AiModuleScreenScaffold(
+    GitHubScreenFrame(
         title = "> ${Strings.ghOrganizations.lowercase()}",
         onBack = onBack,
         subtitle = if (loading) "loading…" else "${orgs.size} orgs",

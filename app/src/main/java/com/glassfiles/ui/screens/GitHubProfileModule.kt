@@ -76,7 +76,7 @@ fun ProfileScreen(
     val palette = AiModuleTheme.colors
     val cachedSelf = GitHubManager.getCachedUser(context)?.login
 
-    AiModuleScreenScaffold(
+    GitHubScreenFrame(
         title = "@$username",
         onBack = onBack,
         subtitle = profile?.let { "profile · ${formatGitHubNumber(it.publicRepos)} repos" }

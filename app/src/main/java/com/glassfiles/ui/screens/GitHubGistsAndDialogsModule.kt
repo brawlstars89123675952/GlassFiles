@@ -83,7 +83,7 @@ internal fun GistsScreen(
         if (viewingGist != null) {
             val current = viewingGist!!
             Column(Modifier.fillMaxSize().background(palette.background)) {
-                AiModulePageBar(
+                GitHubPageBar(
                     title = "> ${current.description.ifBlank { "gist" }.lowercase()}",
                     subtitle = "${current.files.size} file${if (current.files.size == 1) "" else "s"}",
                     onBack = { viewingGist = null; gistContent = emptyMap() },
@@ -146,7 +146,7 @@ internal fun GistsScreen(
         }
 
         Column(Modifier.fillMaxSize().background(palette.background)) {
-            AiModulePageBar(
+            GitHubPageBar(
                 title = "> gists",
                 subtitle = if (loading) "loading…" else "${gists.size} gist${if (gists.size == 1) "" else "s"}",
                 onBack = onBack,

@@ -74,7 +74,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
 
     val palette = AiModuleTheme.colors
 
-    AiModuleScreenScaffold(
+    GitHubScreenFrame(
         title = "> notifications",
         onBack = onBack,
         subtitle = if (showAll) "scope: all" else "scope: unread",

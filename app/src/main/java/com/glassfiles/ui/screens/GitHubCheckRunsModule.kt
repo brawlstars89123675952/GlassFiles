@@ -53,7 +53,7 @@ internal fun CheckRunsScreen(
         loading = false
     }
 
-    AiModuleScreenScaffold(
+    GitHubScreenFrame(
         title = "> check runs",
         onBack = onBack,
         subtitle = "$repoOwner/$repoName · $ref",

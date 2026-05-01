@@ -123,6 +123,9 @@ internal fun RepoDetailScreen(
     var fileContent by remember { mutableStateOf<String?>(null) }; var openedFile by remember { mutableStateOf<GHContent?>(null) }; var editingFile by remember { mutableStateOf<GHContent?>(null) }
     var repoQuery by rememberSaveable(repo.fullName) { mutableStateOf("") }
     var cloneProgress by remember { mutableStateOf<String?>(null) }; var isStarred by remember { mutableStateOf(false) }
+    var isWatching by remember { mutableStateOf(false) }
+    var showRepoOverflow by remember { mutableStateOf(false) }
+    var repoReloadNonce by remember { mutableIntStateOf(0) }
     var selectedBranch by rememberSaveable(repo.fullName) { mutableStateOf(repo.defaultBranch) }
     val childCache = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, List<GHContent>>() }
     var expandedPaths by rememberSaveable(
@@ -195,6 +198,7 @@ internal fun RepoDetailScreen(
             showCreatePR -> showCreatePR = false
             showBranchPicker -> showBranchPicker = false
             showDispatch -> showDispatch = false
+            showRepoOverflow -> showRepoOverflow = false
             deleteTarget != null -> deleteTarget = null
             editingFile != null -> {
                 editingFile = null
@@ -224,8 +228,12 @@ internal fun RepoDetailScreen(
     }
     BackHandler(onBack = ::handleRepoBack)
 
-    LaunchedEffect(Unit) { isStarred = GitHubManager.isStarred(context, repo.owner, repo.name); branches = GitHubManager.getBranches(context, repo.owner, repo.name) }
-    LaunchedEffect(selectedTab, currentPath, selectedBranch, readmeReloadNonce) { loading = true; when (selectedTab) {
+    LaunchedEffect(Unit) {
+        isStarred = GitHubManager.isStarred(context, repo.owner, repo.name)
+        isWatching = GitHubManager.isWatching(context, repo.owner, repo.name)
+        branches = GitHubManager.getBranches(context, repo.owner, repo.name)
+    }
+    LaunchedEffect(selectedTab, currentPath, selectedBranch, readmeReloadNonce, repoReloadNonce) { loading = true; when (selectedTab) {
         RepoTab.FILES -> {
             val rootItems = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch)
             contents = rootItems
@@ -376,7 +384,7 @@ internal fun RepoDetailScreen(
         AiModuleSurface {
             val loadingPalette = AiModuleTheme.colors
             Column(Modifier.fillMaxSize().background(loadingPalette.background)) {
-                AiModulePageBar(
+                GitHubPageBar(
                     title = "> ${safeEditingFile.name}",
                     subtitle = "loading editor…",
                     onBack = {
@@ -414,7 +422,7 @@ internal fun RepoDetailScreen(
         AiModuleSurface {
         val viewerPalette = AiModuleTheme.colors
         Column(Modifier.fillMaxSize().background(viewerPalette.background)) {
-            AiModulePageBar(
+            GitHubPageBar(
                 title = "> ${safeOpenedFile.name}",
                 subtitle = if (ext.isNotBlank()) "${cachedLines.size} lines · ${safeFileContent.length} chars · ${ext.uppercase()}" else "${cachedLines.size} lines · ${safeFileContent.length} chars",
                 onBack = {
@@ -512,89 +520,104 @@ internal fun RepoDetailScreen(
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> ${repo.name}",
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
             onBack = ::handleRepoBack,
             trailing = {
                 if (onOpenAiAgent != null) {
-                    AiModuleGlyphAction(
+                    GitHubTopBarAction(
                         glyph = GhGlyphs.AI,
                         onClick = { onOpenAiAgent(repo.fullName, selectedBranch, null) },
                         tint = palette.accent,
                         contentDescription = "ai agent",
                     )
                 }
-                AiModuleGlyphAction(
-                    glyph = if (isStarred) GhGlyphs.STAR_ON else GhGlyphs.STAR_OFF,
-                    onClick = {
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.REFRESH,
+                    onClick = { repoReloadNonce++ },
+                    tint = palette.accent,
+                    contentDescription = "refresh",
+                )
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.MORE,
+                    onClick = { showRepoOverflow = !showRepoOverflow },
+                    tint = palette.accent,
+                    contentDescription = "more",
+                )
+            },
+        )
+        if (showRepoOverflow) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(palette.background)
+                    .border(1.dp, palette.border)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GitHubTerminalButton(if (isStarred) "\u2605 unstar" else "\u2606 star", {
                         scope.launch {
                             if (isStarred) GitHubManager.unstarRepo(context, repo.owner, repo.name)
                             else GitHubManager.starRepo(context, repo.owner, repo.name)
                             isStarred = !isStarred
+                            showRepoOverflow = false
                         }
-                    },
-                    tint = if (isStarred) palette.warning else palette.textSecondary,
-                    contentDescription = "star",
-                )
-                if (canAdmin) {
-                    AiModuleGlyphAction(
-                        glyph = GhGlyphs.SETTINGS,
-                        onClick = { showRepoSettings = true },
-                        tint = palette.textSecondary,
-                        contentDescription = "settings",
-                    )
-                }
-                AiModuleGlyphAction(
-                    glyph = GhGlyphs.COMPARE,
-                    onClick = { showCompare = true },
-                    tint = palette.accent,
-                    contentDescription = "compare",
-                )
-                AiModuleGlyphAction(
-                    glyph = GhGlyphs.FORK,
-                    onClick = {
+                    }, color = if (isStarred) palette.warning else palette.textSecondary)
+                    GitHubTerminalButton(if (isWatching) "\u25C9 unwatch" else "\u25CE watch", {
+                        scope.launch {
+                            val ok = if (isWatching) GitHubManager.unwatchRepo(context, repo.owner, repo.name)
+                            else GitHubManager.watchRepo(context, repo.owner, repo.name)
+                            if (ok) isWatching = !isWatching
+                            showRepoOverflow = false
+                        }
+                    }, color = palette.textSecondary)
+                    GitHubTerminalButton("\u2442 fork", {
                         scope.launch {
                             val ok = GitHubManager.forkRepo(context, repo.owner, repo.name)
                             Toast.makeText(context, if (ok) Strings.ghForked else Strings.error, Toast.LENGTH_SHORT).show()
+                            showRepoOverflow = false
                         }
-                    },
-                    tint = palette.accent,
-                    contentDescription = "fork",
-                )
-                AiModuleGlyphAction(
-                    glyph = GhGlyphs.DOWNLOAD,
-                    onClick = {
-                        cloneProgress = "Starting..."
+                    }, color = palette.accent)
+                    GitHubTerminalButton("\u2193 download zip", {
+                        cloneProgress = "starting"
                         scope.launch {
                             val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git")
-                            val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it }
+                            val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it.lowercase() }
                             Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                             cloneProgress = null
+                            showRepoOverflow = false
                         }
-                    },
-                    tint = palette.accent,
-                    fontSize = 12.sp,
-                    contentDescription = "clone",
-                )
-                if (onMinimize != null) {
-                    AiModuleGlyphAction(
-                        glyph = GhGlyphs.PIP,
-                        onClick = onMinimize,
-                        tint = palette.textSecondary,
-                        contentDescription = "minimize",
-                    )
+                    }, color = palette.accent)
+                    if (onMinimize != null) {
+                        GitHubTerminalButton("\u229F floating window", {
+                            showRepoOverflow = false
+                            onMinimize()
+                        }, color = palette.textSecondary)
+                    }
                 }
-                if (onClose != null) {
-                    AiModuleGlyphAction(
-                        glyph = GhGlyphs.CLOSE,
-                        onClick = onClose,
-                        tint = palette.error,
-                        contentDescription = "close",
-                    )
+                Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (canAdmin) {
+                        GitHubTerminalButton("settings", {
+                            showRepoOverflow = false
+                            showRepoSettings = true
+                        }, color = palette.textSecondary)
+                    }
+                    GitHubTerminalButton("compare", {
+                        showRepoOverflow = false
+                        showCompare = true
+                    }, color = palette.accent)
+                    if (onClose != null) {
+                        GitHubTerminalButton("\u00D7 close repo", {
+                            showRepoOverflow = false
+                            onClose()
+                        }, color = palette.error)
+                    }
                 }
-            },
-        )
+            }
+        }
         if (!canWrite && repo.permissions != null) {
             Row(
                 Modifier.fillMaxWidth()
@@ -604,7 +627,7 @@ internal fun RepoDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "\u26A0  read-only",
+                    "! read-only",
                     color = palette.warning,
                     fontFamily = JetBrainsMono,
                     fontSize = 11.sp,
@@ -620,7 +643,7 @@ internal fun RepoDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "\u23F3  cloning: ${cloneProgress!!}",
+                    "\u25B8 cloning: ${cloneProgress!!}",
                     color = palette.warning,
                     fontFamily = JetBrainsMono,
                     fontSize = 11.sp,
@@ -1025,13 +1048,14 @@ internal fun FilesTab(
                             start = (12 + (row.parentLines.size + 1) * 18).dp,
                             top = 4.dp,
                             bottom = 6.dp,
-                        ),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        )
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Chip(Icons.Rounded.Visibility, "view") { onFileClick(item) }
-                    if (canWrite) Chip(Icons.Rounded.Edit, Strings.ghEditFile.lowercase()) { onEdit(item) }
-                    Chip(Icons.Rounded.Download, Strings.ghDownloadFile.lowercase()) { onDownload(item) }
-                    if (canWrite) Chip(Icons.Rounded.Delete, Strings.ghDeleteFile.lowercase(), palette.error) { onDelete(item) }
+                    GitHubTerminalButton("view", onClick = { onFileClick(item) }, color = palette.accent)
+                    if (canWrite) GitHubTerminalButton("edit", onClick = { onEdit(item) }, color = palette.textSecondary)
+                    GitHubTerminalButton("↓ download", onClick = { onDownload(item) }, color = palette.textSecondary)
+                    if (canWrite) GitHubTerminalButton("× delete", onClick = { onDelete(item) }, color = palette.error)
                 }
             }
         }
@@ -1150,18 +1174,18 @@ internal fun PullsTab(
                     }
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(start = 38.dp).horizontalScroll(rememberScrollState())) {
-                        Chip(Icons.Rounded.Visibility, "Details") { onOpenDetail(pr) }
-                        Chip(Icons.Rounded.Article, "Files") { onFilesClick(pr.number) }
-                        Chip(Icons.Rounded.RateReview, "Review") { reviewTarget = pr }
-                        Chip(Icons.Rounded.FactCheck, "Checks") { checkRunTarget = pr }
+                        GitHubTerminalButton("details", onClick = { onOpenDetail(pr) }, color = AiModuleTheme.colors.accent)
+                        GitHubTerminalButton("files", onClick = { onFilesClick(pr.number) }, color = AiModuleTheme.colors.textSecondary)
+                        GitHubTerminalButton("review", onClick = { reviewTarget = pr }, color = AiModuleTheme.colors.textSecondary)
+                        GitHubTerminalButton("checks", onClick = { checkRunTarget = pr }, color = AiModuleTheme.colors.textSecondary)
                         if (pr.state == "open" && !pr.merged && !pr.draft) {
-                            Chip(Icons.Rounded.CallMerge, Strings.ghMerge, GitHubSuccessGreen) {
+                            GitHubTerminalButton("merge", color = GitHubSuccessGreen, onClick = {
                                 scope.launch {
                                     val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
                                     Toast.makeText(context, if (ok) Strings.ghMerged else Strings.error, Toast.LENGTH_SHORT).show()
                                     if (ok) onRefresh()
                                 }
-                            }
+                            })
                         }
                     }
                 }
@@ -1248,7 +1272,7 @@ private fun PullRequestDetailScreen(
     AiModuleSurface {
     val prPalette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(prPalette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> pr #$pullNumber",
             subtitle = repo.name,
             onBack = onBack,
@@ -1336,41 +1360,42 @@ private fun PullRequestDetailScreen(
             item {
                 val canWrite = repo.canWrite()
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(
-                        Icons.Rounded.AutoAwesome,
-                        if (aiSummaryLoading) Strings.aiSummaryLoading else Strings.aiSummary,
-                        Blue,
-                    ) {
-                        if (aiSummaryLoading) return@Chip
-                        aiSummaryShown = true
-                        aiSummaryError = null
-                        if (aiSummary == null) {
-                            aiSummaryLoading = true
-                            scope.launch {
-                                try {
-                                    aiSummary = generatePullRequestSummary(
-                                        context = context,
-                                        pr = current,
-                                        files = files,
-                                    )
-                                } catch (e: Exception) {
-                                    aiSummaryError = e.message ?: e.javaClass.simpleName
-                                } finally {
-                                    aiSummaryLoading = false
+                    GitHubTerminalButton(
+                        label = if (aiSummaryLoading) "loading summary" else "ai summary",
+                        color = Blue,
+                        enabled = !aiSummaryLoading,
+                        onClick = {
+                            if (aiSummaryLoading) return@GitHubTerminalButton
+                            aiSummaryShown = true
+                            aiSummaryError = null
+                            if (aiSummary == null) {
+                                aiSummaryLoading = true
+                                scope.launch {
+                                    try {
+                                        aiSummary = generatePullRequestSummary(
+                                            context = context,
+                                            pr = current,
+                                            files = files,
+                                        )
+                                    } catch (e: Exception) {
+                                        aiSummaryError = e.message ?: e.javaClass.simpleName
+                                    } finally {
+                                        aiSummaryLoading = false
+                                    }
                                 }
                             }
-                        }
-                    }
-                    if (canWrite) Chip(Icons.Rounded.Edit, "Edit", TextSecondary) { showEdit = true }
-                    Chip(Icons.Rounded.Article, "Files", Blue) { onOpenFiles(pullNumber) }
-                    if (canWrite) Chip(Icons.Rounded.RateReview, "Review", Blue) { showReview = true }
-                    if (canWrite) Chip(Icons.Rounded.Group, "Reviewers", Blue) { showReviewers = true }
-                    Chip(Icons.Rounded.History, "Reviews", TextSecondary) { showReviews = true }
-                    Chip(Icons.Rounded.FactCheck, "Checks", Blue) { showChecks = true }
+                        },
+                    )
+                    if (canWrite) GitHubTerminalButton("edit", onClick = { showEdit = true }, color = TextSecondary)
+                    GitHubTerminalButton("files", onClick = { onOpenFiles(pullNumber) }, color = Blue)
+                    if (canWrite) GitHubTerminalButton("review", onClick = { showReview = true }, color = Blue)
+                    if (canWrite) GitHubTerminalButton("reviewers", onClick = { showReviewers = true }, color = Blue)
+                    GitHubTerminalButton("reviews", onClick = { showReviews = true }, color = TextSecondary)
+                    GitHubTerminalButton("checks", onClick = { showChecks = true }, color = Blue)
                     if (canWrite && current.state == "open" && !current.merged && !current.draft) {
-                        Chip(Icons.Rounded.CallMerge, if (merging) "Merging..." else Strings.ghMerge, Color(0xFF34C759)) {
+                        GitHubTerminalButton(if (merging) "merging..." else "merge", color = GitHubSuccessGreen, enabled = !merging, onClick = {
                             if (!merging) showMerge = true
-                        }
+                        })
                     }
                 }
             }
@@ -2774,7 +2799,7 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     AiModuleSurface {
     val issuePalette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(issuePalette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> issue #$issueNumber",
             subtitle = detail?.title,
             onBack = onBack,
@@ -2869,19 +2894,15 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                 }
             }
             Column(
-                Modifier.fillMaxWidth().background(SurfaceWhite).padding(horizontal = 12.dp, vertical = 8.dp),
+                Modifier.fillMaxWidth().background(issuePalette.background).border(1.dp, issuePalette.border).padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { previewComment = false }) {
-                        Text("Write", fontSize = 12.sp, color = if (!previewComment) Blue else TextSecondary)
-                    }
-                    TextButton(onClick = { previewComment = true }) {
-                        Text("Preview", fontSize = 12.sp, color = if (previewComment) Blue else TextSecondary)
-                    }
+                    GitHubTerminalTab("write", selected = !previewComment) { previewComment = false }
+                    GitHubTerminalTab("preview", selected = previewComment) { previewComment = true }
                     Spacer(Modifier.weight(1f))
-                    IconButton(onClick = {
-                        if (newComment.isBlank() || sending) return@IconButton
+                    GitHubTerminalButton("send ↵", enabled = !sending && newComment.isNotBlank(), color = if (sending || newComment.isBlank()) issuePalette.textMuted else issuePalette.accent, onClick = {
+                        if (newComment.isBlank() || sending) return@GitHubTerminalButton
                         sending = true
                         scope.launch {
                             val ok = GitHubManager.addComment(context, repo.owner, repo.name, issueNumber, newComment)
@@ -2893,25 +2914,21 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                             sending = false
                             Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                         }
-                    }, enabled = !sending && newComment.isNotBlank()) {
-                        Icon(Icons.Rounded.Send, null, Modifier.size(20.dp), tint = if (sending || newComment.isBlank()) TextTertiary else Blue)
-                    }
+                    })
                 }
                 if (previewComment) {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(12.dp).verticalScroll(rememberScrollState())) {
+                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).border(1.dp, issuePalette.textMuted).background(issuePalette.surface).padding(12.dp).verticalScroll(rememberScrollState())) {
                         if (newComment.isBlank()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
                         else IssueMarkdownBlock(newComment)
                     }
                 } else {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(horizontal = 12.dp, vertical = 10.dp)) {
-                        if (newComment.isEmpty()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
-                        BasicTextField(
-                            newComment,
-                            { newComment = it },
-                            textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 14.sp, lineHeight = 19.sp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    GitHubTerminalTextField(
+                        value = newComment,
+                        onValueChange = { newComment = it },
+                        placeholder = Strings.ghAddComment,
+                        minHeight = 82.dp,
+                        maxLines = 8,
+                    )
                 }
             }
         }
@@ -2980,23 +2997,20 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
     }
 
     deleteCommentTarget?.let { comment ->
-        AlertDialog(
-            onDismissRequest = { deleteCommentTarget = null },
-            containerColor = SurfaceWhite,
-            title = { Text("Delete comment", fontWeight = FontWeight.Bold, color = TextPrimary) },
-            text = { Text(comment.body.lineSequence().firstOrNull().orEmpty().take(160), color = TextSecondary, fontSize = 13.sp) },
-            confirmButton = {
-                TextButton(onClick = {
+        GitHubTerminalModal(title = "▸ delete comment", onDismiss = { deleteCommentTarget = null }) {
+            Text(comment.body.lineSequence().firstOrNull().orEmpty().take(160), color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubTerminalButton("× delete", color = AiModuleTheme.colors.error, onClick = {
                     scope.launch {
                         val ok = GitHubManager.deleteIssueComment(context, repo.owner, repo.name, comment.id)
                         Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                         if (ok) comments = GitHubManager.getIssueComments(context, repo.owner, repo.name, issueNumber)
                         deleteCommentTarget = null
                     }
-                }) { Text("Delete", color = Color(0xFFFF3B30)) }
-            },
-            dismissButton = { TextButton(onClick = { deleteCommentTarget = null }) { Text(Strings.cancel, color = TextSecondary) } }
-        )
+                })
+                GitHubTerminalButton("no · cancel", color = AiModuleTheme.colors.textSecondary, onClick = { deleteCommentTarget = null })
+            }
+        }
     }
 }
 
@@ -3022,9 +3036,9 @@ private fun IssueHeaderCard(
             }
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip(Icons.Rounded.Label, "Meta", Blue, onMeta)
-            Chip(Icons.Rounded.EmojiEmotions, "Reactions ${reactions.size}", Blue, onReactions)
-            Chip(Icons.Rounded.Timeline, "Timeline", Blue, onTimeline)
+            GitHubTerminalButton("meta", onClick = onMeta, color = Blue)
+            GitHubTerminalButton("reactions ${reactions.size}", onClick = onReactions, color = Blue)
+            GitHubTerminalButton("timeline", onClick = onTimeline, color = Blue)
             if (detail.locked) PullBadge("Locked ${detail.activeLockReason}".trim(), Color(0xFFFF9500))
         }
         if (reactions.isNotEmpty()) {
@@ -3038,7 +3052,7 @@ private fun IssueMetaCard(detail: GHIssueDetail, onEdit: () -> Unit) {
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Metadata", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
-            TextButton(onClick = onEdit) { Text("Edit", fontSize = 12.sp, color = Blue) }
+            GitHubTerminalButton("edit", onClick = onEdit, color = Blue)
         }
         if (detail.labels.isEmpty() && detail.assignee.isBlank() && detail.milestoneTitle.isBlank()) {
             Text("No labels, assignee, or milestone", fontSize = 12.sp, color = TextTertiary)
@@ -3079,14 +3093,10 @@ private fun IssueCommentCard(comment: GHComment, onReactions: () -> Unit, onEdit
                 Text(comment.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Blue)
                 Text(comment.createdAt.take(10), fontSize = 10.sp, color = TextTertiary)
                 Spacer(Modifier.weight(1f))
-                IconButton(onClick = onReactions, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Rounded.EmojiEmotions, null, Modifier.size(16.dp), tint = TextSecondary)
-                }
-                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Rounded.Edit, null, Modifier.size(16.dp), tint = TextSecondary)
-                }
-                IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Rounded.Delete, null, Modifier.size(16.dp), tint = Color(0xFFFF3B30))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    GitHubTerminalButton("react", onClick = onReactions, color = TextSecondary)
+                    GitHubTerminalButton("edit", onClick = onEdit, color = TextSecondary)
+                    GitHubTerminalButton("× delete", onClick = onDelete, color = GitHubErrorRed)
                 }
             }
             IssueMarkdownBlock(comment.body)
@@ -3096,16 +3106,16 @@ private fun IssueCommentCard(comment: GHComment, onReactions: () -> Unit, onEdit
 
 @Composable
 private fun IssueReactionSummary(reactions: List<GHReaction>) {
-    val emojiMap = issueEmojiMap()
+    val labelMap = issueEmojiMap()
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         reactions.groupBy { it.content }.forEach { (content, items) ->
             Row(
-                Modifier.clip(RoundedCornerShape(8.dp)).background(SurfaceLight).padding(horizontal = 8.dp, vertical = 4.dp),
+                Modifier.border(1.dp, AiModuleTheme.colors.border).background(AiModuleTheme.colors.surface).padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(emojiMap[content] ?: content, fontSize = 14.sp)
-                Text("${items.size}", fontSize = 11.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
+                Text(labelMap[content] ?: content, fontSize = 11.sp, fontFamily = JetBrainsMono, color = TextSecondary)
+                Text("${items.size}", fontSize = 11.sp, color = TextSecondary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -3206,53 +3216,38 @@ private fun IssueCommentEditDialog(repo: GHRepo, comment: GHComment, onDismiss: 
     var body by remember(comment.id) { mutableStateOf(comment.body) }
     var saving by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceWhite,
-        title = { Text("Edit comment", fontWeight = FontWeight.Bold, color = TextPrimary) },
-        text = {
-            OutlinedTextField(
-                value = body,
-                onValueChange = { body = it },
-                label = { Text("Comment") },
-                minLines = 6,
-                maxLines = 10,
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !saving && body.isNotBlank(),
-                onClick = {
-                    saving = true
-                    scope.launch {
-                        val ok = GitHubManager.updateIssueComment(context, repo.owner, repo.name, comment.id, body)
-                        saving = false
-                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                        if (ok) onDone()
-                    }
+    GitHubTerminalModal(title = "▸ edit comment", onDismiss = onDismiss) {
+        GitHubTerminalTextField(
+            value = body,
+            onValueChange = { body = it },
+            placeholder = "comment",
+            minHeight = 140.dp,
+            maxLines = 10,
+        )
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubTerminalButton(if (saving) "⠋ saving" else "save", enabled = !saving && body.isNotBlank(), color = AiModuleTheme.colors.accent, onClick = {
+                saving = true
+                scope.launch {
+                    val ok = GitHubManager.updateIssueComment(context, repo.owner, repo.name, comment.id, body)
+                    saving = false
+                    Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                    if (ok) onDone()
                 }
-            ) {
-                if (saving) {
-                    CircularProgressIndicator(Modifier.size(14.dp), color = Blue, strokeWidth = 2.dp)
-                } else {
-                    Text("Save", color = Blue)
-                }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(Strings.cancel, color = TextSecondary) } }
-    )
+            })
+            GitHubTerminalButton("cancel", onClick = onDismiss, color = AiModuleTheme.colors.textSecondary)
+        }
+    }
 }
 
 private fun issueEmojiMap(): Map<String, String> = mapOf(
-    "+1" to "👍",
-    "-1" to "👎",
-    "laugh" to "😄",
-    "confused" to "😕",
-    "heart" to "❤️",
-    "hooray" to "🎉",
-    "eyes" to "👀",
-    "rocket" to "🚀"
+    "+1" to "+1",
+    "-1" to "-1",
+    "laugh" to "smile",
+    "confused" to "confused",
+    "heart" to "heart",
+    "hooray" to "hooray",
+    "eyes" to "eyes",
+    "rocket" to "rocket"
 )
 
 @Composable
@@ -3854,7 +3849,7 @@ internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { v
     AiModuleSurface {
     val commitPalette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(commitPalette.background)) {
-        AiModulePageBar(
+        GitHubPageBar(
             title = "> ${sha.take(7)}",
             subtitle = detail?.message?.lines()?.firstOrNull(),
             onBack = onBack,
@@ -3922,57 +3917,36 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
         loading = false
     }
 
-    val emojiMap = issueEmojiMap()
+    val labelMap = issueEmojiMap()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceWhite,
-        title = { Text("Reactions", fontWeight = FontWeight.Bold, color = TextPrimary) },
-        text = {
-            Column {
-                // Add reaction row
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-                    emojiMap.forEach { (key, emoji) ->
-                        Box(
-                            Modifier.clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceLight)
-                                .clickable {
-                                    scope.launch {
-                                        val ok = GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
-                                        reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
-                                        if (ok) onChanged()
-                                    }
-                                }
-                                .padding(8.dp)
-                        ) {
-                            Text(emoji, fontSize = 20.sp)
-                        }
+    GitHubTerminalModal(title = "$ reactions", onDismiss = onDismiss) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("+1", "-1", "laugh", "confused", "heart", "hooray").forEach { key ->
+                GitHubTerminalButton(labelMap[key] ?: key, color = AiModuleTheme.colors.accent, onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
+                        reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
+                        if (ok) onChanged()
                     }
-                }
+                })
+            }
+        }
 
-                if (loading) {
-                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    }
-                } else if (reactions.isEmpty()) {
-                    Text("No reactions yet", fontSize = 13.sp, color = TextTertiary)
-                } else {
-                    // Group by reaction type
-                    val grouped = reactions.groupBy { it.content }
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        grouped.forEach { (content, items) ->
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(emojiMap[content] ?: content, fontSize = 16.sp)
-                                Text("${items.size}", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-                                Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+        when {
+            loading -> Text("⠋ loading reactions...", fontSize = 13.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
+            reactions.isEmpty() -> Text("// no reactions yet", fontSize = 13.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
+            else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                reactions.groupBy { it.content }.forEach { (content, items) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(labelMap[content] ?: content, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary)
+                        Text("${items.size}", fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+                        Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
-    )
+        }
+        GitHubTerminalButton("× close", onClick = onDismiss, color = AiModuleTheme.colors.textSecondary)
+    }
 }
 
 @Composable
@@ -3981,58 +3955,40 @@ private fun IssueCommentReactionsDialog(repo: GHRepo, comment: GHComment, onDism
     val scope = rememberCoroutineScope()
     var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    val emojiMap = issueEmojiMap()
+    val labelMap = issueEmojiMap()
 
     LaunchedEffect(comment.id) {
         reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
         loading = false
     }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceWhite,
-        title = { Text("Comment reactions", fontWeight = FontWeight.Bold, color = TextPrimary) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(comment.body.lineSequence().firstOrNull().orEmpty().take(120), fontSize = 12.sp, color = TextSecondary, maxLines = 2)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    emojiMap.forEach { (key, emoji) ->
-                        Box(
-                            Modifier.clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceLight)
-                                .clickable {
-                                    scope.launch {
-                                        GitHubManager.addIssueCommentReaction(context, repo.owner, repo.name, comment.id, key)
-                                        reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
-                                    }
-                                }
-                                .padding(8.dp)
-                        ) {
-                            Text(emoji, fontSize = 20.sp)
-                        }
+    GitHubTerminalModal(title = "▸ reactions", onDismiss = onDismiss) {
+        Text(comment.body.lineSequence().firstOrNull().orEmpty().take(120), fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary, maxLines = 2)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("+1", "-1", "laugh", "confused", "heart", "hooray").forEach { key ->
+                GitHubTerminalButton(labelMap[key] ?: key, color = AiModuleTheme.colors.accent, onClick = {
+                    scope.launch {
+                        GitHubManager.addIssueCommentReaction(context, repo.owner, repo.name, comment.id, key)
+                        reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
                     }
-                }
-                if (loading) {
-                    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Blue, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    }
-                } else if (reactions.isEmpty()) {
-                    Text("No reactions yet", fontSize = 13.sp, color = TextTertiary)
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        reactions.groupBy { it.content }.forEach { (content, items) ->
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(emojiMap[content] ?: content, fontSize = 16.sp)
-                                Text("${items.size}", fontSize = 12.sp, color = TextSecondary, fontWeight = FontWeight.Medium)
-                                Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
+                })
+            }
+        }
+        when {
+            loading -> Text("⠋ loading reactions...", fontSize = 13.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
+            reactions.isEmpty() -> Text("// no reactions yet", fontSize = 13.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
+            else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                reactions.groupBy { it.content }.forEach { (content, items) ->
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(labelMap[content] ?: content, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary)
+                        Text("${items.size}", fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+                        Text(items.joinToString(", ") { it.user }, fontSize = 11.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = Blue) } }
-    )
+        }
+        GitHubTerminalButton("× close", onClick = onDismiss, color = AiModuleTheme.colors.textSecondary)
+    }
 }
 
 // ═══════════════════════════════════

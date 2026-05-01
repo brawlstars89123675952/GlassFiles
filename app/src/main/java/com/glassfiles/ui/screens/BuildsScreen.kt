@@ -2,7 +2,9 @@ package com.glassfiles.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +58,8 @@ import com.glassfiles.data.github.GHWorkflowDispatchInput
 import com.glassfiles.data.github.GHWorkflowDispatchSchema
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.theme.Blue
+import com.glassfiles.ui.theme.AiModuleTheme
+import com.glassfiles.ui.theme.JetBrainsMono
 import com.glassfiles.ui.theme.SurfaceLight
 import com.glassfiles.ui.theme.SurfaceWhite
 import com.glassfiles.ui.theme.TextPrimary
@@ -109,25 +113,24 @@ internal fun BuildsScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
+            val palette = AiModuleTheme.colors
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(SurfaceWhite)
+                    .border(1.dp, palette.border)
+                    .background(palette.surface)
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.Build, null, tint = Blue)
-                    Text("Сборщик", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
+                Text("$ workflows", fontSize = 16.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, color = palette.textPrimary)
                 Text(
-                    "Workflows and inputs are loaded dynamically from GitHub Actions workflow_dispatch configuration.",
+                    "Workflows and inputs loaded from .github/workflows",
                     fontSize = 12.sp,
-                    color = TextSecondary,
+                    fontFamily = JetBrainsMono,
+                    color = palette.textSecondary,
                     lineHeight = 18.sp
                 )
-                Text("Branch source: GitHub API", fontSize = 11.sp, color = TextTertiary)
+                Text("Source: GitHub API", fontSize = 11.sp, fontFamily = JetBrainsMono, color = palette.textMuted)
             }
         }
 
@@ -142,13 +145,14 @@ internal fun BuildsScreen(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(SurfaceWhite)
+                        .border(1.dp, AiModuleTheme.colors.border)
+                        .background(AiModuleTheme.colors.surface)
                         .padding(16.dp)
                 ) {
                     Text(
                         "No workflow_dispatch workflows found in this repository.",
-                        color = TextSecondary,
+                        color = AiModuleTheme.colors.textSecondary,
+                        fontFamily = JetBrainsMono,
                         fontSize = 13.sp
                     )
                 }
@@ -159,8 +163,9 @@ internal fun BuildsScreen(
                 if (build.category != lastCategory) {
                     item {
                         Text(
-                            build.category,
+                            "## ${build.category} ──────",
                             fontSize = 15.sp,
+                            fontFamily = JetBrainsMono,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary,
                             modifier = Modifier.padding(top = 4.dp, start = 2.dp)
@@ -263,38 +268,23 @@ private fun DynamicBuildCard(
     build: DynamicBuildItem,
     onClick: () -> Unit
 ) {
+    val palette = AiModuleTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(SurfaceWhite)
+            .border(1.dp, palette.border)
+            .background(palette.surface)
             .clickable(onClick = onClick)
-            .padding(14.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Blue.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(build.icon, null, tint = Blue)
-        }
         Column(Modifier.weight(1f)) {
-            Text(build.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(build.subtitle, fontSize = 11.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text("${build.schema.inputs.size} inputs", fontSize = 11.sp, color = TextTertiary)
+            Text("▸ ${build.title}", fontSize = 14.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, color = palette.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(build.subtitle, fontSize = 11.sp, fontFamily = JetBrainsMono, color = palette.textSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("${build.schema.inputs.size} inputs", fontSize = 11.sp, fontFamily = JetBrainsMono, color = palette.textMuted)
         }
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF16A34A).copy(alpha = 0.12f))
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-        ) {
-            Text("Run", color = Color(0xFF16A34A), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        }
+        GitHubTerminalButton("▶ run", onClick = onClick, color = GitHubSuccessGreen)
     }
 }
 
@@ -318,67 +308,45 @@ private fun DynamicBuildWorkflowDialog(
     var branchMenu by remember { mutableStateOf(false) }
     var choiceTarget by remember { mutableStateOf<GHWorkflowDispatchInput?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(build.title, fontWeight = FontWeight.Bold)
-                Text("Workflow build settings", fontSize = 12.sp, color = TextSecondary)
+    GitHubTerminalModal(title = "▸ ${build.title}", onDismiss = onDismiss) {
+        Text("workflow build settings", fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+        BuildDropdownField("branch", selectedBranch, { branchMenu = true })
+        build.schema.inputs.forEach { input ->
+            val options = inputOptions(input)
+            if (options.isNotEmpty()) {
+                BuildDropdownField(
+                    label = inputLabel(input.key).lowercase(),
+                    value = inputValues[input.key].orEmpty().ifBlank { input.defaultValue },
+                    onClick = { choiceTarget = input }
+                )
+            } else {
+                Text(inputLabel(input.key).lowercase(), fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+                GitHubTerminalTextField(
+                    value = inputValues[input.key].orEmpty(),
+                    onValueChange = { inputValues[input.key] = it },
+                    placeholder = input.defaultValue,
+                    singleLine = true,
+                )
             }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                BuildDropdownField("Branch", selectedBranch, { branchMenu = true })
-                build.schema.inputs.forEach { input ->
-                    val options = inputOptions(input)
-                    if (options.isNotEmpty()) {
-                        BuildDropdownField(
-                            label = inputLabel(input.key),
-                            value = inputValues[input.key].orEmpty().ifBlank { input.defaultValue },
-                            onClick = { choiceTarget = input }
-                        )
-                    } else {
-                        OutlinedTextField(
-                            value = inputValues[input.key].orEmpty(),
-                            onValueChange = { inputValues[input.key] = it },
-                            label = { Text(inputLabel(input.key)) },
-                            placeholder = { if (input.defaultValue.isNotBlank()) Text(input.defaultValue) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                    if (input.description.isNotBlank()) {
-                        Text(input.description, fontSize = 11.sp, color = TextTertiary)
-                    }
-                }
+            if (input.description.isNotBlank()) {
+                Text(input.description, fontSize = 11.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted)
             }
-        },
-        confirmButton = {
-            TextButton(
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubTerminalButton(
+                if (launching) "⠋ running" else "▶ run workflow",
+                enabled = !launching && selectedBranch.isNotBlank(),
+                color = GitHubSuccessGreen,
                 onClick = {
                     val inputs = build.schema.inputs.associate { input ->
                         input.key to (inputValues[input.key].orEmpty().ifBlank { input.defaultValue })
                     }
                     onLaunch(selectedBranch, inputs)
                 },
-                enabled = !launching && selectedBranch.isNotBlank()
-            ) {
-                if (launching) {
-                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Blue)
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Rounded.PlayArrow, null, tint = Color(0xFF16A34A))
-                        Text("Run workflow", color = Color(0xFF16A34A), fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !launching) {
-                Text(Strings.cancel)
-            }
+            )
+            GitHubTerminalButton("× cancel", onClick = onDismiss, enabled = !launching, color = AiModuleTheme.colors.textSecondary)
         }
-    )
+    }
 
     if (branchMenu) {
         SimpleChoiceDialog("Branch", branchOptions, selectedBranch, { selectedBranch = it; branchMenu = false }) { branchMenu = false }
@@ -415,19 +383,20 @@ private fun BuildDropdownField(
     onClick: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, fontSize = 12.sp, color = TextSecondary)
+        val palette = AiModuleTheme.colors
+        Text(label, fontSize = 12.sp, fontFamily = JetBrainsMono, color = palette.textSecondary)
         Row(
             Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(SurfaceLight)
+                .border(1.dp, palette.textMuted)
+                .background(palette.surface)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(value, color = TextPrimary, fontSize = 14.sp)
-            Icon(Icons.Rounded.ArrowDropDown, null, tint = Blue)
+            Text(value, color = palette.textPrimary, fontSize = 14.sp, fontFamily = JetBrainsMono)
+            Text("▾", color = palette.accent, fontSize = 14.sp, fontFamily = JetBrainsMono)
         }
     }
 }
@@ -440,39 +409,24 @@ private fun SimpleChoiceDialog(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, fontWeight = FontWeight.Bold) },
-        text = {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                options.forEach { option ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (option == selected) Blue.copy(alpha = 0.12f) else SurfaceWhite)
-                            .clickable { onPick(option) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(option, color = if (option == selected) Blue else TextPrimary)
-                        if (option == selected) {
-                            Box(Modifier.size(8.dp).clip(CircleShape).background(Blue))
-                        }
-                    }
-                }
+    GitHubTerminalModal(title = "▸ ${title.lowercase()}", onDismiss = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .height(260.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { option ->
+                val isSelected = option == selected
+                GitHubTerminalButton(
+                    label = if (isSelected) "[x] $option" else "[ ] $option",
+                    onClick = { onPick(option) },
+                    color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(Strings.cancel) }
         }
-    )
+        GitHubTerminalButton("× cancel", onClick = onDismiss, color = AiModuleTheme.colors.textSecondary)
+    }
 }
