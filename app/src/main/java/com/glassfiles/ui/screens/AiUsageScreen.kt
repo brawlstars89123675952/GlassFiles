@@ -238,7 +238,7 @@ private fun UsageSectionHeader(label: String) {
 
 @Composable
 private fun BucketRow(bucket: AiUsageBucket) {
-    val colors = AgentTerminal.colors
+    val colors = AiModuleTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
