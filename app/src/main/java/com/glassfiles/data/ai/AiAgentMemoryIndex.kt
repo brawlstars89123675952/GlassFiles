@@ -27,6 +27,7 @@ object AiAgentMemoryIndex {
     fun rebuildRepo(context: Context, repoFullName: String) {
         if (repoFullName.isBlank()) return
         val db = Db(context).writableDatabase
+        val fingerprint = buildFingerprint(context, repoFullName)
         db.beginTransaction()
         try {
             clearRepo(db, repoFullName)
@@ -53,10 +54,19 @@ object AiAgentMemoryIndex {
                     insertFact(db, doc.repoFullName, fact, doc.path, doc.updatedAt)
                 }
             }
+            setMeta(db, repoFullName, fingerprint)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+    }
+
+    fun rebuildIfStale(context: Context, repoFullName: String) {
+        if (repoFullName.isBlank()) return
+        val fingerprint = buildFingerprint(context, repoFullName)
+        val db = Db(context).readableDatabase
+        val current = getMeta(db, repoFullName)?.fingerprint
+        if (current != fingerprint) rebuildRepo(context, repoFullName)
     }
 
     fun search(context: Context, repoFullName: String, query: String, limit: Int = 20): List<SearchResult> {
@@ -125,6 +135,24 @@ object AiAgentMemoryIndex {
         runCatching { rebuildRepo(context, repoFullName) }
     }
 
+    private fun buildFingerprint(context: Context, repoFullName: String): String {
+        val repoDir = AiAgentMemoryStore.repoMemoryDir(context, repoFullName)
+        val parts = mutableListOf<String>()
+        if (repoDir.exists()) {
+            repoDir.walkTopDown()
+                .filter { it.isFile && (it.extension == "md" || it.name == "full.json") }
+                .sortedBy { it.relativeTo(repoDir).path }
+                .forEach { file ->
+                    val relative = file.relativeTo(repoDir).path.replace('\\', '/')
+                    parts += "$relative:${file.length()}:${file.lastModified()}"
+                }
+        }
+        AiAgentMemoryStore.globalPreferencesMemoryFile(context).takeIf { it.isFile }?.let { file ->
+            parts += "preferences.md:${file.length()}:${file.lastModified()}"
+        }
+        return parts.joinToString("|")
+    }
+
     private fun clearRepo(db: SQLiteDatabase, repoFullName: String) {
         val ids = db.rawQuery("SELECT doc_id FROM documents WHERE repo = ?", arrayOf(repoFullName)).use { cursor ->
             buildList {
@@ -153,6 +181,21 @@ object AiAgentMemoryIndex {
         db.execSQL(
             "INSERT OR IGNORE INTO facts(repo, type, text, source_path, updated_at) VALUES (?, ?, ?, ?, ?)",
             arrayOf(repoFullName, fact.type, fact.text, sourcePath, updatedAt),
+        )
+    }
+
+    private fun getMeta(db: SQLiteDatabase, repoFullName: String): IndexMeta? =
+        db.rawQuery(
+            "SELECT fingerprint, rebuilt_at FROM index_meta WHERE repo = ?",
+            arrayOf(repoFullName),
+        ).use { cursor ->
+            if (cursor.moveToFirst()) IndexMeta(cursor.getString(0), cursor.getLong(1)) else null
+        }
+
+    private fun setMeta(db: SQLiteDatabase, repoFullName: String, fingerprint: String) {
+        db.execSQL(
+            "INSERT OR REPLACE INTO index_meta(repo, fingerprint, rebuilt_at) VALUES (?, ?, ?)",
+            arrayOf(repoFullName, fingerprint, System.currentTimeMillis()),
         )
     }
 
@@ -254,12 +297,13 @@ object AiAgentMemoryIndex {
     }
 
     private data class ExtractedFact(val type: String, val text: String)
+    private data class IndexMeta(val fingerprint: String, val rebuiltAt: Long)
 
     private class Db(context: Context) : SQLiteOpenHelper(
         context,
         File(AiAgentMemoryStore.memoryRootDir(context).apply { mkdirs() }, "memory_index.db").absolutePath,
         null,
-        1,
+        2,
     ) {
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
@@ -293,6 +337,15 @@ object AiAgentMemoryIndex {
                     )
                 """.trimIndent(),
             )
+            db.execSQL(
+                """
+                    CREATE TABLE IF NOT EXISTS index_meta(
+                        repo TEXT PRIMARY KEY,
+                        fingerprint TEXT NOT NULL,
+                        rebuilt_at INTEGER NOT NULL
+                    )
+                """.trimIndent(),
+            )
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_documents_repo ON documents(repo)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_facts_repo ON facts(repo)")
         }
@@ -301,6 +354,7 @@ object AiAgentMemoryIndex {
             db.execSQL("DROP TABLE IF EXISTS documents")
             db.execSQL("DROP TABLE IF EXISTS memory_fts")
             db.execSQL("DROP TABLE IF EXISTS facts")
+            db.execSQL("DROP TABLE IF EXISTS index_meta")
             onCreate(db)
         }
     }

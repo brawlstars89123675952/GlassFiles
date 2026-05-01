@@ -19,6 +19,8 @@ object OpenAiProvider : OpenAiCompatProvider(
 
     override fun displayName(rawId: String): String = rawId
 
+    override fun includeStreamUsage(): Boolean = true
+
     override suspend fun generateImage(
         context: Context,
         modelId: String,

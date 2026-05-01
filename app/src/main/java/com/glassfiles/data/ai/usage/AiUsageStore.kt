@@ -99,6 +99,7 @@ object AiUsageStore {
         if (r.branchName != null) put("branchName", r.branchName)
         if (r.isPrivateRepo != null) put("isPrivateRepo", r.isPrivateRepo)
         if (r.costMode != null) put("costMode", r.costMode)
+        if (r.costUsd != null) put("costUsd", r.costUsd)
         put("estimated", r.estimated)
         put("createdAt", r.createdAt)
     }
@@ -121,6 +122,7 @@ object AiUsageStore {
         branchName = if (o.has("branchName")) o.optString("branchName") else null,
         isPrivateRepo = if (o.has("isPrivateRepo")) o.optBoolean("isPrivateRepo") else null,
         costMode = if (o.has("costMode")) o.optString("costMode") else null,
+        costUsd = if (o.has("costUsd")) o.optDouble("costUsd") else null,
         estimated = o.optBoolean("estimated", true),
         createdAt = o.optLong("createdAt"),
     )

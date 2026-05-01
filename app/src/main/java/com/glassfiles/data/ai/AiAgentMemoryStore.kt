@@ -63,7 +63,7 @@ object AiAgentMemoryStore {
     fun buildMemoryPrompt(context: Context, repoFullName: String): String {
         if (repoFullName.isBlank()) return ""
         ensureDefaults(context, repoFullName)
-        AiAgentMemoryIndex.markDirtyAndRebuild(context, repoFullName)
+        AiAgentMemoryIndex.rebuildIfStale(context, repoFullName)
         val blocks = mutableListOf<String>()
         if (AiAgentMemoryPrefs.getUserPreferences(context)) {
             readGlobalPreferences(context).takeIf { it.isNotBlank() }?.let {
@@ -128,6 +128,7 @@ object AiAgentMemoryStore {
     fun memoryIndexSnapshot(context: Context, repoFullName: String, query: String = ""): MemoryIndexSnapshot {
         if (repoFullName.isBlank()) return MemoryIndexSnapshot(emptyList())
         ensureDefaults(context, repoFullName)
+        AiAgentMemoryIndex.rebuildIfStale(context, repoFullName)
         return MemoryIndexSnapshot(
             facts = AiAgentMemoryIndex.facts(context, repoFullName),
             searchResults = if (query.isBlank()) emptyList() else AiAgentMemoryIndex.search(context, repoFullName, query),

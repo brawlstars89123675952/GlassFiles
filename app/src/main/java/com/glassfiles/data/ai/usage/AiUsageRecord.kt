@@ -61,6 +61,7 @@ data class AiUsageRecord(
     val branchName: String? = null,
     val isPrivateRepo: Boolean? = null,
     val costMode: String? = null,
+    val costUsd: Double? = null,
     val estimated: Boolean = true,
     val createdAt: Long = System.currentTimeMillis(),
 )

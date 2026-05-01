@@ -154,7 +154,8 @@ object AnthropicProvider : AiProvider {
         val raw = conn.inputStream.bufferedReader().use { it.readText() }
         conn.disconnect()
 
-        val content = JSONObject(raw).optJSONArray("content") ?: JSONArray()
+        val root = JSONObject(raw)
+        val content = root.optJSONArray("content") ?: JSONArray()
         val text = StringBuilder()
         val calls = mutableListOf<AiToolCall>()
         for (i in 0 until content.length()) {
@@ -171,7 +172,7 @@ object AnthropicProvider : AiProvider {
                 }
             }
         }
-        AiToolTurn(assistantText = text.toString(), toolCalls = calls)
+        AiToolTurn(assistantText = text.toString(), toolCalls = calls, usage = parseAnthropicUsage(root.optJSONObject("usage")))
     }
 
     /**
@@ -221,10 +222,25 @@ object AnthropicProvider : AiProvider {
         // Per-block scratch state: index → (kind, id, name, json buffer)
         val toolBuffers = mutableMapOf<Int, ToolBuffer>()
         val finishedCalls = mutableListOf<AiToolCall>()
+        var inputTokens = 0
+        var outputTokens = 0
 
         Http.iterateSse(conn) { data ->
             val event = runCatching { JSONObject(data) }.getOrNull() ?: return@iterateSse
             when (event.optString("type")) {
+                "message_start" -> {
+                    val usage = event.optJSONObject("message")?.optJSONObject("usage")
+                    if (usage != null) {
+                        inputTokens = usage.optInt("input_tokens", inputTokens)
+                        outputTokens = usage.optInt("output_tokens", outputTokens)
+                    }
+                }
+                "message_delta" -> {
+                    val usage = event.optJSONObject("usage")
+                    if (usage != null) {
+                        outputTokens = usage.optInt("output_tokens", outputTokens)
+                    }
+                }
                 "content_block_start" -> {
                     val idx = event.optInt("index", -1)
                     val block = event.optJSONObject("content_block") ?: return@iterateSse
@@ -270,7 +286,12 @@ object AnthropicProvider : AiProvider {
         }
         conn.disconnect()
 
-        AiToolTurn(assistantText = text.toString(), toolCalls = finishedCalls)
+        AiToolTurn(
+            assistantText = text.toString(),
+            toolCalls = finishedCalls,
+            usage = AiTokenUsage(inputTokens = inputTokens, outputTokens = outputTokens)
+                .takeIf { it.totalTokens > 0 },
+        )
     }
 
     /** Mutable scratch buffer used while a `tool_use` block streams in. */
@@ -279,6 +300,14 @@ object AnthropicProvider : AiProvider {
         val name: String,
         val argsJson: StringBuilder = StringBuilder(),
     )
+
+    private fun parseAnthropicUsage(usage: JSONObject?): AiTokenUsage? {
+        usage ?: return null
+        val input = usage.optInt("input_tokens", 0)
+        val output = usage.optInt("output_tokens", 0)
+        if (input <= 0 && output <= 0) return null
+        return AiTokenUsage(inputTokens = input, outputTokens = output)
+    }
 
     private fun toolMessageToJson(msg: AiMessage): JSONObject {
         // Anthropic only accepts user/assistant in `messages`; map "system" → "user".

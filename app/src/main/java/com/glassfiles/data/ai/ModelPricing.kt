@@ -22,8 +22,6 @@ object ModelPricing {
     /** USD per 1 000 000 input / output tokens. */
     data class Rate(val inputUsdPerM: Double, val outputUsdPerM: Double)
 
-    private val Fallback = Rate(0.0, 0.0)
-
     private val openAi = mapOf(
         "gpt-5" to Rate(2.50, 10.0),
         "gpt-4.1-mini" to Rate(0.40, 1.60),
@@ -73,15 +71,30 @@ object ModelPricing {
      *   token count without dollars".
      */
     fun rateFor(model: AiModel): Rate? {
-        val table = when (model.providerId) {
-            AiProviderId.OPENAI -> openAi
-            AiProviderId.ANTHROPIC -> anthropic
-            AiProviderId.XAI -> xai
-            AiProviderId.GOOGLE -> google
-            AiProviderId.MOONSHOT -> moonshot
-            else -> return null
+        return rateFor(model.providerId.name, model.id)
+    }
+
+    fun rateFor(providerId: String, modelId: String): Rate? {
+        val id = modelId.lowercase()
+        val provider = runCatching { AiProviderId.valueOf(providerId) }.getOrNull()
+        val direct = when (provider) {
+            AiProviderId.OPENAI -> longestPrefix(openAi, id)
+            AiProviderId.ANTHROPIC -> longestPrefix(anthropic, id)
+            AiProviderId.XAI -> longestPrefix(xai, id)
+            AiProviderId.GOOGLE -> longestPrefix(google, id)
+            AiProviderId.MOONSHOT -> longestPrefix(moonshot, id)
+            else -> null
         }
-        return longestPrefix(table, model.id.lowercase())
+        if (direct != null) return direct
+        return when {
+            id.contains("gpt-") || id.contains("o1") || id.contains("o3") || id.contains("o4") ->
+                longestPrefix(openAi, id.substringAfter('/'))
+            id.contains("claude") -> longestPrefix(anthropic, id.substringAfter('/'))
+            id.contains("gemini") -> longestPrefix(google, id.substringAfter('/'))
+            id.contains("grok") -> longestPrefix(xai, id.substringAfter('/'))
+            id.contains("moonshot") || id.contains("kimi") -> longestPrefix(moonshot, id.substringAfter('/'))
+            else -> null
+        }
     }
 
     private fun longestPrefix(table: Map<String, Rate>, id: String): Rate? {
@@ -99,9 +112,44 @@ object ModelPricing {
      */
     fun estimateTokens(chars: Int): Int = (chars + 3) / 4
 
+    fun estimateTokens(providerId: String, modelId: String, chars: Int): Int {
+        if (chars <= 0) return 0
+        val divisor = tokenCharDivisor(providerId, modelId)
+        return kotlin.math.ceil(chars / divisor).toInt().coerceAtLeast(1)
+    }
+
     fun estimateCostUsd(rate: Rate, inputChars: Int, outputChars: Int): Double {
         val inTok = estimateTokens(inputChars)
         val outTok = estimateTokens(outputChars)
-        return (inTok * rate.inputUsdPerM + outTok * rate.outputUsdPerM) / 1_000_000.0
+        return estimateCostUsdFromTokens(rate, inTok, outTok)
+    }
+
+    fun estimateCostUsdFromChars(
+        rate: Rate,
+        providerId: String,
+        modelId: String,
+        inputChars: Int,
+        outputChars: Int,
+    ): Double {
+        val inTok = estimateTokens(providerId, modelId, inputChars)
+        val outTok = estimateTokens(providerId, modelId, outputChars)
+        return estimateCostUsdFromTokens(rate, inTok, outTok)
+    }
+
+    fun estimateCostUsdFromTokens(rate: Rate, inputTokens: Int, outputTokens: Int): Double {
+        return (inputTokens * rate.inputUsdPerM + outputTokens * rate.outputUsdPerM) / 1_000_000.0
+    }
+
+    private fun tokenCharDivisor(providerId: String, modelId: String): Double {
+        val id = modelId.lowercase()
+        val provider = runCatching { AiProviderId.valueOf(providerId) }.getOrNull()
+        return when {
+            provider == AiProviderId.ANTHROPIC || id.contains("claude") -> 3.6
+            provider == AiProviderId.ALIBABA || id.contains("qwen") -> 3.0
+            provider == AiProviderId.GOOGLE || id.contains("gemini") -> 4.1
+            provider == AiProviderId.XAI || id.contains("grok") -> 3.8
+            provider == AiProviderId.MOONSHOT || id.contains("kimi") || id.contains("moonshot") -> 3.2
+            else -> 4.0
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.glassfiles.data.ai.usage
 
+import com.glassfiles.data.ai.ModelPricing
 import java.util.Calendar
 
 /**
@@ -21,6 +22,7 @@ data class AiUsageSummary(
     val recordCount: Int,
     val totalTokens: Long,
     val totalChars: Long,
+    val totalCostUsd: Double?,
     val estimatedRecordCount: Int,
     val toolCallsCount: Long,
     val filesReadCount: Long,
@@ -39,6 +41,7 @@ data class AiUsageBucket(
     val recordCount: Int,
     val totalTokens: Long,
     val totalChars: Long,
+    val totalCostUsd: Double?,
 )
 
 /** Time-window selectors for the Usage screen tabs. */
@@ -80,6 +83,7 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
             recordCount = 0,
             totalTokens = 0L,
             totalChars = 0L,
+            totalCostUsd = null,
             estimatedRecordCount = 0,
             toolCallsCount = 0L,
             filesReadCount = 0L,
@@ -89,10 +93,12 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
             byMode = emptyList(),
         )
     }
-    val totalTokens = inWindow.sumOf { it.totalTokens.toLong() }
+    val totalTokens = inWindow.sumOf { it.effectiveTotalTokens().toLong() }
     val totalChars = inWindow.sumOf {
         (it.estimatedInputChars + it.estimatedOutputChars).toLong()
     }
+    val costs = inWindow.mapNotNull { it.effectiveCostUsd() }
+    val totalCostUsd = costs.takeIf { it.isNotEmpty() }?.sum()
     val estimated = inWindow.count { it.estimated }
     val toolCalls = inWindow.sumOf { it.toolCallsCount.toLong() }
     val read = inWindow.sumOf { it.filesReadCount.toLong() }
@@ -103,10 +109,11 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
             AiUsageBucket(
                 key = k,
                 recordCount = rs.size,
-                totalTokens = rs.sumOf { it.totalTokens.toLong() },
+                totalTokens = rs.sumOf { it.effectiveTotalTokens().toLong() },
                 totalChars = rs.sumOf {
                     (it.estimatedInputChars + it.estimatedOutputChars).toLong()
                 },
+                totalCostUsd = rs.mapNotNull { it.effectiveCostUsd() }.takeIf { it.isNotEmpty() }?.sum(),
             )
         }.sortedByDescending { it.totalTokens.takeIf { t -> t > 0 } ?: it.totalChars }
 
@@ -114,6 +121,7 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
         recordCount = inWindow.size,
         totalTokens = totalTokens,
         totalChars = totalChars,
+        totalCostUsd = totalCostUsd,
         estimatedRecordCount = estimated,
         toolCallsCount = toolCalls,
         filesReadCount = read,
@@ -121,5 +129,27 @@ fun summarise(records: List<AiUsageRecord>, window: AiUsageWindow): AiUsageSumma
         byProvider = bucket { it.providerId },
         byModel = bucket { it.modelId },
         byMode = bucket { it.mode.name },
+    )
+}
+
+private fun AiUsageRecord.effectiveInputTokens(): Int =
+    inputTokens.takeIf { it > 0 }
+        ?: ModelPricing.estimateTokens(providerId, modelId, estimatedInputChars)
+
+private fun AiUsageRecord.effectiveOutputTokens(): Int =
+    outputTokens.takeIf { it > 0 }
+        ?: ModelPricing.estimateTokens(providerId, modelId, estimatedOutputChars)
+
+private fun AiUsageRecord.effectiveTotalTokens(): Int =
+    totalTokens.takeIf { it > 0 }
+        ?: (effectiveInputTokens() + effectiveOutputTokens())
+
+private fun AiUsageRecord.effectiveCostUsd(): Double? {
+    costUsd?.let { return it }
+    val rate = ModelPricing.rateFor(providerId, modelId) ?: return null
+    return ModelPricing.estimateCostUsdFromTokens(
+        rate,
+        effectiveInputTokens(),
+        effectiveOutputTokens(),
     )
 }

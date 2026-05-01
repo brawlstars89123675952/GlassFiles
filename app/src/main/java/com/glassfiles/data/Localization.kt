@@ -487,6 +487,7 @@ object Strings {
     )
     val aiUsageRecords get() = s("Запросов", "Requests")
     val aiUsageTokens get() = s("Токенов", "Tokens")
+    val aiUsageCost get() = s("Стоимость", "Cost")
     val aiUsageTokensEstimateOnly get() = s("оценочно", "estimate only")
     val aiUsageChars get() = s("Символов", "Chars")
     val aiUsageToolCalls get() = s("Тул-коллов", "Tool calls")

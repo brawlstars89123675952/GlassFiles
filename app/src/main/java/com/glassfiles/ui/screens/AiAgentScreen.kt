@@ -217,6 +217,7 @@ fun AiAgentScreen(
     }
 
     val transcript = remember { mutableStateListOf<AgentEntry>() }
+    var sessionUsage by remember { mutableStateOf(SessionStats.empty()) }
     var input by remember { mutableStateOf(TextFieldValue(initialPrompt.orEmpty())) }
     var pendingImage by remember { mutableStateOf<String?>(null) }
     var autoApproveReads by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveReads(context)) }
@@ -584,6 +585,7 @@ fun AiAgentScreen(
         sessionCreatedAt = session.createdAt
         transcript.clear()
         transcript.addAll(session.messages.toAgentEntries())
+        sessionUsage = SessionStats.empty()
         approvals.clear()
         resetApprovalSessionState()
         // Reset selection so the restore effect picks up this session's
@@ -618,6 +620,7 @@ fun AiAgentScreen(
         sessionCreatedAt = loaded.createdAt
         transcript.clear()
         transcript.addAll(loaded.messages.toAgentEntries())
+        sessionUsage = SessionStats.empty()
         approvals.clear()
         resetApprovalSessionState()
         val sessionFallback = AiChatSessionStore.get(context, AGENT_SESSION_MODE, loaded.chatId)
@@ -655,6 +658,7 @@ fun AiAgentScreen(
         activeSessionId = newAgentSessionId()
         sessionCreatedAt = System.currentTimeMillis()
         transcript.clear()
+        sessionUsage = SessionStats.empty()
         approvals.clear()
         resetApprovalSessionState()
         // Don't drop repo / branch / model — keep the user's working
@@ -769,6 +773,14 @@ fun AiAgentScreen(
 
         runJob = scope.launch {
             var completedNormally = false
+            var taskInputChars = 0
+            var taskOutputChars = 0
+            var taskInputTokens = 0
+            var taskOutputTokens = 0
+            var taskEstimatedTokens = 0
+            var taskCostUsd = 0.0
+            var taskCostKnown = false
+            var taskEstimated = false
             // Cost-policy estimate for this task. Limits come from the
             // user's selected mode (Eco / Balanced / MaxQuality). The
             // executor uses it to cap individual file sizes / log lines /
@@ -881,6 +893,24 @@ fun AiAgentScreen(
                     context = context,
                     fallbackCandidates = fallbacks,
                     estimate = estimate,
+                    onUsageDelta = { providerId, activeModelId, inputChars, outputChars, inputTokens, outputTokens, estimated ->
+                        taskInputChars += inputChars
+                        taskOutputChars += outputChars
+                        taskInputTokens += inputTokens
+                        taskOutputTokens += outputTokens
+                        taskEstimated = taskEstimated || estimated
+                        val delta = if (estimated) {
+                            SessionStats.fromProviderEstimate(providerId, activeModelId, inputChars, outputChars)
+                        } else {
+                            SessionStats.fromProviderTokens(providerId, activeModelId, inputTokens, outputTokens)
+                        }
+                        if (estimated) taskEstimatedTokens += delta.tokens
+                        delta.costUsd?.let {
+                            taskCostUsd += it
+                            taskCostKnown = true
+                        }
+                        sessionUsage = sessionUsage + delta
+                    },
                     onFallback = { newModel ->
                         // Reflect the swap in the UI so the user
                         // immediately sees which model is now in
@@ -984,8 +1014,15 @@ fun AiAgentScreen(
                             providerId = model.providerId.name,
                             modelId = model.id,
                             mode = com.glassfiles.data.ai.usage.AiUsageMode.GITHUB_AGENT,
-                            estimatedInputChars = estimate.totalChars,
-                            estimatedOutputChars = 0,
+                            inputTokens = if (taskEstimated) 0 else taskInputTokens,
+                            outputTokens = if (taskEstimated) 0 else taskOutputTokens,
+                            totalTokens = taskInputTokens + taskOutputTokens + taskEstimatedTokens,
+                            estimatedInputChars = if (taskEstimated) {
+                                taskInputChars.takeIf { it > 0 } ?: estimate.totalChars
+                            } else {
+                                0
+                            },
+                            estimatedOutputChars = if (taskEstimated) taskOutputChars else 0,
                             toolCallsCount = estimate.toolCallsExecuted,
                             filesReadCount = readCalls,
                             filesWrittenCount = writeCalls,
@@ -994,7 +1031,8 @@ fun AiAgentScreen(
                             branchName = branch,
                             isPrivateRepo = repo.isPrivate,
                             costMode = costMode.name,
-                            estimated = true,
+                            costUsd = taskCostUsd.takeIf { taskCostKnown },
+                            estimated = taskEstimated,
                         ),
                     )
                 }
@@ -1087,25 +1125,23 @@ fun AiAgentScreen(
             .let { if (embedded) it else it.statusBarsPadding() }
             .imePadding(),
     ) {
-        // Topbar — terminal-style. Cost/token meter is derived from the
-        // transcript so it updates per-turn; no streaming hooks needed
-        // beyond the existing computeSessionStats helper.
-        val costRate = remember(selectedModel?.uniqueKey) {
-            selectedModel?.let { com.glassfiles.data.ai.ModelPricing.rateFor(it) }
+        // Topbar — terminal-style. During active runs this uses provider
+        // usage when available; otherwise it falls back to local estimates.
+        val fallbackStats by remember(selectedModel?.uniqueKey) {
+            derivedStateOf { computeSessionStats(transcript, selectedModel, SessionStats.empty()) }
         }
-        val sessionStats by remember(selectedModel?.uniqueKey) {
-            derivedStateOf { computeSessionStats(transcript, costRate) }
-        }
-        val costLabel = if (sessionStats.totalChars > 0) {
+        val sessionStats = sessionUsage.takeIf { it.tokens > 0 || it.totalChars > 0 } ?: fallbackStats
+        val hasUsageStats = sessionStats.totalChars > 0 || sessionStats.tokens > 0
+        val costLabel = if (hasUsageStats) {
             sessionStats.costUsd?.let { c ->
                 when {
                     c < 0.01 -> "<\$0.01"
                     c < 1.0 -> String.format(Locale.US, "\$%.3f", c)
                     else -> String.format(Locale.US, "\$%.2f", c)
                 }
-            } ?: "\$0.00"
+            }
         } else null
-        val tokenLabel = if (sessionStats.totalChars > 0) {
+        val tokenLabel = if (hasUsageStats) {
             val t = sessionStats.tokens
             when {
                 t >= 1000 -> String.format(Locale.US, "%.1fk tok", t / 1000.0)
@@ -2351,12 +2387,70 @@ private data class SessionStats(
     val totalChars: Int,
     val tokens: Int,
     val costUsd: Double?,
-)
+) {
+    operator fun plus(other: SessionStats): SessionStats =
+        SessionStats(
+            inputChars = inputChars + other.inputChars,
+            outputChars = outputChars + other.outputChars,
+            totalChars = totalChars + other.totalChars,
+            tokens = tokens + other.tokens,
+            costUsd = when {
+                costUsd != null && other.costUsd != null -> costUsd + other.costUsd
+                costUsd != null -> costUsd
+                else -> other.costUsd
+            },
+        )
+
+    companion object {
+        fun empty(): SessionStats = SessionStats(0, 0, 0, 0, null)
+
+        fun fromProviderEstimate(
+            providerId: String,
+            modelId: String,
+            inputChars: Int,
+            outputChars: Int,
+        ): SessionStats {
+            val totalChars = inputChars + outputChars
+            val inputTokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, inputChars)
+            val outputTokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, outputChars)
+            val cost = com.glassfiles.data.ai.ModelPricing.rateFor(providerId, modelId)?.let { rate ->
+                com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromTokens(rate, inputTokens, outputTokens)
+            }
+            return SessionStats(
+                inputChars = inputChars,
+                outputChars = outputChars,
+                totalChars = totalChars,
+                tokens = inputTokens + outputTokens,
+                costUsd = cost,
+            )
+        }
+
+        fun fromProviderTokens(
+            providerId: String,
+            modelId: String,
+            inputTokens: Int,
+            outputTokens: Int,
+        ): SessionStats {
+            val cost = com.glassfiles.data.ai.ModelPricing.rateFor(providerId, modelId)?.let { rate ->
+                com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromTokens(rate, inputTokens, outputTokens)
+            }
+            return SessionStats(
+                inputChars = 0,
+                outputChars = 0,
+                totalChars = 0,
+                tokens = inputTokens + outputTokens,
+                costUsd = cost,
+            )
+        }
+    }
+}
 
 private fun computeSessionStats(
     transcript: List<AgentEntry>,
-    rate: com.glassfiles.data.ai.ModelPricing.Rate?,
+    model: AiModel?,
+    usage: SessionStats,
 ): SessionStats {
+    if (usage.tokens > 0 || usage.totalChars > 0) return usage
     // Input = what the model has to ingest each turn — the user's
     // prompts plus every tool result we feed back to it. Output = what
     // it generated for us (assistant text and tool-call JSON args).
@@ -2372,8 +2466,14 @@ private fun computeSessionStats(
         }
     }
     val total = input + output
-    val tokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(total)
-    val cost = rate?.let { com.glassfiles.data.ai.ModelPricing.estimateCostUsd(it, input, output) }
+    val providerId = model?.providerId?.name.orEmpty()
+    val modelId = model?.id.orEmpty()
+    val tokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, total)
+    val cost = model?.let {
+        com.glassfiles.data.ai.ModelPricing.rateFor(it)?.let { rate ->
+            com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromChars(rate, providerId, modelId, input, output)
+        }
+    }
     return SessionStats(input, output, total, tokens, cost)
 }
 
@@ -2449,6 +2549,7 @@ private suspend fun runAgentLoop(
     fallbackCandidates: List<FallbackCandidate>,
     onFallback: (AiModel) -> Unit,
     onToolStatus: (String, Int, Int) -> Unit = { _, _, _ -> },
+    onUsageDelta: (String, String, Int, Int, Int, Int, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     /**
      * Cost-policy accumulator for this task. The loop:
      *  - bumps [com.glassfiles.data.ai.cost.AiContextEstimate.toolCallsExecuted]
@@ -2549,6 +2650,7 @@ private suspend fun runAgentLoop(
                 provider = provider,
                 modelId = modelId,
                 apiKey = apiKey,
+                onUsageDelta = onUsageDelta,
             )
         } catch (e: Exception) {
             // Drop the empty placeholder before rethrowing so the run-job
@@ -2898,6 +3000,28 @@ private fun isFallbackEligibleError(t: Throwable): Boolean {
         msg.contains("HTTP 529")
 }
 
+private fun estimateRequestInputChars(
+    messages: List<AiMessage>,
+    tools: List<com.glassfiles.data.ai.agent.AiTool>,
+): Int = messages.sumOf { it.estimatedWireChars() } + tools.sumOf {
+    it.name.length + it.description.length + it.parameters.toString().length
+}
+
+private fun AiMessage.estimatedWireChars(): Int {
+    var total = role.length + content.length
+    total += fileContent?.length ?: 0
+    total += (imageBase64?.length ?: 0) / 8
+    toolCallId?.let { total += it.length }
+    toolName?.let { total += it.length }
+    toolCalls?.forEach { call ->
+        total += call.id.length + call.name.length + call.argsJson.length
+    }
+    return total
+}
+
+private fun estimateTurnOutputChars(turn: com.glassfiles.data.ai.providers.AiToolTurn): Int =
+    turn.assistantText.length + turn.toolCalls.sumOf { it.name.length + it.argsJson.length }
+
 /**
  * Wrap one [AiProvider.chatWithToolsStreaming] call with provider
  * fallback. On a 429/5xx-style failure we drop to the next
@@ -2922,13 +3046,15 @@ private suspend fun callWithFallback(
     provider: com.glassfiles.data.ai.providers.AiProvider,
     modelId: String,
     apiKey: String,
+    onUsageDelta: (String, String, Int, Int, Int, Int, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
 ): com.glassfiles.data.ai.providers.AiToolTurn {
     var p = provider
     var id = modelId
     var k = apiKey
     while (true) {
         try {
-            return p.chatWithToolsStreaming(
+            val requestInputChars = estimateRequestInputChars(messages, tools)
+            val turn = p.chatWithToolsStreaming(
                 context = context,
                 modelId = id,
                 messages = messages,
@@ -2943,6 +3069,13 @@ private suspend fun callWithFallback(
                     }
                 },
             )
+            val usage = turn.usage
+            if (usage != null && usage.totalTokens > 0) {
+                onUsageDelta(p.id.name, id, 0, 0, usage.inputTokens, usage.outputTokens, false)
+            } else {
+                onUsageDelta(p.id.name, id, requestInputChars, estimateTurnOutputChars(turn), 0, 0, true)
+            }
+            return turn
         } catch (e: Exception) {
             if (!isFallbackEligibleError(e) || remainingFallbacks.isEmpty()) throw e
             val next = remainingFallbacks.removeFirst()

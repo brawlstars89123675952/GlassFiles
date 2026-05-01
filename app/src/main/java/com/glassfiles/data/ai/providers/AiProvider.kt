@@ -127,4 +127,12 @@ interface AiProvider {
 data class AiToolTurn(
     val assistantText: String,
     val toolCalls: List<AiToolCall>,
+    val usage: AiTokenUsage? = null,
 )
+
+data class AiTokenUsage(
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+) {
+    val totalTokens: Int get() = inputTokens + outputTokens
+}

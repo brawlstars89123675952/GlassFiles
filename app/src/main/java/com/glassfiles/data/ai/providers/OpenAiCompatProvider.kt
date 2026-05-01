@@ -37,6 +37,9 @@ abstract class OpenAiCompatProvider(
     /** Pretty-print a raw model id. */
     protected open fun displayName(rawId: String): String = rawId
 
+    /** Some OpenAI-compatible gateways reject `stream_options`; enable only where known supported. */
+    protected open fun includeStreamUsage(): Boolean = false
+
     override suspend fun listModels(context: Context, apiKey: String): List<AiModel> = withContext(Dispatchers.IO) {
         val conn = Http.open(
             "${baseUrl(context)}/models",
@@ -184,7 +187,8 @@ abstract class OpenAiCompatProvider(
         val raw = conn.inputStream.bufferedReader().use { it.readText() }
         conn.disconnect()
 
-        val choice = JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)
+        val root = JSONObject(raw)
+        val choice = root.optJSONArray("choices")?.optJSONObject(0)
         val message = choice?.optJSONObject("message") ?: return@withContext AiToolTurn("", emptyList())
         val text = message.optStringOrEmpty("content")
         val toolCallsArr = message.optJSONArray("tool_calls") ?: JSONArray()
@@ -197,7 +201,7 @@ abstract class OpenAiCompatProvider(
                 argsJson = fn.optString("arguments", "{}"),
             )
         }
-        AiToolTurn(assistantText = text, toolCalls = calls)
+        AiToolTurn(assistantText = text, toolCalls = calls, usage = parseOpenAiUsage(root.optJSONObject("usage")))
     }
 
     /**
@@ -238,13 +242,16 @@ abstract class OpenAiCompatProvider(
             )
         }
 
-        val body = JSONObject()
+        val bodyObj = JSONObject()
             .put("model", modelId)
             .put("messages", msgs)
             .put("tools", toolsJson)
             .put("tool_choice", "auto")
             .put("stream", true)
-            .toString()
+        if (includeStreamUsage()) {
+            bodyObj.put("stream_options", JSONObject().put("include_usage", true))
+        }
+        val body = bodyObj.toString()
 
         val conn = Http.postJson(
             "${baseUrl(context)}/chat/completions",
@@ -255,9 +262,12 @@ abstract class OpenAiCompatProvider(
 
         val text = StringBuilder()
         val toolBuffers = sortedMapOf<Int, ToolBuffer>()
+        var usage: AiTokenUsage? = null
 
         Http.iterateSse(conn) { data ->
-            val choices = runCatching { JSONObject(data).optJSONArray("choices") }.getOrNull()
+            val event = runCatching { JSONObject(data) }.getOrNull() ?: return@iterateSse
+            event.optJSONObject("usage")?.let { usage = parseOpenAiUsage(it) }
+            val choices = event.optJSONArray("choices")
                 ?: return@iterateSse
             if (choices.length() == 0) return@iterateSse
             val delta = choices.optJSONObject(0)?.optJSONObject("delta") ?: return@iterateSse
@@ -291,7 +301,7 @@ abstract class OpenAiCompatProvider(
                 argsJson = buf.argsJson.toString().ifBlank { "{}" },
             )
         }
-        AiToolTurn(assistantText = text.toString(), toolCalls = calls)
+        AiToolTurn(assistantText = text.toString(), toolCalls = calls, usage = usage)
     }
 
     /** Mutable scratch buffer used while OpenAI streams a tool call's
@@ -301,6 +311,14 @@ abstract class OpenAiCompatProvider(
         var name: String? = null,
         val argsJson: StringBuilder = StringBuilder(),
     )
+
+    private fun parseOpenAiUsage(usage: JSONObject?): AiTokenUsage? {
+        usage ?: return null
+        val input = usage.optInt("prompt_tokens", usage.optInt("input_tokens", 0))
+        val output = usage.optInt("completion_tokens", usage.optInt("output_tokens", 0))
+        if (input <= 0 && output <= 0) return null
+        return AiTokenUsage(inputTokens = input, outputTokens = output)
+    }
 
     /**
      * Serialises an [AiMessage] for the function-calling endpoint. Tool-result
