@@ -154,7 +154,6 @@ object AiAgentMemoryStore {
                 appendLine(body)
             }
         }
-    }
 
     fun toolSearch(context: Context, repoFullName: String, query: String): String {
         ensureDefaults(context, repoFullName)
