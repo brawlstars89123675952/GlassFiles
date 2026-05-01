@@ -46,7 +46,6 @@ import com.glassfiles.ui.components.AiModuleScreenScaffold
 import com.glassfiles.ui.components.AiModuleSectionLabel
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
-import java.util.Locale
 
 /**
  * Local AI usage breakdown screen. Reads [AiUsageStore], computes
@@ -142,12 +141,9 @@ fun AiUsageScreen(onBack: () -> Unit) {
                     AiModuleKeyValueRow(Strings.aiUsageRecords, summary.recordCount.toString())
                     AiModuleKeyValueRow(
                         Strings.aiUsageTokens,
-                        if (summary.totalTokens > 0) formatTokens(summary.totalTokens)
+                        if (summary.totalTokens > 0) summary.totalTokens.toString()
                         else Strings.aiUsageTokensEstimateOnly,
                     )
-                    summary.totalCostUsd?.let {
-                        AiModuleKeyValueRow(Strings.aiUsageCost, formatUsd(it))
-                    }
                     AiModuleKeyValueRow(Strings.aiUsageChars, summary.totalChars.toString())
                     AiModuleKeyValueRow(Strings.aiUsageToolCalls, summary.toolCallsCount.toString())
                     AiModuleKeyValueRow(Strings.aiUsageFilesRead, summary.filesReadCount.toString())
@@ -220,7 +216,7 @@ private fun WindowFlag(label: String, active: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun UsageSectionHeader(label: String) {
-    val colors = AiModuleTheme.colors
+    val colors = AgentTerminal.colors
     Column(Modifier.padding(top = 14.dp, bottom = 4.dp)) {
         Row(
             Modifier
@@ -234,15 +230,15 @@ private fun UsageSectionHeader(label: String) {
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
             )
-            AiModuleSectionLabel(text = label)
+            TerminalSectionLabel(text = label)
         }
-        AiModuleHairline(Modifier.padding(horizontal = 12.dp))
+        TerminalHairline(Modifier.padding(horizontal = 12.dp))
     }
 }
 
 @Composable
 private fun BucketRow(bucket: AiUsageBucket) {
-    val colors = AiModuleTheme.colors
+    val colors = AgentTerminal.colors
     Row(
         Modifier
             .fillMaxWidth()
@@ -267,45 +263,19 @@ private fun BucketRow(bucket: AiUsageBucket) {
                 lineHeight = 1.3.em,
             )
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(
-                if (bucket.totalTokens > 0) formatTokens(bucket.totalTokens) else "—",
-                fontSize = 13.sp,
-                fontFamily = JetBrainsMono,
-                color = colors.textPrimary,
-                fontWeight = FontWeight.Medium,
-            )
-            bucket.totalCostUsd?.let {
-                Text(
-                    formatUsd(it),
-                    fontSize = 11.sp,
-                    fontFamily = JetBrainsMono,
-                    color = colors.warning,
-                    lineHeight = 1.2.em,
-                )
-            }
-        }
+        Text(
+            if (bucket.totalTokens > 0) bucket.totalTokens.toString() else "—",
+            fontSize = 13.sp,
+            fontFamily = JetBrainsMono,
+            color = colors.textPrimary,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
-private fun formatTokens(tokens: Long): String =
-    when {
-        tokens >= 1_000_000 -> String.format(Locale.US, "%.2fm", tokens / 1_000_000.0)
-        tokens >= 1_000 -> String.format(Locale.US, "%.1fk", tokens / 1_000.0)
-        else -> tokens.toString()
-    }
-
-private fun formatUsd(value: Double): String =
-    when {
-        value <= 0.0 -> "\$0.00"
-        value < 0.01 -> "<\$0.01"
-        value < 1.0 -> String.format(Locale.US, "\$%.3f", value)
-        else -> String.format(Locale.US, "\$%.2f", value)
-    }
-
 @Composable
 private fun ClearConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    val colors = AiModuleTheme.colors
+    val colors = AgentTerminal.colors
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Box(
             Modifier
@@ -333,12 +303,12 @@ private fun ClearConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 ) {
-                    AiModulePillButton(
+                    TerminalPillButton(
                         label = "n · " + Strings.cancel.lowercase(),
                         onClick = onDismiss,
                         accent = false,
                     )
-                    AiModulePillButton(
+                    TerminalPillButton(
                         label = "y · " + Strings.aiUsageClearConfirm.lowercase(),
                         onClick = onConfirm,
                         destructive = true,
