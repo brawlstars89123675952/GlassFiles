@@ -4,19 +4,14 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.os.Build
 import android.util.Base64
-import android.widget.Toast
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +19,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -68,11 +62,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -86,28 +78,17 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiChatSessionStore
-import com.glassfiles.data.ai.AiAgentApprovalPrefs
-import com.glassfiles.data.ai.AiAgentMemoryPrefs
-import com.glassfiles.data.ai.AiAgentMemoryStore
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.ModelRegistry
-import com.glassfiles.data.ai.agent.AiAgentApprovalCategory
-import com.glassfiles.data.ai.agent.AiAgentApprovalCheck
-import com.glassfiles.data.ai.agent.AiAgentApprovalPolicy
-import com.glassfiles.data.ai.agent.AiAgentApprovalSettings
 import com.glassfiles.data.ai.agent.AgentTools
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.data.ai.agent.AiToolResult
@@ -122,13 +103,8 @@ import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
 import com.glassfiles.ui.components.AiPickerChip
-import com.glassfiles.service.AgentProgress
-import com.glassfiles.service.AgentTask
-import com.glassfiles.service.AiAgentService
 import com.glassfiles.ui.screens.ai.ExpensiveActionWarningDialog
-import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -172,7 +148,6 @@ fun AiAgentScreen(
     onClose: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
 
@@ -202,8 +177,6 @@ fun AiAgentScreen(
         mutableStateOf(sessions.firstOrNull { it.id == activeSessionId }?.createdAt ?: System.currentTimeMillis())
     }
     var showHistory by remember { mutableStateOf(false) }
-    var memoryChats by remember { mutableStateOf<List<AiAgentMemoryStore.ChatRecord>>(emptyList()) }
-    var historyError by remember { mutableStateOf("") }
     // Per-repo system-prompt override editor visibility. Opens an
     // AlertDialog with a multi-line text field; saves to AiAgentPrefs
     // on confirm so subsequent runs in this repo prepend it as a
@@ -217,35 +190,9 @@ fun AiAgentScreen(
     }
 
     val transcript = remember { mutableStateListOf<AgentEntry>() }
-    var sessionUsage by remember { mutableStateOf(SessionStats.empty()) }
     var input by remember { mutableStateOf(TextFieldValue(initialPrompt.orEmpty())) }
     var pendingImage by remember { mutableStateOf<String?>(null) }
-    var autoApproveReads by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveReads(context)) }
-    var autoApproveEdits by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveEdits(context)) }
-    var autoApproveWrites by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveWrites(context)) }
-    var autoApproveCommits by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveCommits(context)) }
-    var autoApproveDestructive by remember { mutableStateOf(AiAgentApprovalPrefs.getAutoApproveDestructive(context)) }
-    var yoloMode by remember { mutableStateOf(AiAgentApprovalPrefs.getYoloMode(context)) }
-    var yoloConfirmed by remember { mutableStateOf(false) }
-    var pendingYoloConfirm by remember { mutableStateOf(false) }
-    var sessionTrustEnabled by remember { mutableStateOf(AiAgentApprovalPrefs.getSessionTrust(context)) }
-    var writeLimitPerTask by remember { mutableStateOf(AiAgentApprovalPrefs.getWriteLimit(context)) }
-    var backgroundExecution by remember { mutableStateOf(AiAgentApprovalPrefs.getBackgroundExecution(context)) }
-    var keepCpuAwake by remember { mutableStateOf(AiAgentApprovalPrefs.getKeepCpuAwake(context)) }
-    var memoryProjectKnowledge by remember { mutableStateOf(AiAgentMemoryPrefs.getProjectKnowledge(context)) }
-    var memoryUserPreferences by remember { mutableStateOf(AiAgentMemoryPrefs.getUserPreferences(context)) }
-    var memoryChatSummaries by remember { mutableStateOf(AiAgentMemoryPrefs.getChatSummaries(context)) }
-    var memorySemanticSearch by remember { mutableStateOf(AiAgentMemoryPrefs.getSemanticSearch(context)) }
-    var showMemoryFiles by remember { mutableStateOf(false) }
-    var memoryFiles by remember { mutableStateOf<List<AiAgentMemoryStore.MemoryFile>>(emptyList()) }
-    var memoryIndexSnapshot by remember { mutableStateOf(AiAgentMemoryStore.MemoryIndexSnapshot(emptyList())) }
-    var protectedPathsText by remember {
-        mutableStateOf(AiAgentApprovalPrefs.getProtectedPaths(context).joinToString("\n"))
-    }
-    var sessionTrustGranted by remember { mutableStateOf(false) }
-    var consecutiveAutoApprovals by remember { mutableStateOf(0) }
-    var writesThisTask by remember { mutableStateOf(0) }
-    val fileEditCounts = remember { mutableStateMapOf<String, Int>() }
+    var autoApproveReads by remember { mutableStateOf(true) }
     var running by remember { mutableStateOf(false) }
     var runJob by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -293,18 +240,6 @@ fun AiAgentScreen(
     // Pending approvals: tool calls awaiting user decision. The agent loop
     // suspends on these CompletableDeferred until Approve/Reject flips them.
     val approvals = remember { mutableStateListOf<PendingApproval>() }
-
-    fun refreshMemoryChats() {
-        val repoFull = selectedRepo?.fullName.orEmpty()
-        memoryChats = if (repoFull.isBlank()) emptyList() else AiAgentMemoryStore.listChats(context, repoFull)
-    }
-
-    fun resetApprovalSessionState() {
-        sessionTrustGranted = false
-        consecutiveAutoApprovals = 0
-        writesThisTask = 0
-        fileEditCounts.clear()
-    }
 
     // ─── Initial loads ────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
@@ -413,7 +348,6 @@ fun AiAgentScreen(
     // the conversation the user can still see and reference.
     LaunchedEffect(selectedRepo) {
         val repo = selectedRepo
-        refreshMemoryChats()
         if (repo == null) {
             branches.clear()
             selectedBranch = null
@@ -457,10 +391,6 @@ fun AiAgentScreen(
             .getPending(context, activeSessionId)
     }
 
-    LaunchedEffect(Unit) {
-        yoloConfirmed = AiAgentApprovalPrefs.isYoloModeConfirmed(context)
-    }
-
     // ─── Helpers ──────────────────────────────────────────────────────────
     fun refreshSessions() {
         sessions = AiChatSessionStore.list(context, AGENT_SESSION_MODE)
@@ -500,78 +430,7 @@ fun AiAgentScreen(
                 branch = selectedBranch.orEmpty(),
             ),
         )
-        selectedRepo?.fullName
-            ?.takeIf {
-                it.isNotBlank() &&
-                    (AiAgentMemoryPrefs.getProjectKnowledge(context) ||
-                        AiAgentMemoryPrefs.getUserPreferences(context) ||
-                        AiAgentMemoryPrefs.getChatSummaries(context) ||
-                        AiAgentMemoryPrefs.getSemanticSearch(context))
-            }
-            ?.let { repoFull ->
-            AiAgentMemoryStore.saveChatFull(
-                context = context,
-                repoFullName = repoFull,
-                chatId = id,
-                messages = messages,
-                branch = selectedBranch.orEmpty(),
-                providerId = selectedModel?.providerId?.name.orEmpty(),
-                modelId = selectedModel?.id.orEmpty(),
-                createdAt = sessionCreatedAt,
-            )
-        }
         refreshSessions()
-        refreshMemoryChats()
-    }
-
-    fun requestYoloConfirm() {
-        pendingYoloConfirm = true
-    }
-
-    fun applyYoloPreset() {
-        autoApproveReads = true
-        autoApproveEdits = true
-        autoApproveWrites = true
-        autoApproveCommits = true
-        yoloMode = true
-        AiAgentApprovalPrefs.setAutoApproveReads(context, true)
-        AiAgentApprovalPrefs.setAutoApproveEdits(context, true)
-        AiAgentApprovalPrefs.setAutoApproveWrites(context, true)
-        AiAgentApprovalPrefs.setAutoApproveCommits(context, true)
-        AiAgentApprovalPrefs.setYoloMode(context, true)
-        transcript += AgentEntry.Assistant(
-            "[system: YOLO mode enabled. Agent will skip approval for most actions.]",
-        )
-        persistSession()
-        Toast.makeText(
-            context,
-            "YOLO mode enabled. Agent will not ask for most actions.",
-            Toast.LENGTH_LONG,
-        ).show()
-        scope.launch {
-            AiAgentApprovalPrefs.setYoloModeConfirmed(context, true)
-            yoloConfirmed = true
-        }
-    }
-
-    fun updateAutoApproveToggles(
-        reads: Boolean = autoApproveReads,
-        edits: Boolean = autoApproveEdits,
-        writes: Boolean = autoApproveWrites,
-        commits: Boolean = autoApproveCommits,
-    ) {
-        if (!yoloMode && reads && edits && writes && commits) {
-            requestYoloConfirm()
-            return
-        }
-        autoApproveReads = reads
-        autoApproveEdits = edits
-        autoApproveWrites = writes
-        autoApproveCommits = commits
-        AiAgentApprovalPrefs.setAutoApproveReads(context, reads)
-        AiAgentApprovalPrefs.setAutoApproveEdits(context, edits)
-        AiAgentApprovalPrefs.setAutoApproveWrites(context, writes)
-        AiAgentApprovalPrefs.setAutoApproveCommits(context, commits)
     }
 
     fun openSession(session: AiChatSessionStore.Session) {
@@ -585,9 +444,7 @@ fun AiAgentScreen(
         sessionCreatedAt = session.createdAt
         transcript.clear()
         transcript.addAll(session.messages.toAgentEntries())
-        sessionUsage = SessionStats.empty()
         approvals.clear()
-        resetApprovalSessionState()
         // Reset selection so the restore effect picks up this session's
         // repo / branch / model. The branch is pre-seeded so the
         // branches-loading effect can honour it.
@@ -595,56 +452,6 @@ fun AiAgentScreen(
         selectedBranch = session.branch.takeIf { it.isNotBlank() }
         selectedModel = null
         pendingRestoreSessionId = session.id
-        showHistory = false
-    }
-
-    fun openMemoryChat(record: AiAgentMemoryStore.ChatRecord) {
-        val repoFull = selectedRepo?.fullName.orEmpty()
-        if (repoFull.isBlank()) {
-            historyError = "Pick a repository before opening memory chats."
-            return
-        }
-        val loaded = runCatching {
-            AiAgentMemoryStore.loadChat(context, repoFull, record.id)
-        }.getOrElse { error ->
-            historyError = error.message ?: error.javaClass.simpleName
-            return
-        }
-        stopActiveAgent(runJob, approvals)
-        runJob = null
-        running = false
-        error = null
-        input = TextFieldValue("")
-        pendingImage = null
-        activeSessionId = loaded.chatId
-        sessionCreatedAt = loaded.createdAt
-        transcript.clear()
-        transcript.addAll(loaded.messages.toAgentEntries())
-        sessionUsage = SessionStats.empty()
-        approvals.clear()
-        resetApprovalSessionState()
-        val sessionFallback = AiChatSessionStore.get(context, AGENT_SESSION_MODE, loaded.chatId)
-        AiChatSessionStore.upsert(
-            context = context,
-            session = AiChatSessionStore.Session(
-                id = loaded.chatId,
-                mode = AGENT_SESSION_MODE,
-                title = AiChatSessionStore.deriveTitle(loaded.messages),
-                providerId = loaded.providerId.ifBlank { sessionFallback?.providerId.orEmpty() },
-                modelId = loaded.modelId.ifBlank { sessionFallback?.modelId.orEmpty() },
-                messages = loaded.messages,
-                createdAt = loaded.createdAt,
-                updatedAt = loaded.updatedAt,
-                repoFullName = loaded.repoFullName.ifBlank { repoFull },
-                branch = loaded.branch.ifBlank { sessionFallback?.branch.orEmpty() },
-            ),
-        )
-        refreshSessions()
-        selectedRepo = repos.firstOrNull { it.fullName == loaded.repoFullName.ifBlank { repoFull } } ?: selectedRepo
-        selectedBranch = loaded.branch.ifBlank { sessionFallback?.branch.orEmpty() }.takeIf { it.isNotBlank() }
-        selectedModel = null
-        pendingRestoreSessionId = loaded.chatId
-        historyError = ""
         showHistory = false
     }
 
@@ -658,14 +465,11 @@ fun AiAgentScreen(
         activeSessionId = newAgentSessionId()
         sessionCreatedAt = System.currentTimeMillis()
         transcript.clear()
-        sessionUsage = SessionStats.empty()
         approvals.clear()
-        resetApprovalSessionState()
         // Don't drop repo / branch / model — keep the user's working
         // context so they can fire off another task in the same repo
         // without re-picking everything.
         showHistory = false
-        refreshMemoryChats()
     }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -680,38 +484,12 @@ fun AiAgentScreen(
         }
     }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (!granted && !AiAgentApprovalPrefs.getNotificationDeniedNoticeShown(context)) {
-            transcript += AgentEntry.Assistant(
-                "Notifications are disabled. Agent can still work in background, but you won't see progress updates in notification.",
-            )
-            AiAgentApprovalPrefs.setNotificationDeniedNoticeShown(context, true)
-            persistSession()
-        }
-    }
-
     fun stop() {
         runJob?.cancel()
-        if (backgroundExecution) {
-            AiAgentService.stop("Stopped by user")
-        }
         runJob = null
         running = false
         approvals.forEach { it.deferred.complete(false) }
         approvals.clear()
-        resetApprovalSessionState()
-    }
-
-    DisposableEffect(lifecycleOwner, backgroundExecution, running) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE && running && !backgroundExecution) {
-                stop()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     /**
@@ -733,14 +511,8 @@ fun AiAgentScreen(
         fallbackNotice = null
         input = TextFieldValue("")
         pendingImage = null
-        resetApprovalSessionState()
         transcript += AgentEntry.User(text, image)
         persistSession()
-        if (backgroundExecution && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
         // D2: persist a "task started, not finished" pointer so a
         // process kill mid-run leaves a recoverable trail. Cleared in
         // the finally block when the run completes (success, error,
@@ -758,29 +530,8 @@ fun AiAgentScreen(
             ),
         )
         running = true
-        if (backgroundExecution) {
-            AiAgentService.begin(
-                context = context,
-                task = AgentTask(
-                    repo = repo.fullName,
-                    branch = branch,
-                    prompt = text.take(120),
-                ),
-                keepCpuAwake = keepCpuAwake,
-                onCancel = { stop() },
-            )
-        }
 
         runJob = scope.launch {
-            var completedNormally = false
-            var taskInputChars = 0
-            var taskOutputChars = 0
-            var taskInputTokens = 0
-            var taskOutputTokens = 0
-            var taskEstimatedTokens = 0
-            var taskCostUsd = 0.0
-            var taskCostKnown = false
-            var taskEstimated = false
             // Cost-policy estimate for this task. Limits come from the
             // user's selected mode (Eco / Balanced / MaxQuality). The
             // executor uses it to cap individual file sizes / log lines /
@@ -804,13 +555,14 @@ fun AiAgentScreen(
                 initialCache = warmCache,
             )
             val provider = AiProviders.get(model.providerId)
-            // Filter repo-write tools out when the active GitHub repo is
-            // read-only. Local memory tools stay available because they
-            // operate on app-owned storage, not on GitHub permissions.
+            // Filter destructive tools out of the schema sent to the model
+            // when the active repo is read-only — without it, the model
+            // would happily emit `write_file` / `commit` calls that just
+            // 403 in the executor and waste a turn.
             val tools = if (repo.canWrite()) {
                 AgentTools.ALL
             } else {
-                AgentTools.ALL.filter { it.readOnly || AiAgentMemoryStore.isMemoryTool(it.name) }
+                AgentTools.ALL.filter { it.readOnly }
             }
             // Build the ordered fallback list: every other tool-use
             // capable model the user has a key for, ranked by the same
@@ -837,14 +589,8 @@ fun AiAgentScreen(
             // simply continues the conversation.
             val planFirst = com.glassfiles.data.ai.AiAgentPrefs
                 .getPlanThenExecute(context, repo.fullName)
-            val memoryPrompt = AiAgentMemoryStore
-                .buildMemoryPrompt(context, repo.fullName)
-                .takeIf { it.isNotBlank() }
             val baseMessages = transcript.toAiMessages()
             val systemMessages = buildList {
-                if (memoryPrompt != null) {
-                    add(AiMessage(role = "system", content = memoryPrompt))
-                }
                 if (systemOverride != null) {
                     add(AiMessage(role = "system", content = systemOverride))
                 }
@@ -868,49 +614,10 @@ fun AiAgentScreen(
                     executor = executor,
                     transcript = transcript,
                     approvals = approvals,
-                    approvalSettings = AiAgentApprovalSettings(
-                        autoApproveReads = autoApproveReads,
-                        autoApproveEdits = autoApproveEdits,
-                        autoApproveWrites = autoApproveWrites,
-                        autoApproveCommits = autoApproveCommits,
-                        autoApproveDestructive = autoApproveDestructive,
-                        yoloMode = yoloMode,
-                        sessionTrust = sessionTrustEnabled,
-                        writeLimitPerTask = writeLimitPerTask,
-                        protectedPaths = protectedPathsText.lineSequence()
-                            .map { it.trim() }
-                            .filter { it.isNotBlank() }
-                            .toList(),
-                        activeBranch = branch,
-                    ),
-                    isSessionTrusted = { sessionTrustGranted },
-                    onSessionTrustGranted = { sessionTrustGranted = true },
-                    consecutiveAutoApprovals = { consecutiveAutoApprovals },
-                    setConsecutiveAutoApprovals = { consecutiveAutoApprovals = it },
-                    writesThisTask = { writesThisTask },
-                    setWritesThisTask = { writesThisTask = it },
-                    fileEditCounts = fileEditCounts,
+                    autoApproveReads = autoApproveReads,
                     context = context,
                     fallbackCandidates = fallbacks,
                     estimate = estimate,
-                    onUsageDelta = { providerId, activeModelId, inputChars, outputChars, inputTokens, outputTokens, estimated ->
-                        taskInputChars += inputChars
-                        taskOutputChars += outputChars
-                        taskInputTokens += inputTokens
-                        taskOutputTokens += outputTokens
-                        taskEstimated = taskEstimated || estimated
-                        val delta = if (estimated) {
-                            SessionStats.fromProviderEstimate(providerId, activeModelId, inputChars, outputChars)
-                        } else {
-                            SessionStats.fromProviderTokens(providerId, activeModelId, inputTokens, outputTokens)
-                        }
-                        if (estimated) taskEstimatedTokens += delta.tokens
-                        delta.costUsd?.let {
-                            taskCostUsd += it
-                            taskCostKnown = true
-                        }
-                        sessionUsage = sessionUsage + delta
-                    },
                     onFallback = { newModel ->
                         // Reflect the swap in the UI so the user
                         // immediately sees which model is now in
@@ -920,50 +627,13 @@ fun AiAgentScreen(
                         fallbackNotice = Strings.aiAgentFallbackToast
                             .replace("{model}", newModel.displayName)
                     },
-                    onToolStatus = { status, current, total ->
-                        if (backgroundExecution) {
-                            AiAgentService.update(status, AgentProgress(current, total))
-                        }
-                    },
                 )
-                completedNormally = true
-            } catch (e: CancellationException) {
-                if (backgroundExecution) {
-                    AiAgentService.stop("Stopped by user")
-                }
-                throw e
             } catch (e: Exception) {
                 error = e.message ?: e.javaClass.simpleName
-                if (backgroundExecution) {
-                    AiAgentService.complete("Task failed: ${error.orEmpty().take(80)}")
-                }
             } finally {
                 persistSession()
-                val finalMessages = transcriptMessages()
-                if (finalMessages.isNotEmpty() &&
-                    AiAgentMemoryPrefs.getChatSummaries(context)
-                ) {
-                    scope.launch(Dispatchers.IO) {
-                        AiAgentMemoryStore.summarizeAndUpdate(
-                            context = context,
-                            repoFullName = repo.fullName,
-                            chatId = activeSessionId,
-                            messages = finalMessages,
-                            provider = provider,
-                            modelId = model.id,
-                            apiKey = key,
-                            branch = selectedBranch.orEmpty(),
-                            providerId = model.providerId.name,
-                            createdAt = sessionCreatedAt,
-                        )
-                    }
-                }
                 running = false
                 runJob = null
-                if (backgroundExecution && completedNormally) {
-                    AiAgentService.complete("Task completed")
-                }
-                resetApprovalSessionState()
                 // Persist the executor's file cache so the next session
                 // on this (repo, branch) starts warm. Failures are
                 // logged inside the store and do not affect the agent
@@ -1014,15 +684,8 @@ fun AiAgentScreen(
                             providerId = model.providerId.name,
                             modelId = model.id,
                             mode = com.glassfiles.data.ai.usage.AiUsageMode.GITHUB_AGENT,
-                            inputTokens = if (taskEstimated) 0 else taskInputTokens,
-                            outputTokens = if (taskEstimated) 0 else taskOutputTokens,
-                            totalTokens = taskInputTokens + taskOutputTokens + taskEstimatedTokens,
-                            estimatedInputChars = if (taskEstimated) {
-                                taskInputChars.takeIf { it > 0 } ?: estimate.totalChars
-                            } else {
-                                0
-                            },
-                            estimatedOutputChars = if (taskEstimated) taskOutputChars else 0,
+                            estimatedInputChars = estimate.totalChars,
+                            estimatedOutputChars = 0,
                             toolCallsCount = estimate.toolCallsExecuted,
                             filesReadCount = readCalls,
                             filesWrittenCount = writeCalls,
@@ -1031,8 +694,7 @@ fun AiAgentScreen(
                             branchName = branch,
                             isPrivateRepo = repo.isPrivate,
                             costMode = costMode.name,
-                            costUsd = taskCostUsd.takeIf { taskCostKnown },
-                            estimated = taskEstimated,
+                            estimated = true,
                         ),
                     )
                 }
@@ -1053,10 +715,6 @@ fun AiAgentScreen(
         val text = userText.trim()
         val image = imageBase64?.takeIf { selectedModel?.let { m -> AiCapability.VISION in m.capabilities } == true }
         if (text.isEmpty() && image == null) return
-        if (running) {
-            error = "Agent is busy, finish current task first."
-            return
-        }
         val repo = selectedRepo ?: return
         val branch = selectedBranch ?: return
         val model = selectedModel ?: return
@@ -1110,94 +768,209 @@ fun AiAgentScreen(
         runTaskInternal(text, image)
     }
 
-    // ─── UI (terminal mode) ────────────────────────────────────────────────
-    // Terminal-mode local state. These flags only drive the agent-screen
-    // chrome; they are intentionally NOT persisted to the cost / chat
-    // store because they are pure presentation toggles.
-    var showSettings by remember { mutableStateOf(false) }
-    var instantRender by remember { mutableStateOf(false) }
-    val terminalColors = com.glassfiles.ui.screens.ai.terminal.AgentTerminalDarkColors
-
-    com.glassfiles.ui.screens.ai.terminal.AgentTerminalSurface(colors = terminalColors) {
+    // ─── UI ───────────────────────────────────────────────────────────────
     Column(
         Modifier
             .fillMaxSize()
+            .background(colors.surface)
             .let { if (embedded) it else it.statusBarsPadding() }
             .imePadding(),
     ) {
-        // Topbar — terminal-style. During active runs this uses provider
-        // usage when available; otherwise it falls back to local estimates.
-        val fallbackStats by remember(selectedModel?.uniqueKey) {
-            derivedStateOf { computeSessionStats(transcript, selectedModel, SessionStats.empty()) }
-        }
-        val sessionStats = sessionUsage.takeIf { it.tokens > 0 || it.totalChars > 0 } ?: fallbackStats
-        val hasUsageStats = sessionStats.totalChars > 0 || sessionStats.tokens > 0
-        val costLabel = if (hasUsageStats) {
-            sessionStats.costUsd?.let { c ->
-                when {
-                    c < 0.01 -> "<\$0.01"
-                    c < 1.0 -> String.format(Locale.US, "\$%.3f", c)
-                    else -> String.format(Locale.US, "\$%.2f", c)
+        // Top bar
+        Row(
+            Modifier.fillMaxWidth().padding(
+                start = if (embedded) 16.dp else 4.dp,
+                end = 16.dp,
+                top = 8.dp,
+                bottom = 6.dp,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!embedded) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = colors.onSurface)
                 }
             }
-        } else null
-        val tokenLabel = if (hasUsageStats) {
-            val t = sessionStats.tokens
-            when {
-                t >= 1000 -> String.format(Locale.US, "%.1fk tok", t / 1000.0)
-                else -> "$t tok"
+            Text(
+                Strings.aiAgent,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.onSurface,
+            )
+            // Cost / token meter — derived from the transcript so it
+            // updates as new turns land. No live tracking inside
+            // runAgentLoop is needed; the rate table provides USD
+            // estimates only when we know the model's pricing.
+            val costRate = remember(selectedModel?.uniqueKey) {
+                selectedModel?.let { com.glassfiles.data.ai.ModelPricing.rateFor(it) }
             }
-        } else null
-        val subtitle = listOfNotNull(
-            selectedRepo?.fullName,
-            selectedBranch?.takeIf { it.isNotBlank() }
-                ?.let { "@$it" }
-        ).joinToString("").ifBlank { null }
-        val autoApproveParts = buildList {
-            if (yoloMode) {
-                add("yolo")
-            } else {
-                if (autoApproveReads) add("r")
-                if (autoApproveEdits) add("e")
-                if (autoApproveWrites) add("w")
-                if (autoApproveCommits) add("c")
+            val sessionStats by remember(selectedModel?.uniqueKey) {
+                derivedStateOf { computeSessionStats(transcript, costRate) }
+            }
+            if (sessionStats.totalChars > 0) {
+                Spacer(Modifier.width(8.dp))
+                CostMeter(stats = sessionStats)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { showHistory = true }) {
+                Icon(Icons.Rounded.Chat, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+            }
+            IconButton(onClick = ::startNewSession) {
+                Icon(Icons.Rounded.Add, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+            }
+            // Per-repo settings — system prompt override etc. Disabled
+            // until a repo is picked because the override is keyed by
+            // repo full-name.
+            IconButton(
+                onClick = { showSystemPrompt = true },
+                enabled = selectedRepo != null,
+            ) {
+                Icon(Icons.Rounded.Tune, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+            }
+            if (running) {
+                IconButton(onClick = ::stop) {
+                    Icon(Icons.Rounded.Stop, null, Modifier.size(20.dp), tint = colors.error)
+                }
+            }
+            if (onClose != null) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                }
             }
         }
-        val autoApproveIndicator = autoApproveParts
-            .takeIf { it.isNotEmpty() }
-            ?.joinToString("\u00B7", prefix = "[auto: ", postfix = "]")
-        val autoApproveTone = when {
-            yoloMode -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
-            autoApproveCommits -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
-            autoApproveEdits || autoApproveWrites -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
-            else -> com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
-        }
-        com.glassfiles.ui.screens.ai.terminal.AgentTopBar(
-            title = Strings.aiAgent,
-            subtitle = subtitle,
-            cost = costLabel,
-            tokens = tokenLabel,
-            autoApproveIndicator = autoApproveIndicator,
-            autoApproveTone = autoApproveTone,
-            embedded = embedded,
-            running = running,
-            onBack = onBack,
-            onSettings = { showSettings = true },
-            onHistory = {
-                refreshMemoryChats()
-                showHistory = true
-            },
-            onNewChat = ::startNewSession,
-            onSystemPrompt = {
-                if (selectedRepo != null) showSystemPrompt = true else showSettings = true
-            },
-            onStop = ::stop,
-            onClose = onClose,
-        )
 
-        // Transcript — repo / branch / model / mode / toggles all live
-        // in the settings bottom-sheet now (opened via the topbar gear
-        // icon), so the chat takes the full screen height.
+        // Pickers: fixed constraints prevent labels from collapsing into one-letter columns.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AiPickerChip(
+                    label = "REPO",
+                    value = selectedRepo?.fullName ?: Strings.aiAgentSelectRepo,
+                    title = Strings.aiAgentSelectRepo,
+                    options = repos.toList(),
+                    optionLabel = { it.fullName },
+                    optionSubtitle = { it.description.takeIf { d -> d.isNotBlank() } },
+                    selected = selectedRepo,
+                    onSelect = { selectedRepo = it },
+                    enabled = !running,
+                    modifier = Modifier.weight(1f).widthIn(min = 0.dp),
+                )
+                AiPickerChip(
+                    label = "BRANCH",
+                    value = selectedBranch ?: "—",
+                    title = Strings.aiAgentSelectBranch,
+                    options = branches.toList(),
+                    optionLabel = { it },
+                    selected = selectedBranch,
+                    onSelect = { selectedBranch = it },
+                    enabled = !running && branches.isNotEmpty(),
+                    modifier = Modifier.weight(1f).widthIn(min = 0.dp),
+                )
+            }
+            AiPickerChip(
+                label = "MODEL",
+                value = selectedModel?.displayName ?: "—",
+                title = Strings.aiAgentSelectModel,
+                options = models.toList(),
+                optionLabel = { "${it.providerId.displayName} · ${it.displayName}" },
+                selected = selectedModel,
+                onSelect = { picked ->
+                    selectedModel = picked
+                    // Per-repo last-model. Tied to the active repo so
+                    // re-opening the same repo re-picks the same
+                    // model without prompting the user.
+                    selectedRepo?.fullName?.let { repoFull ->
+                        com.glassfiles.data.ai.AiAgentPrefs.setLastModel(
+                            context,
+                            repoFull,
+                            picked.uniqueKey,
+                        )
+                    }
+                },
+                enabled = !running && models.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        // Cost-mode selector. Three FilterChip-style buttons that map
+        // to AiCostMode. Selection is persisted immediately so a
+        // subsequent task pulls the new mode from AiCostModeStore.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                Text(Strings.aiCostMode, fontSize = 13.sp, color = colors.onSurface)
+                Text(
+                    when (costMode) {
+                        com.glassfiles.data.ai.cost.AiCostMode.Eco -> Strings.aiCostModeEcoHint
+                        com.glassfiles.data.ai.cost.AiCostMode.Balanced -> Strings.aiCostModeBalancedHint
+                        com.glassfiles.data.ai.cost.AiCostMode.MaxQuality -> Strings.aiCostModeMaxHint
+                    },
+                    fontSize = 10.sp,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    com.glassfiles.data.ai.cost.AiCostMode.Eco to Strings.aiCostModeEco,
+                    com.glassfiles.data.ai.cost.AiCostMode.Balanced to Strings.aiCostModeBalanced,
+                    com.glassfiles.data.ai.cost.AiCostMode.MaxQuality to Strings.aiCostModeMax,
+                ).forEach { (mode, label) ->
+                    val selected = mode == costMode
+                    FilterChip(
+                        selected = selected,
+                        onClick = {
+                            if (!running) {
+                                costMode = mode
+                                com.glassfiles.data.ai.cost.AiCostModeStore.setMode(context, mode)
+                            }
+                        },
+                        label = { Text(label, fontSize = 11.sp) },
+                        enabled = !running,
+                    )
+                }
+            }
+        }
+
+        // Auto-approve switch
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(Strings.aiAgentAutoApprove, fontSize = 13.sp, color = colors.onSurface)
+                Text(
+                    Strings.aiAgentAutoApproveHint,
+                    fontSize = 10.sp,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = autoApproveReads,
+                onCheckedChange = { autoApproveReads = it },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = colors.onPrimary,
+                    checkedTrackColor = colors.primary,
+                ),
+            )
+        }
+
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outlineVariant.copy(alpha = 0.4f)))
+
+        // Transcript
         val listState = rememberLazyListState()
         val entries by remember { derivedStateOf { transcript.toList() + approvals.map { AgentEntry.Pending(it) } } }
         LaunchedEffect(entries.size) {
@@ -1205,35 +978,26 @@ fun AiAgentScreen(
         }
 
         if (selectedRepo == null && repos.isEmpty() && !GitHubManager.isLoggedIn(context)) {
-            TerminalEmptyState(
-                message = Strings.aiAgentNoRepos,
-                modifier = Modifier.weight(1f),
-            )
+            EmptyAgentState(message = Strings.aiAgentNoRepos)
         } else if (models.isEmpty()) {
-            TerminalEmptyState(
-                message = Strings.aiAgentNoModels,
-                modifier = Modifier.weight(1f),
-            )
+            EmptyAgentState(message = Strings.aiAgentNoModels)
         } else {
-            // Pair tool calls with their results so the row can render
-            // an accurate status glyph; the result entry is then
-            // suppressed below so it doesn't appear twice.
-            val toolResults = remember(entries) {
-                entries.mapNotNull { (it as? AgentEntry.ToolResult)?.result }
-                    .associateBy { it.callId }
-            }
             LazyColumn(
                 state = listState,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Banners — only render when the corresponding condition
+                // is live. Each is its own `item` so they can collapse/
+                // appear independently without disturbing scroll position.
                 val repo = selectedRepo
                 if (repo != null && repo.isPrivate && privateRepoDismissed != repo.fullName) {
                     item("banner-private") {
-                        TerminalBanner(
+                        AgentBanner(
+                            icon = Icons.Rounded.Lock,
+                            tint = colors.tertiary,
                             text = Strings.aiAgentPrivateRepoWarning,
-                            tone = TerminalBannerTone.WARNING,
                             actionLabel = Strings.aiAgentPrivateRepoDismiss,
                             onAction = { privateRepoDismissed = repo.fullName },
                         )
@@ -1241,26 +1005,29 @@ fun AiAgentScreen(
                 }
                 if (repo != null && !repo.canWrite()) {
                     item("banner-readonly") {
-                        TerminalBanner(
+                        AgentBanner(
+                            icon = Icons.Rounded.Warning,
+                            tint = colors.error,
                             text = Strings.aiAgentReadOnlyWarning,
-                            tone = TerminalBannerTone.ERROR,
                         )
                     }
                 }
                 if (selectedModel != null && activeApiKey.isBlank()) {
                     item("banner-no-key") {
-                        TerminalBanner(
+                        AgentBanner(
+                            icon = Icons.Rounded.Warning,
+                            tint = colors.error,
                             title = Strings.aiAgentNoApiKeyTitle,
                             text = Strings.aiAgentNoApiKeySubtitle,
-                            tone = TerminalBannerTone.ERROR,
                         )
                     }
                 }
                 if (selectedRepo == null || selectedBranch.isNullOrBlank()) {
                     item("banner-pick-repo") {
-                        TerminalBanner(
+                        AgentBanner(
+                            icon = Icons.Rounded.Build,
+                            tint = colors.onSurfaceVariant,
                             text = Strings.aiAgentPickRepoHint,
-                            tone = TerminalBannerTone.INFO,
                         )
                     }
                 }
@@ -1268,44 +1035,32 @@ fun AiAgentScreen(
                     item {
                         Text(
                             Strings.aiAgentEmptyChat,
-                            color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textMuted,
-                            fontFamily = JetBrainsMono,
-                            fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.message,
+                            fontSize = 13.sp,
+                            color = colors.onSurfaceVariant,
                             modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
                         )
                     }
                 }
-                val lastAssistantId = (entries.lastOrNull { it is AgentEntry.Assistant } as? AgentEntry.Assistant)?.id
                 entries.forEach { entry ->
-                    if (entry is AgentEntry.ToolResult) return@forEach
                     item(key = entry.stableKey()) {
-                        TerminalTranscriptEntry(
+                        TranscriptEntry(
                             entry = entry,
-                            context = context,
-                            toolResults = toolResults,
-                            isLastAssistant = (entry is AgentEntry.Assistant) && entry.id == lastAssistantId,
-                            running = running,
-                            instantRender = instantRender,
+                            activeRepoFullName = selectedRepo?.fullName,
+                            activeBranch = selectedBranch,
+                            activeDefaultBranch = selectedRepo?.defaultBranch,
                         )
                     }
                 }
                 if (running && approvals.isEmpty()) {
                     item {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                "$ ",
-                                color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.accentDim,
-                                fontFamily = JetBrainsMono,
-                                fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
+                            CircularProgressIndicator(
+                                Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = colors.primary,
                             )
-                            Text(
-                                Strings.aiAgentRunning,
-                                color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textSecondary,
-                                fontFamily = JetBrainsMono,
-                                fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            com.glassfiles.ui.screens.ai.terminal.AgentBlinkingCursor()
+                            Spacer(Modifier.width(8.dp))
+                            Text(Strings.aiAgentRunning, fontSize = 12.sp, color = colors.onSurfaceVariant)
                         }
                     }
                 }
@@ -1313,57 +1068,90 @@ fun AiAgentScreen(
         }
 
         if (error != null) {
-            TerminalBanner(
-                text = error.orEmpty(),
-                tone = TerminalBannerTone.ERROR,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+            Text(
+                error.orEmpty(),
+                fontSize = 12.sp,
+                color = colors.error,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
         }
         fallbackNotice?.let { notice ->
-            TerminalBanner(
-                text = notice,
-                tone = TerminalBannerTone.WARNING,
-                actionLabel = "x",
-                onAction = { fallbackNotice = null },
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.tertiaryContainer.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Rounded.Warning,
+                    null,
+                    Modifier.size(16.dp),
+                    tint = colors.onTertiaryContainer,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    notice,
+                    fontSize = 12.sp,
+                    color = colors.onTertiaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = { fallbackNotice = null }, modifier = Modifier.size(20.dp)) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        null,
+                        Modifier.size(14.dp),
+                        tint = colors.onTertiaryContainer,
+                    )
+                }
+            }
         }
         // D2 — resume banner. Surfaced when the previous run for this
         // session was killed without a clean finish. Tapping Resume
         // re-issues the same prompt; Discard wipes the pointer.
+        // Hidden while a run is already in flight (don't compete with
+        // streaming UI).
         pendingResume?.takeIf { !running }?.let { pending ->
-            Column(
+            Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.secondaryContainer.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                TerminalBanner(
-                    text = Strings.aiAgentResumeBannerText,
-                    tone = TerminalBannerTone.INFO,
+                Text(
+                    Strings.aiAgentResumeBannerText,
+                    fontSize = 12.sp,
+                    color = colors.onSecondaryContainer,
+                    modifier = Modifier.weight(1f),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    com.glassfiles.ui.screens.ai.terminal.AgentTextButton(
-                        label = "[ resume ]",
-                        color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.accent,
-                        enabled = true,
-                        onClick = {
-                            val resume = pending
-                            pendingResume = null
-                            com.glassfiles.data.ai.AiAgentResumeStore
-                                .clear(context, activeSessionId)
-                            submit(resume.prompt, resume.imageBase64)
-                        },
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = {
+                    val resume = pending
+                    pendingResume = null
+                    com.glassfiles.data.ai.AiAgentResumeStore
+                        .clear(context, activeSessionId)
+                    submit(resume.prompt, resume.imageBase64)
+                }) {
+                    Text(
+                        Strings.aiAgentResumeBannerAction,
+                        color = colors.primary,
+                        fontSize = 12.sp,
                     )
-                    com.glassfiles.ui.screens.ai.terminal.AgentTextButton(
-                        label = "[ discard ]",
-                        color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textSecondary,
-                        enabled = true,
-                        onClick = {
-                            pendingResume = null
-                            com.glassfiles.data.ai.AiAgentResumeStore
-                                .clear(context, activeSessionId)
-                        },
+                }
+                TextButton(onClick = {
+                    pendingResume = null
+                    com.glassfiles.data.ai.AiAgentResumeStore
+                        .clear(context, activeSessionId)
+                }) {
+                    Text(
+                        Strings.aiAgentResumeBannerDiscard,
+                        color = colors.onSurfaceVariant,
+                        fontSize = 12.sp,
                     )
                 }
             }
@@ -1377,45 +1165,95 @@ fun AiAgentScreen(
             )
         }
 
-        // Input bar — terminal-style. Mirrors the legacy gating: send
-        // requires repo / branch / model / api-key all set; the field
-        // stays editable so the user can draft text while picking
-        // their context in the settings sheet.
+        // Input bar.
+        //
+        // The input field stays editable as long as the agent isn't busy:
+        // even if the user hasn't picked repo/branch/model yet they should
+        // be able to draft a message. Send is gated on the full set being
+        // present, the placeholder lives inside `decorationBox` (so it
+        // never overlaps the field's hit-target / IME state), and we use
+        // a `TextFieldValue` so cursor + selection survive recomposition.
         val canSend = !running &&
             (input.text.isNotBlank() || pendingImage != null) &&
             selectedRepo != null && selectedBranch != null && selectedModel != null &&
             activeApiKey.isNotBlank()
-        com.glassfiles.ui.screens.ai.terminal.AgentInput(
-            value = input,
-            onValueChange = { input = it },
-            onSend = { submit(input.text, pendingImage) },
-            onPickImage = { photoPicker.launch("image/*") },
-            canSend = canSend,
-            enabled = !running,
-            placeholder = Strings.aiAgentInputHint,
-            modifier = Modifier.navigationBarsPadding(),
-        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .navigationBarsPadding(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = { photoPicker.launch("image/*") },
+                enabled = !running && selectedModel != null,
+                modifier = Modifier.size(44.dp),
+            ) {
+                Icon(
+                    Icons.Rounded.AddPhotoAlternate,
+                    null,
+                    Modifier.size(22.dp),
+                    tint = if (!running && selectedModel != null) colors.onSurfaceVariant else colors.onSurfaceVariant.copy(alpha = 0.4f),
+                )
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                    .border(1.dp, colors.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                BasicTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    enabled = !running,
+                    textStyle = TextStyle(color = colors.onSurface, fontSize = 14.sp),
+                    cursorBrush = SolidColor(colors.primary),
+                    decorationBox = { inner ->
+                        if (input.text.isEmpty()) {
+                            Text(
+                                Strings.aiAgentInputHint,
+                                color = colors.onSurfaceVariant,
+                                fontSize = 14.sp,
+                            )
+                        }
+                        inner()
+                    },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 22.dp, max = 120.dp),
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { submit(input.text, pendingImage) },
+                enabled = canSend,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(if (canSend) colors.primary else colors.surfaceVariant),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.Send,
+                    null,
+                    Modifier.size(18.dp),
+                    tint = if (canSend) colors.onPrimary else colors.onSurfaceVariant,
+                )
+            }
+        }
         if (showHistory) {
             AgentHistorySheet(
-                repoFullName = selectedRepo?.fullName.orEmpty(),
-                chats = memoryChats,
-                error = historyError,
-                onOpen = ::openMemoryChat,
+                sessions = sessions,
+                onOpen = ::openSession,
                 onNew = ::startNewSession,
-                onRefresh = ::refreshMemoryChats,
-                onSearch = { query ->
-                    AiAgentMemoryStore.searchChats(context, selectedRepo?.fullName.orEmpty(), query)
-                },
-                onRename = { chat, title ->
-                    AiAgentMemoryStore.renameChat(context, selectedRepo?.fullName.orEmpty(), chat.id, title)
-                    refreshMemoryChats()
-                },
-                onDelete = { chat ->
-                    AiAgentMemoryStore.deleteChat(context, selectedRepo?.fullName.orEmpty(), chat.id)
-                    AiChatSessionStore.delete(context, AGENT_SESSION_MODE, chat.id)
+                onDelete = { session ->
+                    AiChatSessionStore.delete(context, AGENT_SESSION_MODE, session.id)
                     refreshSessions()
-                    refreshMemoryChats()
-                    if (chat.id == activeSessionId) startNewSession()
+                    if (session.id == activeSessionId) startNewSession()
+                },
+                onDeleteAll = {
+                    AiChatSessionStore.clear(context, AGENT_SESSION_MODE)
+                    refreshSessions()
+                    startNewSession()
                 },
                 onDismiss = { showHistory = false },
             )
@@ -1485,556 +1323,75 @@ fun AiAgentScreen(
                 onDismiss = { showSystemPrompt = false },
             )
         }
-
-        // Agent settings — repo / branch / model / mode / toggles /
-        // export / clear. Mounted alongside the warning + system-prompt
-        // dialogs so the gear icon in the topbar always surfaces it.
-        if (showSettings) {
-            val terminalSettingsState = remember(
-                selectedRepo,
-                selectedBranch,
-                selectedModel,
-                costMode,
-                autoApproveReads,
-                autoApproveEdits,
-                autoApproveWrites,
-                autoApproveCommits,
-                autoApproveDestructive,
-                yoloMode,
-                sessionTrustEnabled,
-                writeLimitPerTask,
-                protectedPathsText,
-                backgroundExecution,
-                keepCpuAwake,
-                memoryProjectKnowledge,
-                memoryUserPreferences,
-                memoryChatSummaries,
-                memorySemanticSearch,
-                instantRender,
-            ) {
-                com.glassfiles.ui.screens.ai.terminal.AgentSettingsState(
-                    repoLabel = selectedRepo?.fullName ?: "—",
-                    branchLabel = selectedBranch ?: "—",
-                    modelLabel = selectedModel?.let { "${it.providerId.displayName} \u00B7 ${it.displayName}" } ?: "—",
-                    mode = when (costMode) {
-                        com.glassfiles.data.ai.cost.AiCostMode.Eco -> com.glassfiles.ui.screens.ai.terminal.AgentMode.ECO
-                        com.glassfiles.data.ai.cost.AiCostMode.Balanced -> com.glassfiles.ui.screens.ai.terminal.AgentMode.BALANCED
-                        com.glassfiles.data.ai.cost.AiCostMode.MaxQuality -> com.glassfiles.ui.screens.ai.terminal.AgentMode.MAX_QUALITY
-                    },
-                    modeHint = when (costMode) {
-                        com.glassfiles.data.ai.cost.AiCostMode.Eco -> Strings.aiCostModeEcoHint
-                        com.glassfiles.data.ai.cost.AiCostMode.Balanced -> Strings.aiCostModeBalancedHint
-                        com.glassfiles.data.ai.cost.AiCostMode.MaxQuality -> Strings.aiCostModeMaxHint
-                    },
-                    autoApproveReads = autoApproveReads,
-                    autoApproveEdits = autoApproveEdits,
-                    autoApproveWrites = autoApproveWrites,
-                    autoApproveCommits = autoApproveCommits,
-                    autoApproveDestructive = autoApproveDestructive,
-                    yoloMode = yoloMode,
-                    sessionTrust = sessionTrustEnabled,
-                    writeLimitPerTask = writeLimitPerTask,
-                    protectedPathsText = protectedPathsText,
-                    protectedPathsCount = protectedPathsText.lineSequence().count { it.trim().isNotBlank() },
-                    backgroundExecution = backgroundExecution,
-                    keepCpuAwake = keepCpuAwake,
-                    memoryProjectKnowledge = memoryProjectKnowledge,
-                    memoryUserPreferences = memoryUserPreferences,
-                    memoryChatSummaries = memoryChatSummaries,
-                    memorySemanticSearch = memorySemanticSearch,
-                    instantRender = instantRender,
-                )
-            }
-            val repoOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
-                items = repos.toList().map {
-                    com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
-                        key = it.fullName,
-                        title = it.fullName,
-                        subtitle = it.description.takeIf { d -> d.isNotBlank() },
-                    )
-                },
-                selected = selectedRepo?.fullName?.let { full ->
-                    com.glassfiles.ui.screens.ai.terminal.RepoDisplay(full, full, null)
-                },
-                label = { it.title },
-                subtitle = { it.subtitle },
-                enabled = !running,
-            )
-            val branchOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
-                items = branches.toList(),
-                selected = selectedBranch,
-                label = { it },
-                enabled = !running && branches.isNotEmpty(),
-            )
-            val modelOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
-                items = models.toList().map {
-                    com.glassfiles.ui.screens.ai.terminal.ModelDisplay(
-                        key = it.uniqueKey,
-                        title = "${it.providerId.displayName} \u00B7 ${it.displayName}",
-                        subtitle = null,
-                    )
-                },
-                selected = selectedModel?.uniqueKey?.let { k ->
-                    com.glassfiles.ui.screens.ai.terminal.ModelDisplay(k, k, null)
-                },
-                label = { it.title },
-                subtitle = { it.subtitle },
-                enabled = !running && models.isNotEmpty(),
-            )
-            com.glassfiles.ui.screens.ai.terminal.AgentSettingsBottomSheet(
-                state = terminalSettingsState,
-                repos = repoOptions,
-                branches = branchOptions,
-                models = modelOptions,
-                onRepoSelected = { picked ->
-                    repos.firstOrNull { it.fullName == picked.key }?.let { selectedRepo = it }
-                },
-                onBranchSelected = { selectedBranch = it },
-                onModelSelected = { picked ->
-                    val match = models.firstOrNull { it.uniqueKey == picked.key } ?: return@AgentSettingsBottomSheet
-                    selectedModel = match
-                    selectedRepo?.fullName?.let { repoFull ->
-                        com.glassfiles.data.ai.AiAgentPrefs.setLastModel(
-                            context,
-                            repoFull,
-                            match.uniqueKey,
-                        )
-                    }
-                },
-                onModeChange = { mode ->
-                    if (running) return@AgentSettingsBottomSheet
-                    val cm = when (mode) {
-                        com.glassfiles.ui.screens.ai.terminal.AgentMode.ECO -> com.glassfiles.data.ai.cost.AiCostMode.Eco
-                        com.glassfiles.ui.screens.ai.terminal.AgentMode.BALANCED -> com.glassfiles.data.ai.cost.AiCostMode.Balanced
-                        com.glassfiles.ui.screens.ai.terminal.AgentMode.MAX_QUALITY -> com.glassfiles.data.ai.cost.AiCostMode.MaxQuality
-                    }
-                    costMode = cm
-                    com.glassfiles.data.ai.cost.AiCostModeStore.setMode(context, cm)
-                },
-                onAutoApproveReadsChange = {
-                    updateAutoApproveToggles(reads = it)
-                },
-                onAutoApproveEditsChange = {
-                    updateAutoApproveToggles(edits = it)
-                },
-                onAutoApproveWritesChange = {
-                    updateAutoApproveToggles(writes = it)
-                },
-                onAutoApproveCommitsChange = {
-                    updateAutoApproveToggles(commits = it)
-                },
-                onAutoApproveDestructiveChange = {
-                    autoApproveDestructive = it
-                    AiAgentApprovalPrefs.setAutoApproveDestructive(context, it)
-                },
-                onYoloModeChange = { enabled ->
-                    if (enabled) {
-                        requestYoloConfirm()
-                    } else {
-                        yoloMode = false
-                        AiAgentApprovalPrefs.setYoloMode(context, false)
-                        transcript += AgentEntry.Assistant("[system: YOLO mode disabled. Approval policy is active again.]")
-                        persistSession()
-                    }
-                },
-                onSessionTrustChange = {
-                    sessionTrustEnabled = it
-                    AiAgentApprovalPrefs.setSessionTrust(context, it)
-                },
-                onWriteLimitChange = {
-                    writeLimitPerTask = it
-                    AiAgentApprovalPrefs.setWriteLimit(context, it)
-                },
-                onProtectedPathsChange = {
-                    protectedPathsText = it
-                    AiAgentApprovalPrefs.setProtectedPaths(context, it)
-                },
-                onBackgroundExecutionChange = {
-                    backgroundExecution = it
-                    AiAgentApprovalPrefs.setBackgroundExecution(context, it)
-                },
-                onKeepCpuAwakeChange = {
-                    keepCpuAwake = it
-                    AiAgentApprovalPrefs.setKeepCpuAwake(context, it)
-                },
-                onMemoryProjectKnowledgeChange = {
-                    memoryProjectKnowledge = it
-                    AiAgentMemoryPrefs.setProjectKnowledge(context, it)
-                },
-                onMemoryUserPreferencesChange = {
-                    memoryUserPreferences = it
-                    AiAgentMemoryPrefs.setUserPreferences(context, it)
-                },
-                onMemoryChatSummariesChange = {
-                    memoryChatSummaries = it
-                    AiAgentMemoryPrefs.setChatSummaries(context, it)
-                },
-                onMemorySemanticSearchChange = {
-                    memorySemanticSearch = it
-                    AiAgentMemoryPrefs.setSemanticSearch(context, it)
-                },
-                onViewMemoryFiles = {
-                    val repoFull = selectedRepo?.fullName.orEmpty()
-                    if (repoFull.isNotBlank()) {
-                        AiAgentMemoryStore.rebuildIndex(context, repoFull)
-                        memoryFiles = AiAgentMemoryStore.editableFiles(context, repoFull)
-                        memoryIndexSnapshot = AiAgentMemoryStore.memoryIndexSnapshot(context, repoFull)
-                        showMemoryFiles = true
-                    }
-                },
-                onClearMemory = {
-                    AiAgentMemoryStore.clearAll(context)
-                    memoryFiles = emptyList()
-                    memoryIndexSnapshot = AiAgentMemoryStore.MemoryIndexSnapshot(emptyList())
-                    showMemoryFiles = false
-                    transcript += AgentEntry.Assistant("[system: AI Agent memory cleared.]")
-                },
-                onInstantRenderChange = { instantRender = it },
-                onClearChat = {
-                    showSettings = false
-                    startNewSession()
-                },
-                onExportChat = {
-                    val text = buildAgentExport(transcript.toList())
-                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("agent-chat", text))
-                    showSettings = false
-                },
-                onDismiss = { showSettings = false },
-            )
-        }
-        if (pendingYoloConfirm) {
-            com.glassfiles.ui.screens.ai.terminal.YoloModeConfirmDialog(
-                previouslyConfirmed = yoloConfirmed,
-                onEnable = {
-                    applyYoloPreset()
-                    pendingYoloConfirm = false
-                },
-                onDismiss = { pendingYoloConfirm = false },
-            )
-        }
-        if (showMemoryFiles) {
-            com.glassfiles.ui.screens.ai.terminal.AgentMemoryFilesDialog(
-                files = memoryFiles,
-                index = memoryIndexSnapshot,
-                onSearch = { query ->
-                    val repoFull = selectedRepo?.fullName.orEmpty()
-                    memoryIndexSnapshot = AiAgentMemoryStore.memoryIndexSnapshot(context, repoFull, query)
-                },
-                onRebuildIndex = {
-                    val repoFull = selectedRepo?.fullName.orEmpty()
-                    if (repoFull.isNotBlank()) {
-                        AiAgentMemoryStore.rebuildIndex(context, repoFull)
-                        memoryIndexSnapshot = AiAgentMemoryStore.memoryIndexSnapshot(context, repoFull)
-                    }
-                },
-                onSave = { key, content ->
-                    val repoFull = selectedRepo?.fullName.orEmpty()
-                    if (repoFull.isNotBlank()) {
-                        AiAgentMemoryStore.saveEditableFile(context, repoFull, key, content)
-                        memoryFiles = AiAgentMemoryStore.editableFiles(context, repoFull)
-                        memoryIndexSnapshot = AiAgentMemoryStore.memoryIndexSnapshot(context, repoFull)
-                    }
-                },
-                onDismiss = { showMemoryFiles = false },
-            )
-        }
     }
-    } // end AgentTerminalSurface
 }
 
-// ─── Terminal-mode renderers ─────────────────────────────────────────────────
-
-private enum class TerminalBannerTone { INFO, WARNING, ERROR }
-
+/**
+ * Compact informational banner rendered inside the transcript LazyColumn
+ * to surface session-wide warnings (private repo, read-only, missing
+ * key, etc). Optional [actionLabel]/[onAction] turns the banner into a
+ * one-tap dismiss / navigate affordance.
+ */
 @Composable
-private fun TerminalBanner(
+private fun AgentBanner(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: androidx.compose.ui.graphics.Color,
     text: String,
-    tone: TerminalBannerTone,
     title: String? = null,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null,
-    modifier: Modifier = Modifier,
 ) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    val border = when (tone) {
-        TerminalBannerTone.INFO -> colors.border
-        TerminalBannerTone.WARNING -> colors.warning
-        TerminalBannerTone.ERROR -> colors.error
-    }
-    val tint = when (tone) {
-        TerminalBannerTone.INFO -> colors.textSecondary
-        TerminalBannerTone.WARNING -> colors.warning
-        TerminalBannerTone.ERROR -> colors.error
-    }
-    val glyph = when (tone) {
-        TerminalBannerTone.INFO -> "i"
-        TerminalBannerTone.WARNING -> "!"
-        TerminalBannerTone.ERROR -> "!"
-    }
+    val colors = MaterialTheme.colorScheme
     Row(
-        modifier
+        Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(colors.surface)
-            .border(1.dp, border, RoundedCornerShape(6.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Top,
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.55f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "[$glyph]",
-            color = tint,
-            fontFamily = JetBrainsMono,
-            fontWeight = FontWeight.Bold,
-            fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
-        )
-        Spacer(Modifier.width(8.dp))
+        Icon(icon, null, Modifier.size(18.dp), tint = tint)
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             if (!title.isNullOrBlank()) {
-                Text(
-                    text = title,
-                    color = colors.textPrimary,
-                    fontFamily = JetBrainsMono,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
-                )
+                Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                Spacer(Modifier.height(2.dp))
             }
-            Text(
-                text = text,
-                color = colors.textSecondary,
-                fontFamily = JetBrainsMono,
-                fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.toolCall,
-            )
+            Text(text, fontSize = 12.sp, color = colors.onSurfaceVariant)
         }
         if (!actionLabel.isNullOrBlank() && onAction != null) {
             Spacer(Modifier.width(8.dp))
-            com.glassfiles.ui.screens.ai.terminal.AgentTextButton(
-                label = "[ $actionLabel ]",
-                color = tint,
-                enabled = true,
-                onClick = onAction,
+            Text(
+                actionLabel,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onAction() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
     }
 }
 
 @Composable
-private fun TerminalEmptyState(message: String, modifier: Modifier = Modifier) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Box(
-        modifier.fillMaxWidth().padding(24.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = message,
-            color = colors.textMuted,
-            fontFamily = JetBrainsMono,
-            fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.message,
-        )
-    }
-}
-
-/**
- * Renders a single [AgentEntry] in the new terminal style. ToolResult
- * entries are skipped here — their owning ToolCall picks up the
- * matching result from [toolResults] and renders the status glyph
- * inline.
- */
-@Composable
-private fun TerminalTranscriptEntry(
-    entry: AgentEntry,
-    context: Context,
-    toolResults: Map<String, AiToolResult>,
-    isLastAssistant: Boolean,
-    running: Boolean,
-    instantRender: Boolean,
-) {
-    when (entry) {
-        is AgentEntry.User -> {
-            com.glassfiles.ui.screens.ai.terminal.AgentMessageRow(
-                role = com.glassfiles.ui.screens.ai.terminal.AgentRole.USER,
-            ) {
-                com.glassfiles.ui.screens.ai.terminal.AgentMessageText(
-                    text = entry.text,
-                    color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.accent,
-                )
-                if (entry.imageBase64 != null) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "[image attached]",
-                        color = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors.textMuted,
-                        fontFamily = JetBrainsMono,
-                        fontSize = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.type.label,
-                    )
-                }
-            }
-        }
-        is AgentEntry.Assistant -> {
-            val streaming = isLastAssistant && running && !instantRender
-            com.glassfiles.ui.screens.ai.terminal.AgentMessageRow(
-                role = com.glassfiles.ui.screens.ai.terminal.AgentRole.ASSISTANT,
-                streaming = streaming,
-            ) {
-                TerminalAssistantBody(text = entry.text, context = context)
-            }
-        }
-        is AgentEntry.ToolCall -> {
-            val result = toolResults[entry.call.id]
-            val status = when {
-                result == null -> com.glassfiles.ui.screens.ai.terminal.AgentToolStatus.RUNNING
-                result.isError -> com.glassfiles.ui.screens.ai.terminal.AgentToolStatus.ERROR
-                else -> com.glassfiles.ui.screens.ai.terminal.AgentToolStatus.SUCCESS
-            }
-            val statusLine = when {
-                result == null -> "running…"
-                result.isError -> result.output.lineSequence().firstOrNull()
-                    ?.takeIf { it.isNotBlank() } ?: "error"
-                else -> {
-                    val firstLine = result.output.lineSequence().firstOrNull().orEmpty()
-                    val total = result.output.length
-                    if (firstLine.isBlank()) "ok" else firstLine.take(120)
-                        .let { if (total > 120) "$it… (${total}b)" else it }
-                }
-            }
-            com.glassfiles.ui.screens.ai.terminal.AgentToolCallRow(
-                call = entry.call,
-                status = status,
-                statusLine = statusLine,
-                result = result,
+private fun EmptyAgentState(message: String) {
+    val colors = MaterialTheme.colorScheme
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Rounded.Build,
+                null,
+                Modifier.size(40.dp),
+                tint = colors.onSurfaceVariant,
             )
-        }
-        is AgentEntry.ToolResult -> Unit // paired into ToolCall above
-        is AgentEntry.Pending -> {
-            val pending = entry.pending
-            val name = pending.call.name
-            val destructive = pending.destructive ?: (name in DESTRUCTIVE_TOOLS)
-            val fields = pending.fields ?: buildList {
-                add("call" to name)
-                runCatching {
-                    val obj = org.json.JSONObject(pending.call.argsJson)
-                    obj.keys().forEachRemaining { k ->
-                        val v = obj.opt(k)
-                        if (v != null && v != org.json.JSONObject.NULL) {
-                            add(k to v.toString().take(120))
-                        }
-                    }
-                }
-            }
-            com.glassfiles.ui.screens.ai.terminal.AgentMessageRow(
-                role = com.glassfiles.ui.screens.ai.terminal.AgentRole.SYSTEM,
-            ) {
-                com.glassfiles.ui.screens.ai.terminal.AgentApprovalBlock(
-                    tool = name,
-                    fields = if (pending.fields == null) fields.drop(1) else fields,
-                    destructive = destructive,
-                    approveLabel = pending.approveLabel,
-                    rejectLabel = pending.rejectLabel,
-                    secondaryActionLabel = pending.secondaryLabel,
-                    onSecondaryAction = pending.secondaryLabel?.let {
-                        {
-                            pending.secondarySelected = true
-                            pending.deferred.complete(false)
-                        }
-                    },
-                    onApprove = { pending.deferred.complete(true) },
-                    onReject = { pending.deferred.complete(false) },
-                )
-            }
+            Spacer(Modifier.height(8.dp))
+            Text(message, fontSize = 13.sp, color = colors.onSurfaceVariant)
         }
     }
 }
-
-private val DESTRUCTIVE_TOOLS = setOf(
-    "delete_file", "reset_hard", "force_push",
-)
-
-/**
- * Splits assistant text into plain segments and triple-backtick code
- * fences. Each fence is rendered with the terminal code block; plain
- * text is rendered as monospace.
- */
-@Composable
-private fun TerminalAssistantBody(text: String, context: Context) {
-    val cleaned = com.glassfiles.ui.screens.ai.terminal.cleanAgentText(text)
-    val segments = remember(cleaned) { splitCodeFences(cleaned) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        segments.forEach { seg ->
-            when (seg) {
-                is TerminalSegment.Plain -> {
-                    if (seg.text.isNotBlank()) {
-                        com.glassfiles.ui.screens.ai.terminal.AgentMessageText(text = seg.text)
-                    }
-                }
-                is TerminalSegment.Code -> {
-                    com.glassfiles.ui.screens.ai.terminal.AgentTerminalCodeBlock(
-                        text = seg.text,
-                        lang = seg.lang,
-                        filePath = null,
-                        context = context,
-                    )
-                }
-            }
-        }
-    }
-}
-
-private sealed class TerminalSegment {
-    data class Plain(val text: String) : TerminalSegment()
-    data class Code(val text: String, val lang: String) : TerminalSegment()
-}
-
-private fun splitCodeFences(input: String): List<TerminalSegment> {
-    if (!input.contains("```")) return listOf(TerminalSegment.Plain(input))
-    val out = mutableListOf<TerminalSegment>()
-    var i = 0
-    while (i < input.length) {
-        val open = input.indexOf("```", i)
-        if (open < 0) {
-            out += TerminalSegment.Plain(input.substring(i))
-            break
-        }
-        if (open > i) out += TerminalSegment.Plain(input.substring(i, open).trimEnd('\n'))
-        val nl = input.indexOf('\n', open + 3)
-        val langStart = open + 3
-        val (lang, contentStart) = if (nl < 0) {
-            "" to (open + 3)
-        } else {
-            input.substring(langStart, nl).trim() to (nl + 1)
-        }
-        val close = input.indexOf("```", contentStart)
-        if (close < 0) {
-            out += TerminalSegment.Code(input.substring(contentStart), lang)
-            break
-        }
-        out += TerminalSegment.Code(input.substring(contentStart, close).trimEnd('\n'), lang)
-        i = close + 3
-        if (i < input.length && input[i] == '\n') i++
-    }
-    return out
-}
-
-private fun buildAgentExport(entries: List<AgentEntry>): String = buildString {
-    entries.forEach { entry ->
-        when (entry) {
-            is AgentEntry.User -> {
-                appendLine("> ${entry.text}")
-            }
-            is AgentEntry.Assistant -> {
-                appendLine("\u25A0 ${entry.text}")
-            }
-            is AgentEntry.ToolCall -> {
-                appendLine("\$ ${entry.call.name}(${entry.call.argsJson})")
-            }
-            is AgentEntry.ToolResult -> {
-                val mark = if (entry.result.isError) "x" else "+"
-                appendLine("  [$mark] ${entry.result.output.lineSequence().firstOrNull().orEmpty()}")
-            }
-            is AgentEntry.Pending -> Unit
-        }
-        appendLine()
-    }
-}
-
 
 @Composable
 private fun AgentAttachmentPreview(base64: String, visionAvailable: Boolean, onRemove: () -> Unit) {
@@ -2082,302 +1439,176 @@ private fun AgentAttachmentPreview(base64: String, visionAvailable: Boolean, onR
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
+private fun AgentMessageImage(base64: String) {
+    val colors = MaterialTheme.colorScheme
+    val bitmap = remember(base64) { decodeAgentBitmap(base64) }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 220.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.surface),
+        )
+    }
+}
+
+@Composable
 private fun AgentHistorySheet(
-    repoFullName: String,
-    chats: List<AiAgentMemoryStore.ChatRecord>,
-    error: String,
-    onOpen: (AiAgentMemoryStore.ChatRecord) -> Unit,
+    sessions: List<AiChatSessionStore.Session>,
+    onOpen: (AiChatSessionStore.Session) -> Unit,
     onNew: () -> Unit,
-    onRefresh: () -> Unit,
-    onSearch: (String) -> List<AiAgentMemoryStore.ChatSearchResult>,
-    onRename: (AiAgentMemoryStore.ChatRecord, String) -> Unit,
-    onDelete: (AiAgentMemoryStore.ChatRecord) -> Unit,
+    onDelete: (AiChatSessionStore.Session) -> Unit,
+    onDeleteAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    val colors = MaterialTheme.colorScheme
     val sdf = remember { SimpleDateFormat("dd.MM.yy HH:mm", Locale.getDefault()) }
     var query by remember { mutableStateOf("") }
-    var searchMode by remember { mutableStateOf(false) }
-    var menuTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
-    var renameTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
-    var renameText by remember { mutableStateOf("") }
-    var deleteTarget by remember { mutableStateOf<AiAgentMemoryStore.ChatRecord?>(null) }
-    val searchResults = remember(query, searchMode, repoFullName, chats) {
-        if (searchMode && query.trim().isNotBlank()) onSearch(query) else emptyList()
-    }
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            Box(
-                Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.86f)
-                    .background(colors.background)
-                    .border(1.dp, colors.border)
-                    .padding(14.dp),
-            ) {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("▸ Chats", color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-                    Text(
-                        repoFullName.ifBlank { "no repository selected" },
-                        color = colors.textMuted,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                    )
-                    if (error.isNotBlank()) {
-                        Text("// $error", color = colors.error, fontFamily = JetBrainsMono, fontSize = 12.sp)
-                    }
-                    if (searchMode) {
-                        TerminalHistorySearchField(
-                            query = query,
-                            onQueryChange = { query = it },
-                            placeholder = "search chats",
-                        )
-                    }
-                    LazyColumn(
-                        Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        if (repoFullName.isBlank()) {
-                            item {
-                                Text("// pick repo in settings first", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
-                            }
-                        } else if (searchMode && query.trim().isNotBlank()) {
-                            if (searchResults.isEmpty()) {
-                                item { Text("// no matches", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp) }
-                            } else {
-                                items(searchResults, key = { it.chatId }) { result ->
-                                    ChatHistorySearchRow(
-                                        result = result,
-                                        date = sdf.format(Date(result.updatedAt)),
-                                        onOpen = { chats.firstOrNull { it.id == result.chatId }?.let(onOpen) },
-                                    )
-                                }
-                            }
-                        } else if (chats.isEmpty()) {
-                            item {
-                                Text("// no saved chats", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
-                            }
-                        } else {
-                            items(chats, key = { it.id }) { chat ->
-                                ChatHistoryRow(
-                                    chat = chat,
-                                    date = sdf.format(Date(chat.updatedAt)),
-                                    onOpen = { onOpen(chat) },
-                                    onLongPress = { menuTarget = chat },
-                                )
-                            }
-                        }
-                    }
-                    TerminalHistoryButton("[ + new chat ]", colors.accent) { onNew() }
-                    TerminalHistoryButton(if (searchMode) "[ × close search ]" else "[ ⌕ search chats ]", colors.textSecondary) {
-                        searchMode = !searchMode
-                        query = ""
-                    }
-                    TerminalHistoryButton("[ refresh ]", colors.textSecondary) { onRefresh() }
-                    TerminalHistoryButton("[ × close ]", colors.textMuted) { onDismiss() }
-                }
-            }
+    // Filter on title / repo / branch / model / first user message. Each
+    // session is matched once per token (whitespace-split), so the user
+    // can type multiple keywords ("kotlin main") and progressively narrow
+    // the list. Empty query short-circuits to the full list.
+    val filteredSessions = remember(sessions, query) {
+        val tokens = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) sessions
+        else sessions.filter { session ->
+            val haystack = buildString {
+                appendLine(session.title)
+                appendLine(session.repoFullName)
+                appendLine(session.branch)
+                appendLine(session.modelId)
+                session.messages.take(6).forEach { appendLine(it.content.take(400)) }
+            }.lowercase()
+            tokens.all { haystack.contains(it) }
         }
     }
-
-    menuTarget?.let { chat ->
-        TerminalConfirmMenu(
-            title = chat.title,
-            actions = listOf(
-                "open" to { menuTarget = null; onOpen(chat) },
-                "rename" to {
-                    renameTarget = chat
-                    renameText = chat.title
-                    menuTarget = null
-                },
-                "× delete" to {
-                    deleteTarget = chat
-                    menuTarget = null
-                },
-            ),
-            onDismiss = { menuTarget = null },
-        )
-    }
-    renameTarget?.let { chat ->
-        TerminalRenameDialog(
-            value = renameText,
-            onValueChange = { renameText = it },
-            onSave = {
-                onRename(chat, renameText)
-                renameTarget = null
-            },
-            onDismiss = { renameTarget = null },
-        )
-    }
-    deleteTarget?.let { chat ->
-        TerminalDeleteChatDialog(
-            title = chat.title,
-            onDelete = {
-                onDelete(chat)
-                deleteTarget = null
-            },
-            onDismiss = { deleteTarget = null },
-        )
-    }
-}
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-private fun ChatHistoryRow(
-    chat: AiAgentMemoryStore.ChatRecord,
-    date: String,
-    onOpen: () -> Unit,
-    onLongPress: () -> Unit,
-) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .combinedClickable(onClick = onOpen, onLongClick = onLongPress)
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("●", color = if (chat.corrupted) colors.error else colors.accent, fontFamily = JetBrainsMono, fontSize = 12.sp)
-            Text(date, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
-            Text(chat.title, color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        }
-        Text(
-            chat.preview.ifBlank { "// empty summary" },
-            color = if (chat.corrupted) colors.error else colors.textSecondary,
-            fontFamily = JetBrainsMono,
-            fontSize = 11.sp,
-            maxLines = 1,
-            modifier = Modifier.padding(start = 20.dp),
-        )
-    }
-}
-
-@Composable
-private fun ChatHistorySearchRow(
-    result: AiAgentMemoryStore.ChatSearchResult,
-    date: String,
-    onOpen: () -> Unit,
-) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text("● $date  ${result.title}", color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, maxLines = 1)
-        Text(result.snippet, color = colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(start = 20.dp))
-    }
-}
-
-@Composable
-private fun TerminalHistoryButton(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
-    Text(
-        label,
-        color = color,
-        fontFamily = JetBrainsMono,
-        fontSize = 13.sp,
-        modifier = Modifier.clickable(onClick = onClick).padding(vertical = 3.dp),
-    )
-}
-
-@Composable
-private fun TerminalHistorySearchField(query: String, onQueryChange: (String) -> Unit, placeholder: String) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.textMuted)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-    ) {
-        if (query.isEmpty()) {
-            Text(placeholder, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
-        }
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            textStyle = TextStyle(color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp),
-            cursorBrush = SolidColor(colors.accent),
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun TerminalConfirmMenu(
-    title: String,
-    actions: List<Pair<String, () -> Unit>>,
-    onDismiss: () -> Unit,
-) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .background(colors.background)
-                .border(1.dp, colors.border)
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .clip(RoundedCornerShape(18.dp))
+                .background(colors.surface)
+                .border(1.dp, colors.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(18.dp))
+                .padding(vertical = 12.dp),
         ) {
-            Text(title, color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-            actions.forEach { (label, action) ->
-                TerminalHistoryButton("[ $label ]", if (label.contains("delete")) colors.error else colors.accent, action)
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(Strings.aiAgentHistoryTitle, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
+                    val counter = if (query.isBlank()) {
+                        "${sessions.size} ${Strings.aiHistoryCount}"
+                    } else {
+                        "${filteredSessions.size}/${sessions.size} ${Strings.aiHistoryCount}"
+                    }
+                    Text(counter, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                }
+                if (sessions.isNotEmpty()) {
+                    IconButton(onClick = onDeleteAll) {
+                        Icon(Icons.Rounded.DeleteSweep, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                }
             }
-            TerminalHistoryButton("[ cancel ]", colors.textMuted, onDismiss)
-        }
-    }
-}
-
-@Composable
-private fun TerminalRenameDialog(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().background(colors.background).border(1.dp, colors.border).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text("rename chat", color = colors.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            TerminalHistorySearchField(query = value, onQueryChange = onValueChange, placeholder = "title")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TerminalHistoryButton("[ save ]", colors.accent, onSave)
-                TerminalHistoryButton("[ cancel ]", colors.textMuted, onDismiss)
+            if (sessions.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                HistorySearchField(
+                    query = query,
+                    onQueryChange = { query = it },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                )
             }
-        }
-    }
-}
-
-@Composable
-private fun TerminalDeleteChatDialog(
-    title: String,
-    onDelete: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().background(colors.background).border(1.dp, colors.error).padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text("delete chat?", color = colors.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(title, color = colors.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, maxLines = 2)
-            Text("This removes memory chat files and cannot be undone.", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TerminalHistoryButton("[ × delete ]", colors.error, onDelete)
-                TerminalHistoryButton("[ no · cancel ]", colors.textMuted, onDismiss)
+            Spacer(Modifier.height(8.dp))
+            if (sessions.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                    Text(Strings.aiHistoryEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                }
+            } else if (filteredSessions.isEmpty()) {
+                Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
+                    Text(Strings.aiHistorySearchEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 360.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(filteredSessions, key = { it.id }) { session ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                                .clickable { onOpen(session) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Icon(Icons.Rounded.Chat, null, Modifier.size(18.dp), tint = colors.onSurfaceVariant)
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    session.title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colors.onSurface,
+                                    maxLines = 1,
+                                )
+                                val repoLine = buildString {
+                                    val repo = session.repoFullName.takeIf { it.isNotBlank() }
+                                        ?: Strings.aiAgentHistoryNoRepo
+                                    append(repo)
+                                    if (session.branch.isNotBlank()) {
+                                        append(" · ")
+                                        append(session.branch)
+                                    }
+                                    if (session.modelId.isNotBlank()) {
+                                        append(" · ")
+                                        append(session.modelId)
+                                    }
+                                }
+                                Text(
+                                    repoLine,
+                                    fontSize = 11.sp,
+                                    color = colors.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    "${sdf.format(Date(session.updatedAt))} · ${session.messages.size} msgs",
+                                    fontSize = 10.sp,
+                                    color = colors.onSurfaceVariant,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                )
+                            }
+                            IconButton(onClick = { onDelete(session) }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Rounded.Close, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.primary)
+                    .clickable(onClick = onNew)
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Add, null, Modifier.size(18.dp), tint = colors.onPrimary)
+                Spacer(Modifier.width(8.dp))
+                Text(Strings.aiAgentHistoryNew, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onPrimary)
             }
         }
     }
@@ -2390,70 +1621,12 @@ private data class SessionStats(
     val totalChars: Int,
     val tokens: Int,
     val costUsd: Double?,
-) {
-    operator fun plus(other: SessionStats): SessionStats =
-        SessionStats(
-            inputChars = inputChars + other.inputChars,
-            outputChars = outputChars + other.outputChars,
-            totalChars = totalChars + other.totalChars,
-            tokens = tokens + other.tokens,
-            costUsd = when {
-                costUsd != null && other.costUsd != null -> costUsd + other.costUsd
-                costUsd != null -> costUsd
-                else -> other.costUsd
-            },
-        )
-
-    companion object {
-        fun empty(): SessionStats = SessionStats(0, 0, 0, 0, null)
-
-        fun fromProviderEstimate(
-            providerId: String,
-            modelId: String,
-            inputChars: Int,
-            outputChars: Int,
-        ): SessionStats {
-            val totalChars = inputChars + outputChars
-            val inputTokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, inputChars)
-            val outputTokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, outputChars)
-            val cost = com.glassfiles.data.ai.ModelPricing.rateFor(providerId, modelId)?.let { rate ->
-                com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromTokens(rate, inputTokens, outputTokens)
-            }
-            return SessionStats(
-                inputChars = inputChars,
-                outputChars = outputChars,
-                totalChars = totalChars,
-                tokens = inputTokens + outputTokens,
-                costUsd = cost,
-            )
-        }
-
-        fun fromProviderTokens(
-            providerId: String,
-            modelId: String,
-            inputTokens: Int,
-            outputTokens: Int,
-        ): SessionStats {
-            val cost = com.glassfiles.data.ai.ModelPricing.rateFor(providerId, modelId)?.let { rate ->
-                com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromTokens(rate, inputTokens, outputTokens)
-            }
-            return SessionStats(
-                inputChars = 0,
-                outputChars = 0,
-                totalChars = 0,
-                tokens = inputTokens + outputTokens,
-                costUsd = cost,
-            )
-        }
-    }
-}
+)
 
 private fun computeSessionStats(
     transcript: List<AgentEntry>,
-    model: AiModel?,
-    usage: SessionStats,
+    rate: com.glassfiles.data.ai.ModelPricing.Rate?,
 ): SessionStats {
-    if (usage.tokens > 0 || usage.totalChars > 0) return usage
     // Input = what the model has to ingest each turn — the user's
     // prompts plus every tool result we feed back to it. Output = what
     // it generated for us (assistant text and tool-call JSON args).
@@ -2469,17 +1642,56 @@ private fun computeSessionStats(
         }
     }
     val total = input + output
-    val providerId = model?.providerId?.name.orEmpty()
-    val modelId = model?.id.orEmpty()
-    val tokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(providerId, modelId, total)
-    val cost = model?.let {
-        com.glassfiles.data.ai.ModelPricing.rateFor(it)?.let { rate ->
-            com.glassfiles.data.ai.ModelPricing.estimateCostUsdFromChars(rate, providerId, modelId, input, output)
-        }
-    }
+    val tokens = com.glassfiles.data.ai.ModelPricing.estimateTokens(total)
+    val cost = rate?.let { com.glassfiles.data.ai.ModelPricing.estimateCostUsd(it, input, output) }
     return SessionStats(input, output, total, tokens, cost)
 }
 
+@Composable
+private fun CostMeter(stats: SessionStats) {
+    val colors = MaterialTheme.colorScheme
+    val tokenLabel = when {
+        stats.tokens >= 1000 -> "%.1fk".format(stats.tokens / 1000.0)
+        else -> stats.tokens.toString()
+    }
+    val costLabel = stats.costUsd?.let { c ->
+        when {
+            c < 0.01 -> "<\$0.01"
+            c < 1.0 -> "\$%.3f".format(c)
+            else -> "\$%.2f".format(c)
+        }
+    }
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (costLabel != null) {
+            Text(
+                costLabel,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onSurface,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.width(6.dp))
+            Box(
+                Modifier
+                    .size(width = 1.dp, height = 10.dp)
+                    .background(colors.outlineVariant.copy(alpha = 0.6f))
+            )
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            "$tokenLabel ${Strings.aiAgentTokensLabel}",
+            fontSize = 11.sp,
+            color = colors.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+        )
+    }
+}
 
 @Composable
 private fun HistorySearchField(
@@ -2528,6 +1740,548 @@ private fun HistorySearchField(
     }
 }
 
+@Composable
+private fun TranscriptEntry(
+    entry: AgentEntry,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+    activeDefaultBranch: String?,
+) {
+    val colors = MaterialTheme.colorScheme
+    when (entry) {
+        is AgentEntry.User -> {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Column(
+                    Modifier
+                        .padding(start = 48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.primary)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (entry.imageBase64 != null) {
+                        AgentMessageImage(entry.imageBase64)
+                    }
+                    if (entry.text.isNotBlank()) {
+                        Text(entry.text, color = colors.onPrimary, fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+        is AgentEntry.Assistant -> {
+            if (entry.text.isNotBlank()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Text(entry.text, color = colors.onSurface, fontSize = 14.sp)
+                }
+            }
+        }
+        is AgentEntry.ToolCall -> ToolCallCard(
+            entry = entry,
+            isPending = false,
+            activeRepoFullName = activeRepoFullName,
+            activeBranch = activeBranch,
+            activeDefaultBranch = activeDefaultBranch,
+            onApprove = {},
+            onReject = {},
+        )
+        is AgentEntry.ToolResult -> ToolResultCard(entry)
+        is AgentEntry.Pending -> {
+            ToolCallCard(
+                entry = AgentEntry.ToolCall(entry.pending.call),
+                isPending = true,
+                activeRepoFullName = activeRepoFullName,
+                activeBranch = activeBranch,
+                activeDefaultBranch = activeDefaultBranch,
+                onApprove = { entry.pending.deferred.complete(true) },
+                onReject = { entry.pending.deferred.complete(false) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolCallCard(
+    entry: AgentEntry.ToolCall,
+    isPending: Boolean,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+    activeDefaultBranch: String?,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val showDiff = isPending && entry.call.name in DIFF_PREVIEW_TOOLS
+    val showOpenPrPreview = isPending && entry.call.name == AgentTools.OPEN_PR.name
+    val targetsProtectedBranch = remember(entry.call.argsJson, activeBranch, activeDefaultBranch) {
+        targetsProtectedBranch(entry.call, activeBranch, activeDefaultBranch)
+    }
+    // When a destructive call lands on the default branch we make the
+    // user explicitly tick a confirmation — Approve stays disabled until
+    // they do. Read-only browsing or pending = false bypasses the gate.
+    var protectedConfirmed by remember(entry.call.argsJson) { mutableStateOf(false) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.4f))
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Build, null, Modifier.size(14.dp), tint = colors.tertiary)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                Strings.aiAgentToolCallTitle.uppercase(),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp,
+                color = colors.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                entry.call.name,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onSurface,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            entry.call.argsJson,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = colors.onSurfaceVariant,
+        )
+        if (showDiff) {
+            Spacer(Modifier.height(10.dp))
+            DiffPreview(
+                call = entry.call,
+                activeRepoFullName = activeRepoFullName,
+                activeBranch = activeBranch,
+            )
+        }
+        if (showOpenPrPreview) {
+            Spacer(Modifier.height(10.dp))
+            OpenPrPreview(call = entry.call, defaultBase = activeDefaultBranch)
+        }
+        if (isPending && targetsProtectedBranch) {
+            Spacer(Modifier.height(10.dp))
+            ProtectedBranchWarning(
+                branch = activeDefaultBranch.orEmpty(),
+                checked = protectedConfirmed,
+                onCheckedChange = { protectedConfirmed = it },
+            )
+        }
+        if (isPending) {
+            Spacer(Modifier.height(10.dp))
+            val approveEnabled = !targetsProtectedBranch || protectedConfirmed
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ActionButton(
+                    label = Strings.aiAgentApprove,
+                    icon = Icons.Rounded.Check,
+                    bg = if (approveEnabled) colors.primary else colors.surfaceVariant,
+                    fg = if (approveEnabled) colors.onPrimary else colors.onSurfaceVariant,
+                    onClick = if (approveEnabled) onApprove else ({}),
+                )
+                ActionButton(
+                    label = Strings.aiAgentReject,
+                    icon = Icons.Rounded.Close,
+                    bg = colors.surfaceVariant,
+                    fg = colors.onSurface,
+                    onClick = onReject,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * True if [call] is a destructive tool call that will land on the
+ * repo's default branch (typically `main`/`master`). The user must
+ * explicitly confirm such calls — most projects expect changes to flow
+ * through a feature branch + PR.
+ */
+private fun targetsProtectedBranch(
+    call: AiToolCall,
+    activeBranch: String?,
+    defaultBranch: String?,
+): Boolean {
+    val def = defaultBranch?.takeIf { it.isNotBlank() } ?: return false
+    val args = runCatching { org.json.JSONObject(call.argsJson) }.getOrNull()
+    val target = when (call.name) {
+        AgentTools.WRITE_FILE.name,
+        AgentTools.EDIT_FILE.name,
+        AgentTools.COMMIT.name -> activeBranch
+        AgentTools.OPEN_PR.name -> args?.optString("base").orEmpty().ifBlank { def }
+        AgentTools.CREATE_BRANCH.name -> null
+        else -> null
+    } ?: return false
+    return target == def
+}
+
+@Composable
+private fun ProtectedBranchWarning(
+    branch: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.errorContainer.copy(alpha = 0.55f))
+            .border(1.dp, colors.error.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Warning, null, Modifier.size(16.dp), tint = colors.error)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                Strings.aiAgentProtectedBranchTitle,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onErrorContainer,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            Strings.aiAgentProtectedBranchSubtitle.replace("{branch}", branch),
+            fontSize = 11.sp,
+            color = colors.onErrorContainer,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = colors.error,
+                    uncheckedColor = colors.onErrorContainer.copy(alpha = 0.5f),
+                ),
+            )
+            Text(
+                Strings.aiAgentProtectedBranchConfirm,
+                fontSize = 12.sp,
+                color = colors.onErrorContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OpenPrPreview(call: AiToolCall, defaultBase: String?) {
+    val colors = MaterialTheme.colorScheme
+    val args = runCatching { org.json.JSONObject(call.argsJson) }.getOrNull()
+    val title = args?.optString("title").orEmpty()
+    val body = args?.optString("body").orEmpty()
+    val head = args?.optString("head").orEmpty()
+    val base = args?.optString("base").orEmpty().ifBlank { defaultBase.orEmpty() }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            Strings.aiAgentOpenPrPreview.uppercase(),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.6.sp,
+            color = colors.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            title.ifBlank { "(no title)" },
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onSurface,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "$head  →  $base",
+            fontSize = 12.sp,
+            color = colors.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+        )
+        if (body.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                body.take(800) + if (body.length > 800) "…" else "",
+                fontSize = 12.sp,
+                color = colors.onSurface,
+            )
+        }
+    }
+}
+
+private val DIFF_PREVIEW_TOOLS = setOf(
+    AgentTools.WRITE_FILE.name,
+    AgentTools.EDIT_FILE.name,
+    AgentTools.COMMIT.name,
+)
+
+/** Diff preview rendered inside [ToolCallCard] when a destructive tool
+ * call is awaiting approval. Fetches the current file content from
+ * GitHub for `write_file` / `commit`, derives the old text locally for
+ * `edit_file`, and renders a compact line-level `+/-` diff. */
+@Composable
+private fun DiffPreview(
+    call: AiToolCall,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+) {
+    val colors = MaterialTheme.colorScheme
+    val context = LocalContext.current
+    val args = remember(call.argsJson) {
+        runCatching { org.json.JSONObject(call.argsJson) }.getOrElse { org.json.JSONObject() }
+    }
+    val owner = activeRepoFullName?.substringBefore('/').orEmpty()
+    val repo = activeRepoFullName?.substringAfter('/').orEmpty()
+    val branch = activeBranch.orEmpty()
+
+    when (call.name) {
+        AgentTools.EDIT_FILE.name -> {
+            val path = args.optString("path", "?")
+            val oldStr = args.optString("old_string", "")
+            val newStr = args.optString("new_string", "")
+            DiffBlockHeader(label = "$path  (edit)")
+            Spacer(Modifier.height(4.dp))
+            DiffLines(LineDiff.diff(oldStr, newStr))
+        }
+        AgentTools.WRITE_FILE.name -> {
+            val path = args.optString("path", "?")
+            val content = args.optString("content", "")
+            val original = produceState<String?>(
+                initialValue = null,
+                key1 = owner, key2 = repo, key3 = branch,
+            ) {
+                value = if (owner.isBlank() || repo.isBlank() || branch.isBlank() || path.isBlank()) {
+                    ""
+                } else {
+                    runCatching {
+                        kotlinx.coroutines.withContext(Dispatchers.IO) {
+                            GitHubManager.getFileContent(context, owner, repo, path, branch)
+                        }
+                    }.getOrDefault("")
+                }
+            }
+            val orig = original.value
+            DiffBlockHeader(label = "$path  (write)")
+            Spacer(Modifier.height(4.dp))
+            if (orig == null) {
+                Text(Strings.aiAgentDiffLoading, fontSize = 11.sp, color = colors.onSurfaceVariant)
+            } else {
+                DiffLines(LineDiff.diff(orig, content))
+            }
+        }
+        AgentTools.COMMIT.name -> {
+            val files = args.optJSONArray("files")
+            if (files == null || files.length() == 0) {
+                Text(Strings.aiAgentDiffEmpty, fontSize = 11.sp, color = colors.onSurfaceVariant)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val limit = minOf(files.length(), 5)
+                    for (i in 0 until limit) {
+                        val f = files.optJSONObject(i) ?: continue
+                        val path = f.optString("path", "?")
+                        val content = f.optString("content", "")
+                        val original = produceState<String?>(
+                            initialValue = null,
+                            key1 = "$owner/$repo/$branch/$path",
+                        ) {
+                            value = if (owner.isBlank() || repo.isBlank() || branch.isBlank() || path.isBlank()) {
+                                ""
+                            } else {
+                                runCatching {
+                                    kotlinx.coroutines.withContext(Dispatchers.IO) {
+                                        GitHubManager.getFileContent(context, owner, repo, path, branch)
+                                    }
+                                }.getOrDefault("")
+                            }
+                        }
+                        DiffBlockHeader(label = path)
+                        Spacer(Modifier.height(2.dp))
+                        val orig = original.value
+                        if (orig == null) {
+                            Text(Strings.aiAgentDiffLoading, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                        } else {
+                            DiffLines(LineDiff.diff(orig, content))
+                        }
+                    }
+                    if (files.length() > limit) {
+                        Text(
+                            "+${files.length() - limit} more file(s)",
+                            fontSize = 11.sp,
+                            color = colors.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiffBlockHeader(label: String) {
+    val colors = MaterialTheme.colorScheme
+    Text(
+        label,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 0.4.sp,
+        color = colors.onSurfaceVariant,
+        fontFamily = FontFamily.Monospace,
+    )
+}
+
+@Composable
+private fun DiffLines(diff: List<LineDiff.Line>) {
+    val colors = MaterialTheme.colorScheme
+    val stats = LineDiff.stats(diff)
+    val compacted = LineDiff.compact(diff, contextLines = 2)
+    val maxRender = 60
+    val display = if (compacted.size > maxRender) compacted.take(maxRender) else compacted
+    val addBg = colors.tertiary.copy(alpha = 0.15f)
+    val delBg = colors.error.copy(alpha = 0.12f)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surface.copy(alpha = 0.6f))
+            .border(0.5.dp, colors.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+            .padding(vertical = 4.dp),
+    ) {
+        Text(
+            "+${stats.added}  -${stats.removed}",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onSurfaceVariant,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+        for (line in display) {
+            if (line == null) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        "…",
+                        fontSize = 10.sp,
+                        color = colors.onSurfaceVariant,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                continue
+            }
+            val (prefix, bg, fg) = when (line) {
+                is LineDiff.Line.Add -> Triple("+ ", addBg, colors.onSurface)
+                is LineDiff.Line.Del -> Triple("- ", delBg, colors.onSurface)
+                is LineDiff.Line.Same -> Triple("  ", androidx.compose.ui.graphics.Color.Transparent, colors.onSurfaceVariant)
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(bg)
+                    .padding(horizontal = 8.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    "$prefix${line.text}",
+                    fontSize = 11.sp,
+                    color = fg,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (compacted.size > maxRender) {
+            Text(
+                "+${compacted.size - maxRender} more lines",
+                fontSize = 10.sp,
+                color = colors.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActionButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    bg: androidx.compose.ui.graphics.Color,
+    fg: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, Modifier.size(14.dp), tint = fg)
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = fg)
+    }
+}
+
+@Composable
+private fun ToolResultCard(entry: AgentEntry.ToolResult) {
+    val colors = MaterialTheme.colorScheme
+    val accent = if (entry.result.isError) colors.error else colors.tertiary
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(colors.surfaceVariant.copy(alpha = 0.3f))
+            .border(1.dp, accent.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+            .padding(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (entry.result.isError) Strings.aiAgentToolError.uppercase()
+                else Strings.aiAgentToolResultTitle.uppercase(),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.6.sp,
+                color = accent,
+                fontFamily = FontFamily.Monospace,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                entry.result.name,
+                fontSize = 12.sp,
+                color = colors.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            entry.result.output,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = colors.onSurface,
+        )
+    }
+}
 
 // ─── Agent loop ───────────────────────────────────────────────────────────
 
@@ -2540,19 +2294,10 @@ private suspend fun runAgentLoop(
     executor: GitHubToolExecutor,
     transcript: androidx.compose.runtime.snapshots.SnapshotStateList<AgentEntry>,
     approvals: androidx.compose.runtime.snapshots.SnapshotStateList<PendingApproval>,
-    approvalSettings: AiAgentApprovalSettings,
-    isSessionTrusted: () -> Boolean,
-    onSessionTrustGranted: () -> Unit,
-    consecutiveAutoApprovals: () -> Int,
-    setConsecutiveAutoApprovals: (Int) -> Unit,
-    writesThisTask: () -> Int,
-    setWritesThisTask: (Int) -> Unit,
-    fileEditCounts: androidx.compose.runtime.snapshots.SnapshotStateMap<String, Int>,
+    autoApproveReads: Boolean,
     context: android.content.Context,
     fallbackCandidates: List<FallbackCandidate>,
     onFallback: (AiModel) -> Unit,
-    onToolStatus: (String, Int, Int) -> Unit = { _, _, _ -> },
-    onUsageDelta: (String, String, Int, Int, Int, Int, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
     /**
      * Cost-policy accumulator for this task. The loop:
      *  - bumps [com.glassfiles.data.ai.cost.AiContextEstimate.toolCallsExecuted]
@@ -2577,30 +2322,6 @@ private suspend fun runAgentLoop(
     // user resumes it.
     estimate?.addInput(seedMessages.sumOf { it.content.length })
     val maxIterations = estimate?.limits?.maxToolCalls ?: MAX_ITERATIONS
-
-    suspend fun awaitApproval(
-        call: AiToolCall,
-        check: AiAgentApprovalCheck,
-        fields: List<Pair<String, String>>,
-        approveLabel: String = "[ y \u00B7 approve ]",
-        rejectLabel: String = "[ n \u00B7 reject ]",
-        secondaryLabel: String? = null,
-    ): Pair<Boolean, Boolean> {
-        val pending = PendingApproval(
-            call = call,
-            deferred = CompletableDeferred(),
-            fields = fields,
-            destructive = check.destructive,
-            approveLabel = approveLabel,
-            rejectLabel = rejectLabel,
-            secondaryLabel = secondaryLabel,
-        )
-        approvals += pending
-        val ok = pending.deferred.await()
-        approvals.remove(pending)
-        return ok to pending.secondarySelected
-    }
-
     repeat(maxIterations) {
         // Cost-policy backstops. If the user's selected mode says
         // "you've burned enough already" we drop a final assistant
@@ -2653,7 +2374,6 @@ private suspend fun runAgentLoop(
                 provider = provider,
                 modelId = modelId,
                 apiKey = apiKey,
-                onUsageDelta = onUsageDelta,
             )
         } catch (e: Exception) {
             // Drop the empty placeholder before rethrowing so the run-job
@@ -2666,6 +2386,16 @@ private suspend fun runAgentLoop(
             }
             throw e
         }
+
+        com.glassfiles.data.ai.usage.AiUsageAccounting.appendReportedOrEstimated(
+            context = context,
+            providerId = provider.id.name,
+            modelId = modelId,
+            mode = com.glassfiles.data.ai.usage.AiUsageMode.GITHUB_AGENT,
+            messages = messages,
+            output = turn.assistantText,
+            reported = turn.usage,
+        )
 
         // If the model produced no text at all, drop the placeholder so
         // we don't leave an empty assistant card sitting between tool
@@ -2684,116 +2414,24 @@ private suspend fun runAgentLoop(
             toolCalls = turn.toolCalls,
         )
         val results = mutableListOf<AiMessage>()
-        for ((callIndex, call) in turn.toolCalls.withIndex()) {
+        for (call in turn.toolCalls) {
             transcript += AgentEntry.ToolCall(call)
             val tool = AgentTools.byName(call.name)
-            onToolStatus(describeToolStatus(call), callIndex + 1, turn.toolCalls.size)
             estimate?.bumpToolCall()
             if (tool?.readOnly == false) estimate?.bumpWriteProposal()
-            val check = AiAgentApprovalPolicy.check(
-                call = call,
-                tool = tool,
-                settings = approvalSettings,
-                sessionTrusted = isSessionTrusted(),
-            )
-            val approvalFields = buildList {
-                add("reason" to check.reason)
-                add("category" to check.category.name.lowercase())
-                if (check.targetPaths.isNotEmpty()) add("path" to check.targetPaths.joinToString(", ").take(120))
-            }
-            var rejectedForReread = false
-            val approved = when {
-                approvalSettings.yoloMode && check.autoApproved -> true
-                approvalSettings.sessionTrust &&
-                    !isSessionTrusted() &&
-                    !check.protected &&
-                    !check.destructive &&
-                    (check.category == AiAgentApprovalCategory.EDIT || check.category == AiAgentApprovalCategory.WRITE) -> {
-                    val (ok, _) = awaitApproval(
-                        call = call,
-                        check = check,
-                        fields = approvalFields + ("trust" to "allow edits/writes for this task"),
-                        approveLabel = "[ y \u00B7 trust task ]",
-                    )
-                    if (ok) onSessionTrustGranted()
-                    setConsecutiveAutoApprovals(0)
-                    ok
-                }
-                check.countsAsWrite &&
-                    !check.protected &&
-                    !check.destructive &&
-                    approvalSettings.writeLimitPerTask > 0 &&
-                    writesThisTask() >= approvalSettings.writeLimitPerTask -> {
-                    val (ok, _) = awaitApproval(
-                        call = call,
-                        check = check,
-                        fields = approvalFields + ("limit" to "${approvalSettings.writeLimitPerTask} writes reached"),
-                        approveLabel = "[ y \u00B7 allow next batch ]",
-                    )
-                    if (ok) setWritesThisTask(0)
-                    setConsecutiveAutoApprovals(0)
-                    ok
-                }
-                check.category == AiAgentApprovalCategory.EDIT &&
-                    !check.protected &&
-                    !check.destructive &&
-                    check.targetPaths.firstOrNull()?.let { (fileEditCounts[it] ?: 0) >= 3 } == true -> {
-                    val path = check.targetPaths.first()
-                    val (ok, reread) = awaitApproval(
-                        call = call,
-                        check = check,
-                        fields = approvalFields + ("file guard" to "$path edited 3 times"),
-                        secondaryLabel = "[ r \u00B7 re-read + consolidate ]",
-                    )
-                    rejectedForReread = reread
-                    setConsecutiveAutoApprovals(0)
-                    ok
-                }
-                check.autoApproved && consecutiveAutoApprovals() >= 50 -> {
-                    val (ok, _) = awaitApproval(
-                        call = call,
-                        check = check,
-                        fields = approvalFields + ("auto guard" to "MANY ACTIONS AUTO-APPROVED"),
-                        approveLabel = "[ y \u00B7 continue ]",
-                    )
-                    if (ok) setConsecutiveAutoApprovals(0)
-                    ok
-                }
-                check.autoApproved -> {
-                    setConsecutiveAutoApprovals(consecutiveAutoApprovals() + 1)
-                    true
-                }
-                else -> {
-                    val (ok, _) = awaitApproval(
-                        call = call,
-                        check = check,
-                        fields = approvalFields,
-                    )
-                    setConsecutiveAutoApprovals(0)
-                    ok
-                }
+            val approved = if (tool?.readOnly == true && autoApproveReads) {
+                true
+            } else {
+                val pending = PendingApproval(call = call, deferred = CompletableDeferred())
+                approvals += pending
+                val ok = pending.deferred.await()
+                approvals.remove(pending)
+                ok
             }
             val result = if (!approved) {
-                AiToolResult(
-                    callId = call.id,
-                    name = call.name,
-                    output = if (rejectedForReread) {
-                        "Approval paused: re-read the file, consolidate the edit plan, then request approval again."
-                    } else {
-                        Strings.aiAgentRejected
-                    },
-                    isError = true,
-                )
+                AiToolResult(callId = call.id, name = call.name, output = Strings.aiAgentRejected, isError = true)
             } else {
                 executor.execute(context, call)
-            }
-            if (approved && !result.isError && check.countsAsWrite) {
-                setWritesThisTask(writesThisTask() + 1)
-                if (check.category == AiAgentApprovalCategory.EDIT) {
-                    check.targetPaths.firstOrNull()?.let { path ->
-                        fileEditCounts[path] = (fileEditCounts[path] ?: 0) + 1
-                    }
-                }
             }
             // Accumulate the size of the tool result against the
             // per-task context budget. We cap each individual result
@@ -2854,45 +2492,14 @@ private const val AGENT_PLAN_FIRST_SYSTEM_PROMPT =
         "for the user. Once the user replies (e.g. 'go', 'approve', or " +
         "any further instructions), proceed normally with tool calls."
 
-/** Soft char-length trigger for transcript summarisation. At ~2 M chars
- * (~500 k tokens) we fold older turns into a one-line briefing so the
- * next provider call still fits inside a 1 M-token window without
- * losing the entire history. Bumped from the historical 80 000 to give
- * the user a real megacontext budget on providers that support it. */
-private const val CONTEXT_COMPACT_CHARS = 2_000_000
+/** Hard char-length budget for the rolling tool-use transcript. ~80 000
+ * chars ≈ 20–25 k tokens, well under the smallest tool-use windows of
+ * the providers we ship. */
+private const val CONTEXT_COMPACT_CHARS = 80_000
 
-/** Number of *most-recent* messages we always keep verbatim before
- * summarising the head. 20 ≈ 10 user/assistant turns — enough room
- * for a multi-step refactor or a PR-sized review thread. */
-private const val CONTEXT_KEEP_TAIL = 20
-
-private fun describeToolStatus(call: AiToolCall): String {
-    val obj = runCatching { org.json.JSONObject(call.argsJson) }.getOrNull()
-    val path = runCatching {
-        obj?.optString("path")?.takeIf { it.isNotBlank() }
-    }.getOrNull()
-    val directory = runCatching {
-        obj?.optString("directory")?.takeIf { it.isNotBlank() }
-    }.getOrNull()
-    val query = runCatching {
-        obj?.optString("query")?.takeIf { it.isNotBlank() }
-    }.getOrNull()
-    return when (call.name) {
-        "edit_file" -> "Editing ${path ?: "file"}"
-        "write_file" -> "Writing ${path ?: "file"}"
-        "read_file", "read_file_range" -> "Reading ${path ?: "file"}"
-        "memory_read" -> "Reading memory ${path ?: "file"}"
-        "memory_write" -> "Writing memory ${path ?: "file"}"
-        "memory_append" -> "Appending memory ${path ?: "file"}"
-        "memory_list" -> "Listing memory ${directory ?: "root"}"
-        "memory_search" -> "Searching memory${query?.let { " for $it" }.orEmpty()}"
-        "memory_delete" -> "Deleting memory ${path ?: "file"}"
-        "commit" -> "Committing changes"
-        "open_pr" -> "Opening pull request"
-        "create_branch" -> "Creating branch"
-        else -> call.name
-    }
-}
+/** Number of *most-recent* messages we always keep verbatim. Older
+ * messages can be folded into a summary. 6 ≈ 3 user/assistant turns. */
+private const val CONTEXT_KEEP_TAIL = 6
 
 /**
  * If [messages] exceeds [CONTEXT_COMPACT_CHARS] in total payload size,
@@ -3003,28 +2610,6 @@ private fun isFallbackEligibleError(t: Throwable): Boolean {
         msg.contains("HTTP 529")
 }
 
-private fun estimateRequestInputChars(
-    messages: List<AiMessage>,
-    tools: List<com.glassfiles.data.ai.agent.AiTool>,
-): Int = messages.sumOf { it.estimatedWireChars() } + tools.sumOf {
-    it.name.length + it.description.length + it.parameters.toString().length
-}
-
-private fun AiMessage.estimatedWireChars(): Int {
-    var total = role.length + content.length
-    total += fileContent?.length ?: 0
-    total += (imageBase64?.length ?: 0) / 8
-    toolCallId?.let { total += it.length }
-    toolName?.let { total += it.length }
-    toolCalls?.forEach { call ->
-        total += call.id.length + call.name.length + call.argsJson.length
-    }
-    return total
-}
-
-private fun estimateTurnOutputChars(turn: com.glassfiles.data.ai.providers.AiToolTurn): Int =
-    turn.assistantText.length + turn.toolCalls.sumOf { it.name.length + it.argsJson.length }
-
 /**
  * Wrap one [AiProvider.chatWithToolsStreaming] call with provider
  * fallback. On a 429/5xx-style failure we drop to the next
@@ -3049,15 +2634,13 @@ private suspend fun callWithFallback(
     provider: com.glassfiles.data.ai.providers.AiProvider,
     modelId: String,
     apiKey: String,
-    onUsageDelta: (String, String, Int, Int, Int, Int, Boolean) -> Unit = { _, _, _, _, _, _, _ -> },
 ): com.glassfiles.data.ai.providers.AiToolTurn {
     var p = provider
     var id = modelId
     var k = apiKey
     while (true) {
         try {
-            val requestInputChars = estimateRequestInputChars(messages, tools)
-            val turn = p.chatWithToolsStreaming(
+            return p.chatWithToolsStreaming(
                 context = context,
                 modelId = id,
                 messages = messages,
@@ -3072,13 +2655,6 @@ private suspend fun callWithFallback(
                     }
                 },
             )
-            val usage = turn.usage
-            if (usage != null && usage.totalTokens > 0) {
-                onUsageDelta(p.id.name, id, 0, 0, usage.inputTokens, usage.outputTokens, false)
-            } else {
-                onUsageDelta(p.id.name, id, requestInputChars, estimateTurnOutputChars(turn), 0, 0, true)
-            }
-            return turn
         } catch (e: Exception) {
             if (!isFallbackEligibleError(e) || remainingFallbacks.isEmpty()) throw e
             val next = remainingFallbacks.removeFirst()
@@ -3194,10 +2770,5 @@ private fun newAssistantId(): String = "a_${System.nanoTime()}"
 private data class PendingApproval(
     val call: AiToolCall,
     val deferred: CompletableDeferred<Boolean>,
-    val fields: List<Pair<String, String>>? = null,
-    val destructive: Boolean? = null,
-    val approveLabel: String = "[ y \u00B7 approve ]",
-    val rejectLabel: String = "[ n \u00B7 reject ]",
-    val secondaryLabel: String? = null,
-    var secondarySelected: Boolean = false,
 )
+
