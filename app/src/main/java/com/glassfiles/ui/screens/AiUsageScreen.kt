@@ -303,12 +303,12 @@ private fun ClearConfirmDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
                 ) {
-                    TerminalPillButton(
+                    AiModulePillButton(
                         label = "n · " + Strings.cancel.lowercase(),
                         onClick = onDismiss,
                         accent = false,
                     )
-                    TerminalPillButton(
+                    AiModulePillButton(
                         label = "y · " + Strings.aiUsageClearConfirm.lowercase(),
                         onClick = onConfirm,
                         destructive = true,
