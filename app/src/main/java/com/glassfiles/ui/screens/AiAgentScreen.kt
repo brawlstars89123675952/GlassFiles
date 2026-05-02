@@ -3994,24 +3994,24 @@ private fun extractAgentGeneratedFiles(text: String): List<AiChatSessionStore.Ge
     if (!text.contains("```")) return emptyList()
     val result = mutableListOf<AiChatSessionStore.GeneratedFile>()
     val fence = Regex("```([^\\n`]*)\\n([\\s\\S]*?)```")
-    fence.findAll(text).forEach { match ->
+    for (match in fence.findAll(text)) {
         val info = match.groupValues[1].trim()
         var body = match.groupValues[2].trimEnd()
         val firstLine = body.lineSequence().firstOrNull().orEmpty()
         val markerFromInfo = fileNameFromFenceInfo(info)
         val markerFromBody = fileNameFromMarkerLine(firstLine)
-        val name = markerFromInfo ?: markerFromBody ?: return@forEachIndexed
+        val name = markerFromInfo ?: markerFromBody ?: continue
         if (markerFromBody != null) {
             body = body.lines().drop(1).joinToString("\n").trimEnd()
         }
-        if (body.isBlank()) return@forEachIndexed
+        if (body.isBlank()) continue
         val language = languageForGeneratedFile(name, info)
         result += AiChatSessionStore.GeneratedFile(
             name = name.take(160),
             language = language,
             content = body,
         )
-        if (result.size >= 12) return@forEachIndexed
+        if (result.size >= 12) break
     }
     return result
 }
