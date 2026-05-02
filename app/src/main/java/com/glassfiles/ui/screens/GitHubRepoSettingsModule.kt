@@ -12,7 +12,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,9 +25,11 @@ import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
 import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModuleHairline
+import com.glassfiles.ui.components.AiModuleIcon as Icon
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleText as Text
 import com.glassfiles.ui.components.AiModuleTextAction
 import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.data.github.GHRepoSettings
@@ -172,7 +173,7 @@ internal fun RepoSettingsScreen(
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading…")
             }
         } else {
             LazyColumn(
@@ -391,14 +392,7 @@ internal fun RepoSettingsScreen(
                                         color = AiModuleTheme.colors.textMuted
                                     )
                                 }
-                                Switch(
-                                    checked = archived,
-                                    onCheckedChange = { showArchiveConfirm = it },
-                                    colors = SwitchDefaults.colors(
-                                        checkedTrackColor = Color(0xFFFF3B30),
-                                        checkedThumbColor = Color.White
-                                    )
-                                )
+                                TerminalToggleIndicator(checked = archived, tint = Color(0xFFFF3B30))
                             }
                         }
                     }
@@ -610,12 +604,26 @@ internal fun ToggleRow(
     ) {
         Icon(icon, null, Modifier.size(20.dp), tint = if (checked) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary)
         Text(label, fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
-        Switch(
-            checked = checked,
-            onCheckedChange = onToggle,
-            colors = SwitchDefaults.colors(checkedTrackColor = AiModuleTheme.colors.accent)
-        )
+        TerminalToggleIndicator(checked = checked)
     }
+}
+
+@Composable
+private fun TerminalToggleIndicator(
+    checked: Boolean,
+    tint: Color = AiModuleTheme.colors.accent,
+) {
+    val color = if (checked) tint else AiModuleTheme.colors.textMuted
+    Text(
+        text = if (checked) "[on]" else "[off]",
+        color = color,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(color.copy(alpha = 0.10f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 
 private fun normalizeRepoTopic(value: String): String =

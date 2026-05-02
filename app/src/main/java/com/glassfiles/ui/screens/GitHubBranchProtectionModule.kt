@@ -10,7 +10,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,9 +20,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.github.*
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleIcon as Icon
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModuleHairline
+import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleText as Text
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.*
 import kotlinx.coroutines.launch
@@ -207,7 +212,7 @@ internal fun BranchProtectionScreen(
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading…")
             }
         } else {
             LazyColumn(
@@ -250,11 +255,7 @@ internal fun BranchProtectionScreen(
                                     color = AiModuleTheme.colors.textMuted
                                 )
                             }
-                            Switch(
-                                checked = enabled,
-                                onCheckedChange = { enabled = it },
-                                colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF34C759))
-                            )
+                            TerminalToggleIndicator(checked = enabled, tint = Color(0xFF34C759))
                         }
                     }
                 }
@@ -297,14 +298,15 @@ internal fun BranchProtectionScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        OutlinedTextField(
+                                        AiModuleTextField(
                                             value = newContext,
                                             onValueChange = { newContext = it },
-                                            label = { Text("Status check name") },
+                                            label = "Status check name",
                                             modifier = Modifier.weight(1f),
                                             singleLine = true
                                         )
-                                        Button(
+                                        AiModulePillButton(
+                                            label = "add",
                                             onClick = {
                                                 if (newContext.isNotBlank() && newContext !in statusCheckContexts) {
                                                     statusCheckContexts = statusCheckContexts + newContext
@@ -312,9 +314,7 @@ internal fun BranchProtectionScreen(
                                                 }
                                             },
                                             enabled = newContext.isNotBlank()
-                                        ) {
-                                            Text("Add")
-                                        }
+                                        )
                                     }
                                 }
                             }
@@ -414,11 +414,10 @@ internal fun BranchProtectionScreen(
     }
 
     if (showDisableConfirm) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { showDisableConfirm = false },
-            containerColor = AiModuleTheme.colors.surface,
-            title = { Text("Disable branch protection?", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-            text = {
+            title = "Disable branch protection?",
+            content = {
                 Text(
                     "This removes protection rules from $selectedBranch. Required reviews, status checks, and admin enforcement will no longer apply.",
                     fontSize = 13.sp,
@@ -426,22 +425,18 @@ internal fun BranchProtectionScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                AiModuleTextAction(label = "disable", onClick = {
                     disableConfirmed = true
                     showDisableConfirm = false
                     saveProtection()
-                }) {
-                    Text("Disable", color = Color(0xFFFF3B30))
-                }
+                }, tint = Color(0xFFFF3B30))
             },
             dismissButton = {
-                TextButton(onClick = {
+                AiModuleTextAction(label = "cancel", onClick = {
                     showDisableConfirm = false
                     disableConfirmed = false
                     enabled = true
-                }) {
-                    Text("Cancel", color = AiModuleTheme.colors.textSecondary)
-                }
+                }, tint = AiModuleTheme.colors.textSecondary)
             }
         )
     }
@@ -563,4 +558,22 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun SectionHeader(title: String, color: Color = AiModuleTheme.colors.textPrimary) {
     Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(bottom = 8.dp))
+}
+
+@Composable
+private fun TerminalToggleIndicator(
+    checked: Boolean,
+    tint: Color = AiModuleTheme.colors.accent,
+) {
+    val color = if (checked) tint else AiModuleTheme.colors.textMuted
+    Text(
+        text = if (checked) "[on]" else "[off]",
+        color = color,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(5.dp))
+            .background(color.copy(alpha = 0.10f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }

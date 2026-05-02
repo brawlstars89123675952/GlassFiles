@@ -29,13 +29,6 @@ import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,9 +50,15 @@ import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.data.github.GHPackage
 import com.glassfiles.data.github.GHPackageVersion
 import com.glassfiles.data.github.GitHubManager
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleIcon as Icon
+import com.glassfiles.ui.components.AiModuleIconButton as IconButton
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleText as Text
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
 import kotlinx.coroutines.launch
 
 private data class PackageOwner(val type: String, val login: String)
@@ -152,19 +151,19 @@ internal fun PackagesScreen(userLogin: String, onBack: () -> Unit) {
                 }
             }
             item {
-                OutlinedTextField(
+                AiModuleTextField(
                     value = query,
                     onValueChange = { query = it },
-                    label = { Text("Search packages") },
+                    label = "Search packages",
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary) }
+                    leading = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary) }
                 )
             }
             if (loading) {
                 item {
                     Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                        AiModuleSpinner(label = "loading…")
                     }
                 }
             } else {
@@ -245,7 +244,7 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
             if (loading) {
                 item {
                     Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                        AiModuleSpinner(label = "loading…")
                     }
                 }
             } else {
@@ -265,12 +264,13 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
     }
 
     if (deletePackageConfirm) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { deletePackageConfirm = false },
-            title = { Text("Delete package") },
-            text = { Text("Delete ${detail.name}? This removes the package from GitHub Packages.") },
+            title = "Delete package",
+            content = { Text("Delete ${detail.name}? This removes the package from GitHub Packages.") },
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "delete",
                     enabled = !actionInFlight,
                     onClick = {
                         actionInFlight = true
@@ -281,20 +281,24 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
                             deletePackageConfirm = false
                             if (ok) onDeleted()
                         }
-                    }
-                ) { Text("Delete", color = Color(0xFFFF3B30)) }
+                    },
+                    tint = Color(0xFFFF3B30),
+                )
             },
-            dismissButton = { TextButton(onClick = { deletePackageConfirm = false }) { Text("Cancel") } }
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { deletePackageConfirm = false }, tint = AiModuleTheme.colors.textSecondary)
+            },
         )
     }
 
     deleteVersionConfirm?.let { version ->
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { deleteVersionConfirm = null },
-            title = { Text("Delete version") },
-            text = { Text("Delete version ${version.displayName()}?") },
+            title = "Delete version",
+            content = { Text("Delete version ${version.displayName()}?") },
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "delete",
                     enabled = !actionInFlight,
                     onClick = {
                         actionInFlight = true
@@ -305,10 +309,13 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
                             actionInFlight = false
                             deleteVersionConfirm = null
                         }
-                    }
-                ) { Text("Delete", color = Color(0xFFFF3B30)) }
+                    },
+                    tint = Color(0xFFFF3B30),
+                )
             },
-            dismissButton = { TextButton(onClick = { deleteVersionConfirm = null }) { Text("Cancel") } }
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { deleteVersionConfirm = null }, tint = AiModuleTheme.colors.textSecondary)
+            },
         )
     }
 }
@@ -383,10 +390,10 @@ private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, on
                 Text(version.displayName(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Updated ${version.updatedAt.shortDate()}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
             }
-            IconButton(onClick = onOpen) {
+            IconButton(onClick = onOpen, modifier = Modifier.size(34.dp)) {
                 Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
                 Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
             }
         }

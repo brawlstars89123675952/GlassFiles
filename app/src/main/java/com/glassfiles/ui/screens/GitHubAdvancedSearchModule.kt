@@ -32,13 +32,6 @@ import androidx.compose.material.icons.rounded.Label
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -68,6 +61,8 @@ import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModulePrimaryButton
 import com.glassfiles.ui.components.AiModuleSearchField
 import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleIcon as Icon
+import com.glassfiles.ui.components.AiModuleText as Text
 import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.data.github.GHLabelSearchResult
@@ -260,7 +255,7 @@ internal fun AdvancedSearchScreen(
             if (searching && resultCount == 0) {
                 item {
                     Box(Modifier.fillMaxWidth().height(180.dp), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                        AiModuleSpinner(label = "searching…")
                     }
                 }
             } else {

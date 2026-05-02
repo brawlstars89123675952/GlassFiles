@@ -13,7 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,9 +25,15 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.glassfiles.data.github.GHCollaborator
 import com.glassfiles.data.github.GitHubManager
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleIcon as Icon
+import com.glassfiles.ui.components.AiModuleIconButton as IconButton
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleText as Text
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.theme.*
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.AiModuleSurface
@@ -88,7 +93,7 @@ internal fun CollaboratorsScreen(
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AiModuleTheme.colors.accent, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading…")
             }
         } else {
             val visibleCollaborators = collaborators.filter {
@@ -103,13 +108,13 @@ internal fun CollaboratorsScreen(
                     CollaboratorsSummaryCard(collaborators)
                 }
                 item {
-                    OutlinedTextField(
+                    AiModuleTextField(
                         value = query,
                         onValueChange = { query = it },
-                        label = { Text("Search collaborators") },
+                        label = "Search collaborators",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        leadingIcon = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary) }
+                        leading = { Icon(Icons.Rounded.Search, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary) }
                     )
                 }
                 items(visibleCollaborators) { collaborator ->
@@ -133,16 +138,15 @@ internal fun CollaboratorsScreen(
 
     // Add collaborator dialog
     if (showAddDialog) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { showAddDialog = false },
-            containerColor = AiModuleTheme.colors.surface,
-            title = { Text("Add Collaborator", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-            text = {
+            title = "Add Collaborator",
+            content = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
+                    AiModuleTextField(
                         value = newUsername,
                         onValueChange = { newUsername = it },
-                        label = { Text("Username") },
+                        label = "Username",
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -164,7 +168,8 @@ internal fun CollaboratorsScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "add",
                     enabled = !actionInFlight && newUsername.isNotBlank(),
                     onClick = {
                         if (newUsername.isNotBlank()) {
@@ -180,30 +185,26 @@ internal fun CollaboratorsScreen(
                                 }
                             }
                         }
-                    }
-                ) {
-                    Text("Add", color = AiModuleTheme.colors.accent)
-                }
+                    },
+                )
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) {
-                    Text("Cancel", color = AiModuleTheme.colors.textSecondary)
-                }
+                AiModuleTextAction(label = "cancel", onClick = { showAddDialog = false }, tint = AiModuleTheme.colors.textSecondary)
             }
         )
     }
 
     // Remove confirmation
     if (userToRemove != null) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { userToRemove = null },
-            containerColor = AiModuleTheme.colors.surface,
-            title = { Text("Remove Collaborator?", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-            text = {
+            title = "Remove Collaborator?",
+            content = {
                 Text("Remove ${userToRemove!!.login} from this repository?", fontSize = 14.sp, color = AiModuleTheme.colors.textSecondary)
             },
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "remove",
                     enabled = !actionInFlight,
                     onClick = {
                         actionInFlight = true
@@ -214,15 +215,12 @@ internal fun CollaboratorsScreen(
                             userToRemove = null
                             loadCollaborators()
                         }
-                    }
-                ) {
-                    Text("Remove", color = Color(0xFFFF3B30))
-                }
+                    },
+                    tint = Color(0xFFFF3B30),
+                )
             },
             dismissButton = {
-                TextButton(onClick = { userToRemove = null }) {
-                    Text("Cancel", color = AiModuleTheme.colors.textSecondary)
-                }
+                AiModuleTextAction(label = "cancel", onClick = { userToRemove = null }, tint = AiModuleTheme.colors.textSecondary)
             }
         )
     }
@@ -230,11 +228,10 @@ internal fun CollaboratorsScreen(
     // Edit permission dialog
     if (userToEdit != null) {
         var editPermission by remember(userToEdit) { mutableStateOf(normalizeCollaboratorPermission(userToEdit!!.role)) }
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { userToEdit = null },
-            containerColor = AiModuleTheme.colors.surface,
-            title = { Text("Change Permission", fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary) },
-            text = {
+            title = "Change Permission",
+            content = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("${userToEdit!!.login}", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
                     Text("Select permission level:", fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
@@ -254,7 +251,8 @@ internal fun CollaboratorsScreen(
                 }
             },
             confirmButton = {
-                TextButton(
+                AiModuleTextAction(
+                    label = "save",
                     enabled = !actionInFlight && editPermission != normalizeCollaboratorPermission(userToEdit!!.role),
                     onClick = {
                         actionInFlight = true
@@ -265,15 +263,11 @@ internal fun CollaboratorsScreen(
                             userToEdit = null
                             loadCollaborators()
                         }
-                    }
-                ) {
-                    Text("Save", color = AiModuleTheme.colors.accent)
-                }
+                    },
+                )
             },
             dismissButton = {
-                TextButton(onClick = { userToEdit = null }) {
-                    Text("Cancel", color = AiModuleTheme.colors.textSecondary)
-                }
+                AiModuleTextAction(label = "cancel", onClick = { userToEdit = null }, tint = AiModuleTheme.colors.textSecondary)
             }
         )
     }
@@ -340,10 +334,10 @@ private fun CollaboratorCard(
                 )
             }
         }
-        IconButton(onClick = onPermissionChange) {
+        IconButton(onClick = onPermissionChange, modifier = Modifier.size(34.dp)) {
             Icon(Icons.Rounded.Edit, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
         }
-        IconButton(onClick = onRemove) {
+        IconButton(onClick = onRemove, modifier = Modifier.size(34.dp)) {
             Icon(Icons.Rounded.PersonRemove, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
         }
     }
