@@ -1760,6 +1760,19 @@ fun AiAgentScreen(
         val entries by remember { derivedStateOf { transcript.toList() + approvals.map { AgentEntry.Pending(it) } } }
         val displayEntries by remember { derivedStateOf { entries.toDisplayEntries() } }
         val toolActionCount by remember { derivedStateOf { displayEntries.count { it.isToolAction } } }
+        val selectedSkillProgressLabel = remember(skillsVersion) {
+            AiSkillPrefs.getSelectedSkillId(context) ?: "auto"
+        }
+        val taskProgress = buildTaskProgress(
+            entries = entries,
+            displayEntries = displayEntries,
+            todos = todoItems,
+            running = running,
+            workspaceMode = workspaceMode,
+            hasPendingWorkspaceReview = pendingWorkspaceDiff != null,
+            tokenEstimate = sessionStats.tokens,
+            activeSkillLabel = selectedSkillProgressLabel,
+        )
         LaunchedEffect(displayEntries.size) {
             if (displayEntries.isNotEmpty()) listState.animateScrollToItem(displayEntries.size - 1)
         }
@@ -1836,7 +1849,7 @@ fun AiAgentScreen(
                 if (toolActionCount > 0) {
                     item("tool-progress") {
                         ToolProgressHeader(
-                            count = toolActionCount,
+                            progress = taskProgress,
                             onExpandAll = {
                                 val ids = displayEntries.mapNotNull { (it as? AgentDisplayEntry.ToolAction)?.id }.toSet()
                                 expandedToolRows = expandedToolRows + ids
@@ -3837,34 +3850,113 @@ private fun TranscriptDisplayEntry(
     }
 }
 
+private data class AgentTaskProgress(
+    val actionCount: Int,
+    val readCount: Int,
+    val writeCount: Int,
+    val phase: String,
+    val tokenEstimate: Int,
+    val activeSkillLabel: String,
+    val workspaceLabel: String,
+    val lastActivity: String,
+    val todoLabel: String?,
+)
+
+private fun buildTaskProgress(
+    entries: List<AgentEntry>,
+    displayEntries: List<AgentDisplayEntry>,
+    todos: List<AgentTodoItem>,
+    running: Boolean,
+    workspaceMode: Boolean,
+    hasPendingWorkspaceReview: Boolean,
+    tokenEstimate: Int,
+    activeSkillLabel: String,
+): AgentTaskProgress {
+    val toolCalls = displayEntries.mapNotNull { entry ->
+        when (entry) {
+            is AgentDisplayEntry.ToolAction -> entry.call
+            is AgentDisplayEntry.Raw -> (entry.entry as? AgentEntry.Pending)?.pending?.call
+        }
+    }
+    val writeCount = toolCalls.count { !AgentToolRegistry.isReadOnly(it.name) }
+    val readCount = toolCalls.size - writeCount
+    val phase = when {
+        hasPendingWorkspaceReview -> "pending review"
+        entries.any { it is AgentEntry.Pending } -> "waiting approval"
+        running -> "running"
+        else -> "idle"
+    }
+    val workspaceLabel = when {
+        hasPendingWorkspaceReview -> "pending"
+        workspaceMode -> "on"
+        else -> "legacy"
+    }
+    val lastActivity = entries.asReversed().firstNotNullOfOrNull { entry ->
+        when (entry) {
+            is AgentEntry.User -> "user"
+            is AgentEntry.Assistant -> "assistant"
+            is AgentEntry.ToolCall -> compactToolVerb(entry.call.name)
+            is AgentEntry.ToolResult -> if (entry.result.isError) "tool error" else "tool result"
+            is AgentEntry.Pending -> "approval"
+        }
+    } ?: "none"
+    return AgentTaskProgress(
+        actionCount = toolCalls.size,
+        readCount = readCount,
+        writeCount = writeCount,
+        phase = phase,
+        tokenEstimate = tokenEstimate,
+        activeSkillLabel = activeSkillLabel,
+        workspaceLabel = workspaceLabel,
+        lastActivity = lastActivity,
+        todoLabel = todos.takeIf { it.isNotEmpty() }?.let { todoProgressLabel(it) },
+    )
+}
+
 @Composable
 private fun ToolProgressHeader(
-    count: Int,
+    progress: AgentTaskProgress,
     onExpandAll: () -> Unit,
 ) {
     val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 2.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "[task progress · ${progress.actionCount} actions · ${progress.phase}]",
+                color = colors.textSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "[⤢ expand all]",
+                color = colors.warning,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(onClick = onExpandAll)
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            )
+        }
         Text(
-            "[task progress · $count actions]",
-            color = colors.textSecondary,
+            "read ${progress.readCount} · write ${progress.writeCount} · ~${progress.tokenEstimate} tok · skill ${progress.activeSkillLabel.shortenMiddle(22)}",
+            color = colors.textMuted,
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            modifier = Modifier.weight(1f),
+            fontSize = 10.sp,
+            maxLines = 1,
         )
         Text(
-            "[⤢ expand all]",
-            color = colors.warning,
+            "workspace ${progress.workspaceLabel} · last ${progress.lastActivity}${progress.todoLabel?.let { " · todo $it" } ?: ""}",
+            color = colors.textMuted,
             fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable(onClick = onExpandAll)
-                .padding(horizontal = 6.dp, vertical = 4.dp),
+            fontSize = 10.sp,
+            maxLines = 1,
         )
     }
 }
