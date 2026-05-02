@@ -29,6 +29,53 @@ data class AiTool(
  * [GitHubToolExecutor]; memory tools operate on app-owned local files.
  */
 object AgentTools {
+    val ARTIFACT_WRITE = AiTool(
+        name = "artifact_write",
+        description = "Create a file attachment in the current chat. Use this in chat-only mode when the user asks you to produce a downloadable file.",
+        parameters = obj {
+            put("type", "object")
+            put("properties", obj {
+                put("path", obj {
+                    put("type", "string")
+                    put("description", "Attachment path or filename, e.g. notes.md, src/Main.kt, report.txt.")
+                })
+                put("content", obj {
+                    put("type", "string")
+                    put("description", "Full UTF-8 text content of the attachment.")
+                })
+                put("language", obj {
+                    put("type", "string")
+                    put("description", "Optional syntax language, usually the file extension.")
+                })
+            })
+            put("required", arr("path", "content"))
+        },
+        readOnly = false,
+    )
+
+    val ARTIFACT_UPDATE = AiTool(
+        name = "artifact_update",
+        description = "Update an existing chat attachment by replacing a unique substring. Use artifact_write if replacing the whole file is simpler.",
+        parameters = obj {
+            put("type", "object")
+            put("properties", obj {
+                put("path", obj {
+                    put("type", "string")
+                    put("description", "Existing attachment path or filename.")
+                })
+                put("old_string", obj {
+                    put("type", "string")
+                    put("description", "Exact text to replace. Must appear exactly once.")
+                })
+                put("new_string", obj {
+                    put("type", "string")
+                    put("description", "Replacement text.")
+                })
+            })
+            put("required", arr("path", "old_string", "new_string"))
+        },
+        readOnly = false,
+    )
 
     /** Lists files / directories at a path inside the active repo + branch. */
     val LIST_DIR = AiTool(
@@ -607,7 +654,10 @@ object AgentTools {
         MEMORY_READ, MEMORY_WRITE, MEMORY_APPEND, MEMORY_LIST, MEMORY_SEARCH, MEMORY_DELETE,
     )
 
-    fun byName(name: String): AiTool? = ALL.firstOrNull { it.name == name }
+    val CHAT_ARTIFACTS: List<AiTool> = listOf(ARTIFACT_WRITE, ARTIFACT_UPDATE)
+
+    fun byName(name: String): AiTool? =
+        (ALL + CHAT_ARTIFACTS).firstOrNull { it.name == name }
 }
 
 /** Tiny helpers to keep the JSON-Schema literals readable above. */

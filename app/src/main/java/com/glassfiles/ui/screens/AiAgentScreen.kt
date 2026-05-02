@@ -102,6 +102,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -451,7 +452,7 @@ fun AiAgentScreen(
                 imageBase64 = entry.imageBase64,
                 fileContent = entry.fileContent,
             )
-            is AgentEntry.Assistant -> if (entry.text.isBlank()) null else AiChatSessionStore.Message(
+            is AgentEntry.Assistant -> if (entry.text.isBlank() && entry.generatedFiles.isEmpty()) null else AiChatSessionStore.Message(
                 role = "assistant",
                 content = entry.text,
                 generatedFiles = entry.generatedFiles,
@@ -587,47 +588,80 @@ fun AiAgentScreen(
         running = true
         runJob = scope.launch {
             try {
-                val messages = buildList {
+                val provider = AiProviders.get(model.providerId)
+                val messages = mutableListOf<AiMessage>().apply {
                     add(AiMessage("system", CHAT_ONLY_SYSTEM_PROMPT))
                     addAll(transcript.dropLast(1).toAiMessages())
                 }
-                val full = AiProviders.get(model.providerId).chat(
-                    context = context,
-                    modelId = model.id,
-                    messages = messages,
-                    apiKey = key,
-                    onChunk = { chunk ->
-                        val last = transcript.lastIndex
-                        if (last >= 0) {
-                            val current = transcript[last]
+                var turnIndex = 0
+                while (turnIndex < 8) {
+                    if (transcript.lastOrNull() !is AgentEntry.Assistant) {
+                        transcript += AgentEntry.Assistant(text = "")
+                    }
+                    val assistantIndex = transcript.lastIndex
+                    val turn = provider.chatWithToolsStreaming(
+                        context = context,
+                        modelId = model.id,
+                        messages = messages,
+                        tools = AgentTools.CHAT_ARTIFACTS,
+                        apiKey = key,
+                        onTextDelta = { chunk ->
+                            val current = transcript.getOrNull(assistantIndex)
                             if (current is AgentEntry.Assistant) {
-                                transcript[last] = current.copy(text = current.text + chunk)
+                                transcript[assistantIndex] = current.copy(text = current.text + chunk)
                             }
-                        }
-                    },
-                )
-                val last = transcript.lastIndex
-                if (last >= 0) {
-                    val current = transcript[last]
-                    if (current is AgentEntry.Assistant && current.text.isBlank()) {
-                        transcript[last] = current.copy(
-                            text = full,
-                            generatedFiles = extractAgentGeneratedFiles(full),
-                        )
-                    } else if (current is AgentEntry.Assistant) {
-                        transcript[last] = current.copy(
-                            generatedFiles = extractAgentGeneratedFiles(current.text.ifBlank { full }),
+                        },
+                    )
+                    val assistant = transcript.getOrNull(assistantIndex) as? AgentEntry.Assistant
+                    val assistantText = assistant?.text?.ifBlank { turn.assistantText } ?: turn.assistantText
+                    val parsedFiles = extractAgentGeneratedFiles(assistantText)
+                    if (assistant != null) {
+                        transcript[assistantIndex] = assistant.copy(
+                            text = assistantText,
+                            generatedFiles = mergeGeneratedFiles(assistant.generatedFiles, parsedFiles),
                         )
                     }
+                    com.glassfiles.data.ai.usage.AiUsageAccounting.appendReportedOrEstimated(
+                        context = context,
+                        providerId = model.providerId.name,
+                        modelId = model.id,
+                        mode = com.glassfiles.data.ai.usage.AiUsageMode.CHAT,
+                        messages = messages,
+                        output = turn.assistantText,
+                        reported = turn.usage,
+                    )
+                    if (turn.toolCalls.isEmpty()) break
+
+                    messages += AiMessage(
+                        role = "assistant",
+                        content = assistantText,
+                        toolCalls = turn.toolCalls,
+                    )
+                    for (call in turn.toolCalls) {
+                        transcript += AgentEntry.ToolCall(call)
+                        val existingFiles = currentChatArtifacts(transcript)
+                        val execution = executeChatArtifactTool(call, existingFiles)
+                        execution.generatedFile?.let { fileOut ->
+                            val current = transcript.getOrNull(assistantIndex) as? AgentEntry.Assistant
+                            if (current != null) {
+                                transcript[assistantIndex] = current.copy(
+                                    generatedFiles = mergeGeneratedFiles(current.generatedFiles, listOf(fileOut)),
+                                )
+                            }
+                        }
+                        transcript += AgentEntry.ToolResult(execution.result)
+                        messages += AiMessage(
+                            role = "tool",
+                            content = execution.result.output,
+                            toolCallId = execution.result.callId,
+                            toolName = execution.result.name,
+                        )
+                    }
+                    if (turnIndex < 7) {
+                        transcript += AgentEntry.Assistant(text = "")
+                    }
+                    turnIndex += 1
                 }
-                com.glassfiles.data.ai.usage.AiUsageAccounting.appendEstimated(
-                    context = context,
-                    providerId = model.providerId.name,
-                    modelId = model.id,
-                    mode = com.glassfiles.data.ai.usage.AiUsageMode.CHAT,
-                    messages = messages,
-                    output = full,
-                )
             } catch (e: Exception) {
                 val last = transcript.lastIndex
                 val message = "${e.javaClass.simpleName}: ${e.message ?: ""}"
@@ -4047,6 +4081,94 @@ private data class PendingAgentSend(
     val image: String?,
     val file: AiPreparedAttachment?,
 )
+
+private data class ChatArtifactExecution(
+    val result: AiToolResult,
+    val generatedFile: AiChatSessionStore.GeneratedFile? = null,
+)
+
+private fun executeChatArtifactTool(
+    call: AiToolCall,
+    existingFiles: List<AiChatSessionStore.GeneratedFile>,
+): ChatArtifactExecution {
+    val args = runCatching { JSONObject(call.argsJson) }.getOrElse { JSONObject() }
+    return runCatching {
+        when (call.name) {
+            AgentTools.ARTIFACT_WRITE.name -> {
+                val path = cleanGeneratedFileName(
+                    args.optString("path").ifBlank { args.optString("name") },
+                ) ?: error("artifact_write: path is required")
+                val content = args.optString("content", "")
+                val language = args.optString("language", "")
+                    .ifBlank { languageForGeneratedFile(path, "") }
+                val file = AiChatSessionStore.GeneratedFile(
+                    name = path,
+                    language = language,
+                    content = content,
+                )
+                ChatArtifactExecution(
+                    result = AiToolResult(
+                        callId = call.id,
+                        name = call.name,
+                        output = "Created chat attachment $path (${content.length} chars). The file is visible to the user in the chat.",
+                    ),
+                    generatedFile = file,
+                )
+            }
+            AgentTools.ARTIFACT_UPDATE.name -> {
+                val path = cleanGeneratedFileName(
+                    args.optString("path").ifBlank { args.optString("name") },
+                ) ?: error("artifact_update: path is required")
+                val current = existingFiles.lastOrNull { it.name == path }
+                    ?: error("artifact_update: $path does not exist")
+                val oldString = args.optString("old_string", "")
+                val newString = args.optString("new_string", "")
+                if (oldString.isEmpty()) error("artifact_update: old_string is required")
+                val count = Regex.escape(oldString).toRegex().findAll(current.content).count()
+                if (count != 1) error("artifact_update: old_string must appear exactly once, found $count")
+                val updated = current.copy(content = current.content.replace(oldString, newString))
+                ChatArtifactExecution(
+                    result = AiToolResult(
+                        callId = call.id,
+                        name = call.name,
+                        output = "Updated chat attachment $path (${updated.content.length} chars). The new version is visible to the user in the chat.",
+                    ),
+                    generatedFile = updated,
+                )
+            }
+            else -> error("Unknown chat artifact tool: ${call.name}")
+        }
+    }.getOrElse { error ->
+        ChatArtifactExecution(
+            result = AiToolResult(
+                callId = call.id,
+                name = call.name,
+                output = error.message ?: error.javaClass.simpleName,
+                isError = true,
+            ),
+        )
+    }
+}
+
+private fun currentChatArtifacts(
+    transcript: List<AgentEntry>,
+): List<AiChatSessionStore.GeneratedFile> =
+    transcript
+        .filterIsInstance<AgentEntry.Assistant>()
+        .flatMap { it.generatedFiles }
+
+private fun mergeGeneratedFiles(
+    existing: List<AiChatSessionStore.GeneratedFile>,
+    incoming: List<AiChatSessionStore.GeneratedFile>,
+): List<AiChatSessionStore.GeneratedFile> {
+    if (incoming.isEmpty()) return existing
+    val merged = existing.toMutableList()
+    incoming.forEach { file ->
+        val idx = merged.indexOfLast { it.name == file.name }
+        if (idx >= 0) merged[idx] = file else merged += file
+    }
+    return merged
+}
 
 private fun attachmentDisplayText(text: String, file: AiPreparedAttachment?): String =
     text.ifBlank { file?.let { "Analyze ${it.name}" }.orEmpty() }
