@@ -2895,16 +2895,13 @@ private fun TranscriptEntry(
                 }
             }
         }
-        is AgentEntry.ToolCall -> ToolCallCard(
-            entry = entry,
-            isPending = false,
-            activeRepoFullName = activeRepoFullName,
-            activeBranch = activeBranch,
-            activeDefaultBranch = activeDefaultBranch,
-            onApprove = {},
-            onReject = {},
-        )
-        is AgentEntry.ToolResult -> ToolResultCard(entry)
+        is AgentEntry.ToolCall -> {
+            // Completed tool calls are implementation details. Pending calls
+            // still render below so approval-required actions stay visible.
+        }
+        is AgentEntry.ToolResult -> {
+            if (entry.result.isError) ToolResultCard(entry)
+        }
         is AgentEntry.Pending -> {
             ToolCallCard(
                 entry = AgentEntry.ToolCall(entry.pending.call),
