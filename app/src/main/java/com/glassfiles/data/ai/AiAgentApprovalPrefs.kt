@@ -36,6 +36,7 @@ object AiAgentApprovalPrefs {
     private const val KEY_BACKGROUND_EXECUTION = "background_execution"
     private const val KEY_KEEP_CPU_AWAKE = "keep_cpu_awake"
     private const val KEY_NOTIFICATION_DENIED_NOTICE_SHOWN = "notification_denied_notice_shown"
+    private const val KEY_WORKSPACE_MODE = "workspace_mode"
     val yoloConfirmedKey = booleanPreferencesKey("yolo_mode_confirmed")
 
     private fun prefs(context: Context) =
@@ -118,6 +119,13 @@ object AiAgentApprovalPrefs {
 
     fun setKeepCpuAwake(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_KEEP_CPU_AWAKE, enabled).apply()
+    }
+
+    fun getWorkspaceMode(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WORKSPACE_MODE, false)
+
+    fun setWorkspaceMode(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_WORKSPACE_MODE, enabled).apply()
     }
 
     fun getNotificationDeniedNoticeShown(context: Context): Boolean =

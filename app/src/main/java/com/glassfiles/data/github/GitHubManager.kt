@@ -240,6 +240,17 @@ object GitHubManager {
         return branches.distinct()
     }
 
+    suspend fun getBranchHeadSha(context: Context, owner: String, repo: String, branch: String): String? {
+        if (branch.isBlank()) return null
+        val r = request(context, "/repos/$owner/$repo/git/ref/heads/$branch")
+        if (!r.success) return null
+        return try {
+            JSONObject(r.body).optJSONObject("object")?.optString("sha")?.takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun cloneRepo(context: Context, owner: String, repo: String, destDir: java.io.File, onProgress: (String) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
             try {

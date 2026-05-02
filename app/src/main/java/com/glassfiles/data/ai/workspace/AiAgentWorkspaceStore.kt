@@ -87,40 +87,50 @@ interface WorkspaceCommitter {
     ): String
 }
 
-class RealFileSystem(private val root: File) {
+interface WorkspaceBackingFileSystem {
+    suspend fun read(path: String): String
+    suspend fun readOrNull(path: String): String?
+    suspend fun write(path: String, content: String)
+    suspend fun delete(path: String)
+    suspend fun exists(path: String): Boolean
+    suspend fun list(directory: String): List<String>
+    fun normalize(path: String): String
+}
+
+class RealFileSystem(private val root: File) : WorkspaceBackingFileSystem {
     private val canonicalRoot: File = root.apply { mkdirs() }.canonicalFile
 
-    suspend fun read(path: String): String = withContext(Dispatchers.IO) {
+    override suspend fun read(path: String): String = withContext(Dispatchers.IO) {
         val file = resolve(path)
         if (!file.isFile) throw FileNotFoundException(path)
         file.readText()
     }
 
-    suspend fun readOrNull(path: String): String? = withContext(Dispatchers.IO) {
+    override suspend fun readOrNull(path: String): String? = withContext(Dispatchers.IO) {
         runCatching {
             val file = resolve(path)
             if (file.isFile) file.readText() else null
         }.getOrNull()
     }
 
-    suspend fun write(path: String, content: String) = withContext(Dispatchers.IO) {
+    override suspend fun write(path: String, content: String) = withContext(Dispatchers.IO) {
         val file = resolve(path)
         file.parentFile?.mkdirs()
         file.writeText(content)
     }
 
-    suspend fun delete(path: String) = withContext(Dispatchers.IO) {
+    override suspend fun delete(path: String) = withContext(Dispatchers.IO) {
         val file = resolve(path)
         if (file.exists() && !file.deleteRecursively()) {
             throw IllegalStateException("Failed to delete $path")
         }
     }
 
-    suspend fun exists(path: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun exists(path: String): Boolean = withContext(Dispatchers.IO) {
         resolve(path).exists()
     }
 
-    suspend fun list(directory: String): List<String> = withContext(Dispatchers.IO) {
+    override suspend fun list(directory: String): List<String> = withContext(Dispatchers.IO) {
         val dir = resolve(directory.ifBlank { "." })
         if (!dir.exists()) return@withContext emptyList()
         if (!dir.isDirectory) throw IllegalArgumentException("$directory is not a directory")
@@ -130,7 +140,7 @@ class RealFileSystem(private val root: File) {
             ?: emptyList()
     }
 
-    fun normalize(path: String): String =
+    override fun normalize(path: String): String =
         resolve(path).relativeTo(canonicalRoot).path.replace('\\', '/')
 
     private fun resolve(path: String): File {
@@ -150,7 +160,7 @@ class RealFileSystem(private val root: File) {
 
 class WorkspaceFileSystem(
     private val workspaceId: String,
-    private val realFs: RealFileSystem,
+    private val realFs: WorkspaceBackingFileSystem,
     private val db: WorkspaceDatabase,
     private val committer: WorkspaceCommitter? = null,
 ) : VirtualFileSystem {

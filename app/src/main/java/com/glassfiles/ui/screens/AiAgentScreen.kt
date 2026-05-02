@@ -205,6 +205,9 @@ fun AiAgentScreen(
     var autoApproveReads by remember {
         mutableStateOf(com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveReads(context))
     }
+    var workspaceMode by remember {
+        mutableStateOf(com.glassfiles.data.ai.AiAgentApprovalPrefs.getWorkspaceMode(context))
+    }
     var running by remember { mutableStateOf(false) }
     var runJob by remember { mutableStateOf<Job?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -559,11 +562,39 @@ fun AiAgentScreen(
             // recently. Stale entries fall off after 24h.
             val warmCache = com.glassfiles.data.ai.agent.ReadFileDiskCache
                 .load(context, repo.fullName, branch)
+            val workspaceDb = if (workspaceMode && repo.canWrite()) {
+                com.glassfiles.data.ai.workspace.WorkspaceDatabase(context)
+            } else null
+            val workspaceRecord = workspaceDb?.createWorkspace(
+                taskId = "${activeSessionId}_${System.currentTimeMillis()}",
+                chatId = activeSessionId,
+                repoFullName = repo.fullName,
+                baseCommitSha = GitHubManager
+                    .getBranchHeadSha(context, repoOwner(repo), repoName(repo), branch)
+                    ?: branch,
+                title = text.lineSequence().firstOrNull()
+                    ?.take(64)
+                    ?.ifBlank { null }
+                    ?: "AI agent workspace",
+            )
+            val workspaceVfs = if (workspaceRecord != null && workspaceDb != null) {
+                com.glassfiles.data.ai.workspace.WorkspaceFileSystem(
+                    workspaceId = workspaceRecord.id,
+                    realFs = com.glassfiles.data.ai.workspace.GitHubRepositoryFileSystem(
+                        context = context,
+                        owner = repoOwner(repo),
+                        repo = repoName(repo),
+                        branch = branch,
+                    ),
+                    db = workspaceDb,
+                )
+            } else null
             val executor = GitHubToolExecutor(
                 owner = repoOwner(repo),
                 repo = repoName(repo),
                 branch = branch,
                 estimate = estimate,
+                virtualFileSystem = workspaceVfs,
                 initialCache = warmCache,
             )
             val provider = AiProviders.get(model.providerId)
@@ -621,6 +652,14 @@ fun AiAgentScreen(
                 if (systemOverride != null) {
                     add(AiMessage(role = "system", content = systemOverride))
                 }
+                if (workspaceRecord != null) {
+                    add(
+                        AiMessage(
+                            role = "system",
+                            content = "Workspace mode is active. Repo file tools stage changes in workspace ${workspaceRecord.id}; they do not create GitHub commits. Finish the task normally so the app can move the workspace to pending review.",
+                        ),
+                    )
+                }
                 if (planFirst) {
                     add(
                         AiMessage(
@@ -653,8 +692,10 @@ fun AiAgentScreen(
             // users can ignore it.
             transcript += AgentEntry.Assistant(
                 text = "[debug] write limit: " + writeLimitLabel(approvalSettings.writeLimitPerTask) +
-                    " · yolo=${approvalSettings.yoloMode}",
+                    " · yolo=${approvalSettings.yoloMode}" +
+                    " · workspace=${workspaceRecord?.id ?: "off"}",
             )
+            var taskCompleted = false
             try {
                 runAgentLoop(
                     seedMessages = seed,
@@ -682,9 +723,23 @@ fun AiAgentScreen(
                             .replace("{model}", newModel.displayName)
                     },
                 )
+                taskCompleted = true
             } catch (e: Exception) {
                 error = e.message ?: e.javaClass.simpleName
             } finally {
+                if (taskCompleted && workspaceDb != null && workspaceRecord != null && workspaceVfs != null) {
+                    runCatching {
+                        val diff = workspaceVfs.diff()
+                        if (diff.changes.isEmpty()) {
+                            workspaceVfs.discard()
+                        } else {
+                            workspaceDb.markPendingReview(workspaceRecord.id)
+                            transcript += AgentEntry.Assistant(
+                                text = "[workspace] pending review: ${diff.filesChanged} file(s), +${diff.additions}/-${diff.deletions}. Commit UI lands in Stage 3.",
+                            )
+                        }
+                    }
+                }
                 persistSession()
                 running = false
                 runJob = null
@@ -907,12 +962,13 @@ fun AiAgentScreen(
             selectedRepo?.fullName,
             selectedBranch?.takeIf { it.isNotBlank() }?.let { "@$it" },
         ).joinToString("").ifBlank { null }
-        val approvalIndicator = remember(autoApproveReads, selectedRepo?.fullName) {
+        val approvalIndicator = remember(autoApproveReads, workspaceMode, selectedRepo?.fullName) {
             val yolo = com.glassfiles.data.ai.AiAgentApprovalPrefs.getYoloMode(context)
             val edits = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveEdits(context)
             val writes = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveWrites(context)
             val commits = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveCommits(context)
             when {
+                workspaceMode -> "workspace" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
                 yolo -> "auto: yolo" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
                 commits || writes -> "auto: writes" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
                 edits -> "auto: edits" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
@@ -1302,6 +1358,7 @@ fun AiAgentScreen(
                 protectedPathsCount = protectedPaths.size,
                 backgroundExecution = com.glassfiles.data.ai.AiAgentApprovalPrefs.getBackgroundExecution(context),
                 keepCpuAwake = com.glassfiles.data.ai.AiAgentApprovalPrefs.getKeepCpuAwake(context),
+                workspaceMode = workspaceMode,
                 memoryProjectKnowledge = com.glassfiles.data.ai.AiAgentMemoryPrefs.getProjectKnowledge(context),
                 memoryUserPreferences = com.glassfiles.data.ai.AiAgentMemoryPrefs.getUserPreferences(context),
                 memoryChatSummaries = com.glassfiles.data.ai.AiAgentMemoryPrefs.getChatSummaries(context),
@@ -1422,6 +1479,10 @@ fun AiAgentScreen(
                 },
                 onKeepCpuAwakeChange = {
                     com.glassfiles.data.ai.AiAgentApprovalPrefs.setKeepCpuAwake(context, it)
+                },
+                onWorkspaceModeChange = {
+                    workspaceMode = it
+                    com.glassfiles.data.ai.AiAgentApprovalPrefs.setWorkspaceMode(context, it)
                 },
                 onMemoryProjectKnowledgeChange = {
                     com.glassfiles.data.ai.AiAgentMemoryPrefs.setProjectKnowledge(context, it)

@@ -67,6 +67,7 @@ fun AgentSettingsBottomSheet(
     onProtectedPathsChange: (String) -> Unit,
     onBackgroundExecutionChange: (Boolean) -> Unit,
     onKeepCpuAwakeChange: (Boolean) -> Unit,
+    onWorkspaceModeChange: (Boolean) -> Unit,
     onMemoryProjectKnowledgeChange: (Boolean) -> Unit,
     onMemoryUserPreferencesChange: (Boolean) -> Unit,
     onMemoryChatSummariesChange: (Boolean) -> Unit,
@@ -215,6 +216,24 @@ fun AgentSettingsBottomSheet(
                 label = "keep CPU awake during long tasks",
                 checked = state.keepCpuAwake,
                 onChange = onKeepCpuAwakeChange,
+            )
+            AgentSheetDivider()
+            AgentSheetLabel("WORKSPACE MODE")
+            AgentSheetCheckbox(
+                label = "use workspaces for atomic changes",
+                checked = state.workspaceMode,
+                onChange = onWorkspaceModeChange,
+            )
+            Text(
+                text = if (state.workspaceMode) {
+                    "edits accumulate in SQLite until review"
+                } else {
+                    "legacy: write tools commit immediately"
+                },
+                color = colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = AgentTerminal.type.label,
+                lineHeight = 1.4.em,
             )
             AgentSheetDivider()
             AgentSheetLabel("MEMORY")
@@ -570,6 +589,7 @@ data class AgentSettingsState(
     val protectedPathsCount: Int,
     val backgroundExecution: Boolean,
     val keepCpuAwake: Boolean,
+    val workspaceMode: Boolean,
     val memoryProjectKnowledge: Boolean,
     val memoryUserPreferences: Boolean,
     val memoryChatSummaries: Boolean,

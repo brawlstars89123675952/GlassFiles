@@ -2,6 +2,7 @@ package com.glassfiles.data.ai.agent
 
 import android.content.Context
 import com.glassfiles.data.ai.AiAgentMemoryStore
+import com.glassfiles.data.ai.workspace.VirtualFileSystem
 import com.glassfiles.data.github.GHContent
 import com.glassfiles.data.github.GitHubManager
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,13 @@ class GitHubToolExecutor(
      * Defaults to false — UI must opt into reading secrets.
      */
     private val approvedSecretReads: Boolean = false,
+    /**
+     * Optional workspace overlay. When present, repo file reads and writes
+     * are routed through it so edits are staged in SQLite instead of being
+     * committed to GitHub immediately. Non-file GitHub tools keep their
+     * legacy behaviour.
+     */
+    private val virtualFileSystem: VirtualFileSystem? = null,
     /**
      * Optional warm cache to seed [fileCache] with — typically loaded
      * by the UI from [ReadFileDiskCache.load] at session start so that
@@ -205,6 +213,7 @@ class GitHubToolExecutor(
     private fun repoFullName(): String = "$owner/$repo"
 
     private suspend fun listDir(context: Context, path: String): String {
+        virtualFileSystem?.let { return listWorkspaceDir(it, path) }
         val cleaned = path.trim().trim('/')
         val items: List<GHContent> =
             GitHubManager.getRepoContents(context, owner, repo, cleaned, branch)
@@ -221,6 +230,22 @@ class GitHubToolExecutor(
                 val tag = if (it.type == "dir") "[dir] " else "      "
                 appendLine("$tag${it.path}")
             }
+            if (skipped.isNotEmpty()) {
+                appendLine()
+                appendLine("[cost-policy: ${skipped.size} item(s) hidden — build/cache/vendor folders. Ask the user if you need them.]")
+            }
+        }.trimEnd()
+    }
+
+    private suspend fun listWorkspaceDir(vfs: VirtualFileSystem, path: String): String {
+        val cleaned = path.trim().trim('/')
+        val items = vfs.list(cleaned)
+        if (items.isEmpty()) return "(empty directory)"
+        val (kept, skipped) = items.partition {
+            !com.glassfiles.data.ai.cost.AiCostPolicy.isInSkipFolder(it)
+        }
+        return buildString {
+            kept.forEach { appendLine("      $it") }
             if (skipped.isNotEmpty()) {
                 appendLine()
                 appendLine("[cost-policy: ${skipped.size} item(s) hidden — build/cache/vendor folders. Ask the user if you need them.]")
@@ -247,6 +272,11 @@ class GitHubToolExecutor(
      * created files become visible to later tool calls.
      */
     private suspend fun fetchFileContent(context: Context, cleanedPath: String): String {
+        virtualFileSystem?.let { vfs ->
+            val text = vfs.read(cleanedPath)
+            fileCache[cleanedPath] = text
+            return text
+        }
         fileCache[cleanedPath]?.let { return it }
         val text = GitHubManager.getFileContent(context, owner, repo, cleanedPath, branch)
         if (text.isNotBlank()) fileCache[cleanedPath] = text
@@ -493,6 +523,13 @@ class GitHubToolExecutor(
             throw RuntimeException("edit_file: old_string appears $occurrences times in \"$cleaned\". Add more surrounding context so it is unique.")
         }
         val updated = current.replaceFirst(oldString, newString)
+        virtualFileSystem?.let { vfs ->
+            vfs.write(cleaned, updated)
+            fileCache[cleaned] = updated
+            val delta = updated.length - current.length
+            val sign = if (delta >= 0) "+" else ""
+            return "Staged edit to $cleaned ($sign$delta chars) in workspace. No GitHub commit was created."
+        }
         val existingSha = runCatching {
             GitHubManager
                 .getRepoContents(context, owner, repo, parentOf(cleaned), branch)
@@ -536,6 +573,11 @@ class GitHubToolExecutor(
         message: String,
     ): String {
         val cleaned = path.trim().trim('/')
+        virtualFileSystem?.let { vfs ->
+            vfs.write(cleaned, content)
+            fileCache[cleaned] = content
+            return "Staged $cleaned (${content.length} chars) in workspace. No GitHub commit was created."
+        }
         // Look up existing file's sha so the PUT counts as an update, not a fail-on-exists.
         val existingSha = runCatching {
             GitHubManager
@@ -572,6 +614,19 @@ class GitHubToolExecutor(
         val arr = files ?: org.json.JSONArray()
         if (arr.length() == 0) return "Nothing to commit."
         val written = mutableListOf<String>()
+        virtualFileSystem?.let { vfs ->
+            for (i in 0 until arr.length()) {
+                val f = arr.optJSONObject(i) ?: continue
+                val path = f.optString("path", "").trim().trim('/')
+                val content = f.optString("content", "")
+                if (path.isBlank()) continue
+                vfs.write(path, content)
+                fileCache[path] = content
+                written += path
+            }
+            return if (written.isEmpty()) throw RuntimeException("commit: no files were staged.")
+            else "Staged ${written.size} file(s) in workspace for later review:\n${written.joinToString("\n")}"
+        }
         for (i in 0 until arr.length()) {
             val f = arr.optJSONObject(i) ?: continue
             val path = f.optString("path", "").trim().trim('/')
