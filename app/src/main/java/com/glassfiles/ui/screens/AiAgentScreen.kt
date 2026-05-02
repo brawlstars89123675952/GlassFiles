@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -633,22 +634,29 @@ fun AiAgentScreen(
     }
 
     val skillPackPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent(),
+        contract = ActivityResultContracts.OpenDocument(),
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                val preview = runCatching {
-                    withContext(Dispatchers.IO) { AiSkillStore.prepareImport(context, uri) }
+                val imported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        val preview = AiSkillStore.prepareImport(context, uri)
+                        AiSkillStore.commitImport(context, preview)
+                    }
                 }
-                preview
+                imported
                     .onSuccess {
-                        skillImportPreview = it
+                        skillsVersion += 1
                         skillImportError = null
+                        skillImportPreview = null
+                        showSkills = true
+                        Toast.makeText(context, "Imported: ${it.name}", Toast.LENGTH_SHORT).show()
                     }
                     .onFailure {
                         skillImportError = it.message ?: it.javaClass.simpleName
                         skillImportPreview = null
                         showSkills = true
+                        Toast.makeText(context, "Import failed: $skillImportError", Toast.LENGTH_SHORT).show()
                     }
             }
         }
@@ -2035,7 +2043,7 @@ fun AiAgentScreen(
                 },
                 onImportSkillPack = {
                     showSettings = false
-                    skillPackPicker.launch("*/*")
+                    skillPackPicker.launch(arrayOf("*/*"))
                 },
                 onInstantRenderChange = { instantRender = it },
                 onExpandToolCallsChange = {
@@ -2074,7 +2082,7 @@ fun AiAgentScreen(
                 selectedSkillId = AiSkillPrefs.getSelectedSkillId(context),
                 onImport = {
                     showSkills = false
-                    skillPackPicker.launch("*/*")
+                    skillPackPicker.launch(arrayOf("*/*"))
                 },
                 onSelectSkill = { skill ->
                     AiSkillPrefs.setSelectedSkillId(context, skill?.let { "${it.packId}/${it.id}" })
@@ -2804,7 +2812,7 @@ private fun AgentSkillsDialog(
             ) {
                 AgentTerminalSectionTitle("AI SKILLS")
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AgentTerminalCommand("[ import skill/rules ]", colors.accent, onImport)
+                    AgentTerminalCommand("[+ import .gskill]", colors.accent, onImport)
                     AgentTerminalCommand("[ auto skill ]", colors.warning) { onSelectSkill(null) }
                     AgentTerminalCommand("[ done ]", colors.textSecondary, onDismiss)
                 }

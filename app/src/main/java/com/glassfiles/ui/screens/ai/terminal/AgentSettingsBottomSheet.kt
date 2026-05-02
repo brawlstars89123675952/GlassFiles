@@ -329,7 +329,7 @@ fun AgentSettingsBottomSheet(
                     onClick = onViewSkills,
                 )
                 AgentSheetCommand(
-                    label = "[ import skill/rules ]",
+                    label = "[+ import .gskill]",
                     color = colors.accent,
                     onClick = onImportSkillPack,
                 )

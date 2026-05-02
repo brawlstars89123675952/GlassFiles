@@ -8,8 +8,38 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.util.Locale
+import java.util.zip.GZIPInputStream
 import java.util.zip.ZipInputStream
+
+private const val TAR_BLOCK_SIZE = 512
+
+private enum class SkillFormat {
+    ZIP,
+    TAR_GZ,
+    UNKNOWN,
+}
+
+private object SkillArchiveDetector {
+    fun detectFormat(file: File): SkillFormat {
+        val header = ByteArray(4)
+        val read = file.inputStream().use { it.read(header) }
+        return when {
+            read >= 4 &&
+                header[0] == 0x50.toByte() &&
+                header[1] == 0x4B.toByte() &&
+                header[2] == 0x03.toByte() &&
+                header[3] == 0x04.toByte() -> SkillFormat.ZIP
+
+            read >= 2 &&
+                header[0] == 0x1F.toByte() &&
+                header[1] == 0x8B.toByte() -> SkillFormat.TAR_GZ
+
+            else -> SkillFormat.UNKNOWN
+        }
+    }
+}
 
 object AiSkillStore {
     private const val INDEX_FILE = "index.json"
@@ -106,13 +136,13 @@ object AiSkillStore {
     }
 
     fun prepareImport(context: Context, source: File): AiSkillImportPreview {
-        val lower = source.name.lowercase(Locale.US)
-        require(lower.endsWith(".gskill") || lower.endsWith(".zip")) {
-            "Skill pack must be .gskill or .zip"
+        val format = SkillArchiveDetector.detectFormat(source)
+        require(format != SkillFormat.UNKNOWN) {
+            "Unsupported skill archive format. Expected ZIP/.gskill or tar.gz"
         }
         val tempDir = File(context.cacheDir, "skill_import_${System.currentTimeMillis()}").canonicalFile
         tempDir.mkdirs()
-        unzipSafe(source, tempDir)
+        extractArchiveSafe(source, tempDir, format)
         val manifestFile = File(tempDir, "manifest.json")
         return if (manifestFile.isFile) {
             prepareManifestImport(tempDir, manifestFile)
@@ -601,16 +631,20 @@ object AiSkillStore {
         values.distinct().forEach { appendLine("  - ${it.replace('\n', ' ')}") }
     }
 
+    private fun extractArchiveSafe(source: File, dest: File, format: SkillFormat) {
+        when (format) {
+            SkillFormat.ZIP -> unzipSafe(source, dest)
+            SkillFormat.TAR_GZ -> untarGzSafe(source, dest)
+            SkillFormat.UNKNOWN -> error("Unsupported skill archive format")
+        }
+    }
+
     private fun unzipSafe(source: File, dest: File) {
         ZipInputStream(FileInputStream(source)).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
-                val name = entry.name.replace('\\', '/')
-                require(!name.startsWith("/") && !name.contains("..")) { "Blocked unsafe zip entry: $name" }
-                val out = File(dest, name).canonicalFile
-                require(out.path == dest.path || out.path.startsWith(dest.path + File.separator)) {
-                    "Blocked Zip Slip entry: $name"
-                }
+                val name = entry.name
+                val out = safeArchiveOutputFile(dest, name, "zip")
                 if (entry.isDirectory) {
                     out.mkdirs()
                 } else {
@@ -621,6 +655,95 @@ object AiSkillStore {
                 entry = zip.nextEntry
             }
         }
+    }
+
+    private fun untarGzSafe(source: File, dest: File) {
+        GZIPInputStream(FileInputStream(source)).use { input ->
+            val header = ByteArray(TAR_BLOCK_SIZE)
+            while (readTarBlock(input, header)) {
+                if (header.all { it == 0.toByte() }) return
+                val name = tarString(header, 0, 100)
+                val prefix = tarString(header, 345, 155)
+                val entryName = listOf(prefix, name).filter { it.isNotBlank() }.joinToString("/")
+                if (entryName.isBlank()) return
+                val size = tarOctal(header, 124, 12)
+                val type = header[156].toInt().toChar()
+                val out = safeArchiveOutputFile(dest, entryName, "tar")
+                when (type) {
+                    '5' -> out.mkdirs()
+                    '0', '\u0000' -> {
+                        out.parentFile?.mkdirs()
+                        FileOutputStream(out).use { output -> copyTarEntry(input, output, size) }
+                    }
+                    else -> skipTarBytes(input, size)
+                }
+                val padding = (TAR_BLOCK_SIZE - (size % TAR_BLOCK_SIZE)) % TAR_BLOCK_SIZE
+                if (padding > 0) skipTarBytes(input, padding)
+            }
+        }
+    }
+
+    private fun safeArchiveOutputFile(dest: File, entryName: String, archiveName: String): File {
+        val name = entryName.replace('\\', '/')
+        require(!name.startsWith("/") && !name.contains("..")) {
+            "Blocked unsafe $archiveName entry: $name"
+        }
+        val out = File(dest, name).canonicalFile
+        require(out.path == dest.path || out.path.startsWith(dest.path + File.separator)) {
+            "Blocked path traversal entry: $name"
+        }
+        return out
+    }
+
+    private fun readTarBlock(input: InputStream, block: ByteArray): Boolean {
+        var offset = 0
+        while (offset < block.size) {
+            val read = input.read(block, offset, block.size - offset)
+            if (read == -1) {
+                if (offset == 0) return false
+                error("Unexpected end of tar header")
+            }
+            offset += read
+        }
+        return true
+    }
+
+    private fun copyTarEntry(input: InputStream, output: FileOutputStream, size: Long) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var remaining = size
+        while (remaining > 0) {
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read == -1) error("Unexpected end of tar entry")
+            output.write(buffer, 0, read)
+            remaining -= read
+        }
+    }
+
+    private fun skipTarBytes(input: InputStream, bytes: Long) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var remaining = bytes
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) {
+                remaining -= skipped
+            } else {
+                val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+                if (read == -1) error("Unexpected end of tar archive")
+                remaining -= read
+            }
+        }
+    }
+
+    private fun tarString(header: ByteArray, offset: Int, length: Int): String {
+        val end = (offset until offset + length)
+            .firstOrNull { header[it] == 0.toByte() }
+            ?: (offset + length)
+        return header.copyOfRange(offset, end).toString(Charsets.UTF_8).trim()
+    }
+
+    private fun tarOctal(header: ByteArray, offset: Int, length: Int): Long {
+        val value = tarString(header, offset, length).trim { it <= ' ' || it == '\u0000' }
+        return value.ifBlank { "0" }.toLong(8)
     }
 
     private fun validateKnownTools(tools: List<String>) {
