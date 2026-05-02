@@ -175,6 +175,7 @@ fun AiAgentScreen(
     // on confirm so subsequent runs in this repo prepend it as a
     // `system` message.
     var showSystemPrompt by remember { mutableStateOf(false) }
+    var systemPromptScopeFullName by remember { mutableStateOf<String?>(null) }
     // Terminal-style settings sheet (REPO / BRANCH / MODEL / mode /
     // approval toggles / write limit / protected paths / memory / etc.).
     // Replaces the inline picker chips + switch row
@@ -191,7 +192,6 @@ fun AiAgentScreen(
     // without leaving overlays stranded.
     var showMemoryFiles by remember { mutableStateOf(false) }
     var showWorkingMemory by remember { mutableStateOf(false) }
-    var showMemoryRepoMissing by remember { mutableStateOf(false) }
     var memorySheetRepoFullName by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceId by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceDiff by remember {
@@ -435,13 +435,46 @@ fun AiAgentScreen(
         sessions = AiChatSessionStore.list(context, AGENT_SESSION_MODE)
     }
 
-    fun activeMemoryRepoFullName(): String? {
+    fun activeAgentScopeFullName(): String {
         selectedRepo?.fullName?.takeIf { it.isNotBlank() }?.let { return it }
-        val sessionRepo = AiChatSessionStore
+        AiChatSessionStore
             .get(context, AGENT_SESSION_MODE, activeSessionId)
             ?.repoFullName
             ?.takeIf { it.isNotBlank() && it != CHAT_ONLY_REPO_KEY }
-        return sessionRepo
+            ?.let { return it }
+        return "$CHAT_MEMORY_SCOPE_PREFIX$activeSessionId"
+    }
+
+    fun agentScopeLabel(scopeFullName: String): String =
+        if (scopeFullName.startsWith(CHAT_MEMORY_SCOPE_PREFIX)) "chat only" else scopeFullName
+
+    fun chatOnlyScopeFullName(): String =
+        "$CHAT_MEMORY_SCOPE_PREFIX$activeSessionId"
+
+    fun chatOnlyMemoryPrompt(scopeFullName: String): List<AiMessage> {
+        val messages = mutableListOf<AiMessage>()
+        val workingMemoryBlock = if (com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context)) {
+            com.glassfiles.data.ai.AiAgentMemoryStore.workingMemoryPrompt(context, scopeFullName)
+        } else ""
+        val memoryBlock = com.glassfiles.data.ai.AiAgentMemoryStore.buildMemoryPrompt(context, scopeFullName)
+        val systemOverride = com.glassfiles.data.ai.AiAgentPrefs
+            .getSystemPromptOverride(context, scopeFullName)
+            ?.takeIf { it.isNotBlank() }
+        val planFirst = com.glassfiles.data.ai.AiAgentPrefs
+            .getPlanThenExecute(context, scopeFullName)
+        if (workingMemoryBlock.isNotBlank()) {
+            messages += AiMessage(role = "system", content = workingMemoryBlock)
+        }
+        if (memoryBlock.isNotBlank()) {
+            messages += AiMessage(role = "system", content = memoryBlock)
+        }
+        if (systemOverride != null) {
+            messages += AiMessage(role = "system", content = systemOverride)
+        }
+        if (planFirst) {
+            messages += AiMessage(role = "system", content = AGENT_PLAN_FIRST_SYSTEM_PROMPT)
+        }
+        return messages
     }
 
     fun transcriptMessages(): List<AiChatSessionStore.Message> = transcript.mapNotNull { entry ->
@@ -589,7 +622,9 @@ fun AiAgentScreen(
         runJob = scope.launch {
             try {
                 val provider = AiProviders.get(model.providerId)
+                val chatScope = chatOnlyScopeFullName()
                 val messages = mutableListOf<AiMessage>().apply {
+                    addAll(chatOnlyMemoryPrompt(chatScope))
                     add(AiMessage("system", CHAT_ONLY_SYSTEM_PROMPT))
                     addAll(transcript.dropLast(1).toAiMessages())
                 }
@@ -1025,7 +1060,7 @@ fun AiAgentScreen(
         when (command) {
             "clear working memory" -> {
                 transcript += AgentEntry.User(text = userText, imageBase64 = image)
-                if (repo != null) com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(context, repo.fullName)
+                com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(context, activeAgentScopeFullName())
                 transcript += AgentEntry.Assistant(text = "[system] working_memory.md cleared.")
                 input = TextFieldValue("")
                 pendingImage = null
@@ -1034,11 +1069,9 @@ fun AiAgentScreen(
             }
             "show working memory", "what are you working on", "what are you working on?" -> {
                 transcript += AgentEntry.User(text = userText, imageBase64 = image)
-                val blob = repo?.let {
-                    com.glassfiles.data.ai.AiAgentMemoryStore
-                        .readWorkingMemory(context, it.fullName)
-                        .ifBlank { "[system] working_memory.md is empty." }
-                } ?: "[system] chat mode has no repo working memory."
+                val blob = com.glassfiles.data.ai.AiAgentMemoryStore
+                    .readWorkingMemory(context, activeAgentScopeFullName())
+                    .ifBlank { "[system] working_memory.md is empty." }
                 transcript += AgentEntry.Assistant(text = blob)
                 input = TextFieldValue("")
                 pendingImage = null
@@ -1570,34 +1603,38 @@ fun AiAgentScreen(
                 },
             )
         }
-        // Per-repo system-prompt override dialog. Mounted alongside the
-        // warning gate so it survives sheet lifecycle. Only opens when
-        // a repo is picked (the IconButton is disabled otherwise).
-        val activeRepoForPrompt = selectedRepo
-        if (showSystemPrompt && activeRepoForPrompt != null) {
-            val currentPrompt = remember(activeRepoForPrompt.fullName) {
+        // Context-scoped system-prompt override dialog. Repo chats use
+        // the repo key; chat-only sessions use their own stable chat key.
+        if (showSystemPrompt) {
+            val promptScopeFullName = systemPromptScopeFullName ?: activeAgentScopeFullName()
+            val promptScopeLabel = agentScopeLabel(promptScopeFullName)
+            val currentPrompt = remember(promptScopeFullName) {
                 com.glassfiles.data.ai.AiAgentPrefs
-                    .getSystemPromptOverride(context, activeRepoForPrompt.fullName)
+                    .getSystemPromptOverride(context, promptScopeFullName)
                     .orEmpty()
             }
-            val currentPlanFirst = remember(activeRepoForPrompt.fullName) {
+            val currentPlanFirst = remember(promptScopeFullName) {
                 com.glassfiles.data.ai.AiAgentPrefs
-                    .getPlanThenExecute(context, activeRepoForPrompt.fullName)
+                    .getPlanThenExecute(context, promptScopeFullName)
             }
             com.glassfiles.ui.screens.ai.SystemPromptOverrideDialog(
-                repoFullName = activeRepoForPrompt.fullName,
+                repoFullName = promptScopeLabel,
                 initialPrompt = currentPrompt,
                 initialPlanFirst = currentPlanFirst,
                 onSave = { text, planFirst ->
                     com.glassfiles.data.ai.AiAgentPrefs.setSystemPromptOverride(
-                        context, activeRepoForPrompt.fullName, text,
+                        context, promptScopeFullName, text,
                     )
                     com.glassfiles.data.ai.AiAgentPrefs.setPlanThenExecute(
-                        context, activeRepoForPrompt.fullName, planFirst,
+                        context, promptScopeFullName, planFirst,
                     )
                     showSystemPrompt = false
+                    systemPromptScopeFullName = null
                 },
-                onDismiss = { showSystemPrompt = false },
+                onDismiss = {
+                    showSystemPrompt = false
+                    systemPromptScopeFullName = null
+                },
             )
         }
 
@@ -1801,26 +1838,14 @@ fun AiAgentScreen(
                     com.glassfiles.data.ai.AiWorkingMemoryPrefs.setReminders(context, it)
                 },
                 onViewWorkingMemory = {
-                    val repoFullName = activeMemoryRepoFullName()
-                    if (repoFullName == null) {
-                        showSettings = false
-                        showMemoryRepoMissing = true
-                    } else {
-                        memorySheetRepoFullName = repoFullName
-                        showSettings = false
-                        showWorkingMemory = true
-                    }
+                    memorySheetRepoFullName = activeAgentScopeFullName()
+                    showSettings = false
+                    showWorkingMemory = true
                 },
                 onViewMemoryFiles = {
-                    val repoFullName = activeMemoryRepoFullName()
-                    if (repoFullName == null) {
-                        showSettings = false
-                        showMemoryRepoMissing = true
-                    } else {
-                        memorySheetRepoFullName = repoFullName
-                        showSettings = false
-                        showMemoryFiles = true
-                    }
+                    memorySheetRepoFullName = activeAgentScopeFullName()
+                    showSettings = false
+                    showMemoryFiles = true
                 },
                 onClearMemory = {
                     com.glassfiles.data.ai.AiAgentMemoryStore.clearAll(context)
@@ -1831,8 +1856,9 @@ fun AiAgentScreen(
                     showHistory = true
                 },
                 onOpenSystemPrompt = {
+                    systemPromptScopeFullName = activeAgentScopeFullName()
                     showSettings = false
-                    if (selectedRepo != null) showSystemPrompt = true
+                    showSystemPrompt = true
                 },
                 onClearChat = {
                     transcript.clear()
@@ -1901,11 +1927,6 @@ fun AiAgentScreen(
                     showWorkingMemory = false
                     memorySheetRepoFullName = null
                 },
-            )
-        }
-        if (showMemoryRepoMissing) {
-            AgentMemoryRepoMissingSheet(
-                onDismiss = { showMemoryRepoMissing = false },
             )
         }
         previewGeneratedFile?.let { file ->
@@ -2424,62 +2445,6 @@ private fun AgentGeneratedFilePreviewSheet(
                     filePath = file.name,
                     context = context,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AgentMemoryRepoMissingSheet(onDismiss: () -> Unit) {
-    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.58f))
-                .padding(top = 48.dp),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
-                    .background(colors.background)
-                    .border(
-                        1.dp,
-                        colors.accent,
-                        RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
-                    )
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                    .navigationBarsPadding()
-                    .padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Box(
-                    Modifier
-                        .width(38.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(colors.border)
-                        .align(Alignment.CenterHorizontally),
-                )
-                Text(
-                    "MEMORY FILES",
-                    color = colors.accent,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                )
-                Text(
-                    "Select a repository in agent settings before opening memory files.",
-                    color = colors.textSecondary,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                )
-                AgentTextButton("[ done ]", colors.textSecondary, true, onDismiss)
             }
         }
     }
@@ -4064,10 +4029,11 @@ private fun List<AiChatSessionStore.Message>.toAgentEntries(): List<AgentEntry> 
     }
 
 private const val CHAT_ONLY_REPO_KEY = "__chat_only__"
+private const val CHAT_MEMORY_SCOPE_PREFIX = "chat/"
 private val CHAT_ONLY_SYSTEM_PROMPT: String = """
 ${SystemPrompts.DEFAULT}
 
-Chat-only mode is active. Do not assume access to any repository, branch, repo files, GitHub tools, or project memory unless the user pasted or attached that content in this chat.
+Chat-only mode is active. Do not assume access to any repository, branch, repo files, or GitHub tools. Use only chat messages, attachments, generated chat files, and any memory/system-prompt context explicitly provided by the app.
 
 When you need to send a file to the user, include it as a fenced block with an explicit file marker:
 ```file:relative/path.ext
