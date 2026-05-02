@@ -185,11 +185,11 @@ fun AiAgentScreen(
     // to this screen; not persisted because it's a UX preference rather
     // than a behaviour-altering setting.
     var instantRender by remember { mutableStateOf(false) }
-    // [view memory files] button in the settings sheet. Mounted next to
-    // the existing system-prompt / history dialogs at the bottom of this
-    // composable so the sheet can be dismissed without leaving the
-    // dialog stranded.
+    // Memory editor sheets launched from settings. They are mounted next
+    // to history / system-prompt dialogs so the settings sheet can close
+    // without leaving overlays stranded.
     var showMemoryFiles by remember { mutableStateOf(false) }
+    var showWorkingMemory by remember { mutableStateOf(false) }
     var pendingWorkspaceId by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceDiff by remember {
         mutableStateOf<com.glassfiles.data.ai.workspace.WorkspaceDiff?>(null)
@@ -1732,12 +1732,8 @@ fun AiAgentScreen(
                     com.glassfiles.data.ai.AiWorkingMemoryPrefs.setReminders(context, it)
                 },
                 onViewWorkingMemory = {
-                    // The view-working-memory link reuses the standard
-                    // memory-files dialog; the working_memory.md tab
-                    // shows up automatically because [editableFiles]
-                    // returns a "working" entry now.
                     showSettings = false
-                    showMemoryFiles = true
+                    showWorkingMemory = true
                 },
                 onViewMemoryFiles = {
                     showSettings = false
@@ -1777,18 +1773,8 @@ fun AiAgentScreen(
             val memoryFiles = remember(memoryRepo.fullName, showMemoryFiles) {
                 com.glassfiles.data.ai.AiAgentMemoryStore.editableFiles(context, memoryRepo.fullName)
             }
-            var memoryQuery by remember(memoryRepo.fullName) { mutableStateOf("") }
-            val memoryIndex = remember(memoryRepo.fullName, memoryQuery) {
-                com.glassfiles.data.ai.AiAgentMemoryStore.memoryIndexSnapshot(
-                    context,
-                    memoryRepo.fullName,
-                    memoryQuery,
-                )
-            }
             com.glassfiles.ui.screens.ai.terminal.AgentMemoryFilesDialog(
                 files = memoryFiles,
-                index = memoryIndex,
-                onSearch = { memoryQuery = it },
                 onRebuildIndex = {
                     com.glassfiles.data.ai.AiAgentMemoryStore.rebuildIndex(
                         context,
@@ -1804,6 +1790,31 @@ fun AiAgentScreen(
                     )
                 },
                 onDismiss = { showMemoryFiles = false },
+            )
+        }
+        if (showWorkingMemory && memoryRepo != null) {
+            val workingMemory = remember(memoryRepo.fullName, showWorkingMemory) {
+                com.glassfiles.data.ai.AiAgentMemoryStore.readWorkingMemory(
+                    context,
+                    memoryRepo.fullName,
+                )
+            }
+            com.glassfiles.ui.screens.ai.terminal.AgentWorkingMemoryDialog(
+                content = workingMemory,
+                onSave = { content ->
+                    com.glassfiles.data.ai.AiAgentMemoryStore.writeWorkingMemory(
+                        context,
+                        memoryRepo.fullName,
+                        content,
+                    )
+                },
+                onClear = {
+                    com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(
+                        context,
+                        memoryRepo.fullName,
+                    )
+                },
+                onDismiss = { showWorkingMemory = false },
             )
         }
     }

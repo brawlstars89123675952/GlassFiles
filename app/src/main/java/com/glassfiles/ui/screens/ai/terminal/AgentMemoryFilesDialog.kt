@@ -3,33 +3,42 @@ package com.glassfiles.ui.screens.ai.terminal
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.glassfiles.data.ai.AiAgentMemoryStore
 import com.glassfiles.ui.components.terminal.TerminalTabsRow
 import com.glassfiles.ui.theme.JetBrainsMono
@@ -37,232 +46,254 @@ import com.glassfiles.ui.theme.JetBrainsMono
 @Composable
 fun AgentMemoryFilesDialog(
     files: List<AiAgentMemoryStore.MemoryFile>,
-    index: AiAgentMemoryStore.MemoryIndexSnapshot,
-    onSearch: (String) -> Unit,
     onRebuildIndex: () -> Unit,
     onSave: (String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    if (files.isEmpty()) return
+    val editableFiles = remember(files) {
+        files.filter { it.key in setOf("project", "preferences", "decisions") }
+    }
+    if (editableFiles.isEmpty()) return
+
     val colors = AgentTerminal.colors
-    var selectedKey by remember(files) { mutableStateOf(files.first().key) }
-    val selectedFile = files.firstOrNull { it.key == selectedKey } ?: files.first()
+    var selectedKey by remember(editableFiles) { mutableStateOf(editableFiles.first().key) }
+    val selectedFile = editableFiles.firstOrNull { it.key == selectedKey } ?: editableFiles.first()
     var text by remember(selectedFile.key, selectedFile.content) { mutableStateOf(selectedFile.content) }
-    var searchQuery by remember { mutableStateOf("") }
-    Dialog(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(colors.surfaceElevated)
-                .border(1.dp, colors.warning, RoundedCornerShape(8.dp))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "MEMORY FILES",
-                color = colors.warning,
-                fontFamily = JetBrainsMono,
-                fontWeight = FontWeight.Bold,
-                fontSize = AgentTerminal.type.message,
-                lineHeight = 1.3.em,
-            )
-            TerminalTabsRow(
-                spacing = 8.dp,
-                fadeColor = colors.surfaceElevated,
-                chevronColor = colors.textMuted,
-            ) {
-                files.forEach { file ->
-                    val selected = file.key == selectedKey
-                    Text(
-                        text = if (selected) "[\u25A3 ${file.label}]" else "[ ${file.label} ]",
-                        color = if (selected) colors.accent else colors.textSecondary,
-                        fontFamily = JetBrainsMono,
-                        fontSize = AgentTerminal.type.toolCall,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .clickable {
-                                selectedKey = file.key
-                                text = file.content
-                            }
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
-                    )
-                }
-                Text(
-                    text = if (selectedKey == "facts") "[▣ facts]" else "[ facts ]",
-                    color = if (selectedKey == "facts") colors.accent else colors.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = AgentTerminal.type.toolCall,
-                    modifier = Modifier
-                        .clickable { selectedKey = "facts" }
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                )
-                Text(
-                    text = if (selectedKey == "search") "[▣ search]" else "[ search ]",
-                    color = if (selectedKey == "search") colors.accent else colors.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = AgentTerminal.type.toolCall,
-                    modifier = Modifier
-                        .clickable { selectedKey = "search" }
-                        .padding(horizontal = 4.dp, vertical = 4.dp),
-                )
-            }
-            when (selectedKey) {
-                "facts" -> MemoryFactsPanel(index)
-                "search" -> MemorySearchPanel(
-                    query = searchQuery,
-                    onQueryChange = {
-                        searchQuery = it
-                        onSearch(it)
-                    },
-                    index = index,
-                )
-                else -> {
-                    Text(
-                        text = selectedFile.path,
-                        color = colors.textMuted,
-                        fontFamily = JetBrainsMono,
-                        fontSize = AgentTerminal.type.label,
-                    )
-                    BasicTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        textStyle = TextStyle(
-                            color = colors.textPrimary,
-                            fontFamily = JetBrainsMono,
-                            fontSize = AgentTerminal.type.toolCall,
-                            lineHeight = 1.35.em,
-                        ),
-                        cursorBrush = SolidColor(colors.accent),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 280.dp, max = 520.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(colors.surface)
-                            .border(1.dp, colors.border, RoundedCornerShape(6.dp))
-                            .padding(10.dp),
-                    )
-                }
-            }
-            TerminalTabsRow(
-                spacing = 12.dp,
-                fadeColor = colors.surfaceElevated,
-                chevronColor = colors.textMuted,
-            ) {
-                if (selectedKey !in setOf("facts", "search")) {
-                    AgentTextButton(
-                        label = "[ save ]",
-                        color = colors.accent,
-                        enabled = true,
-                        onClick = { onSave(selectedFile.key, text) },
-                    )
-                }
-                AgentTextButton(
-                    label = "[ rebuild index ]",
-                    color = colors.textSecondary,
-                    enabled = true,
-                    onClick = onRebuildIndex,
-                )
-                AgentTextButton(
-                    label = "[ done ]",
-                    color = colors.textSecondary,
-                    enabled = true,
-                    onClick = onDismiss,
-                )
-            }
-        }
-    }
-}
 
-@Composable
-private fun MemoryFactsPanel(index: AiAgentMemoryStore.MemoryIndexSnapshot) {
-    val colors = AgentTerminal.colors
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 520.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(colors.surface)
-            .border(1.dp, colors.border, RoundedCornerShape(6.dp))
-            .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    AgentTerminalBottomSheet(
+        title = "MEMORY FILES",
+        onDismiss = onDismiss,
     ) {
-        Text(
-            "STRUCTURED FACTS",
-            color = colors.accent,
-            fontFamily = JetBrainsMono,
-            fontWeight = FontWeight.Bold,
-            fontSize = AgentTerminal.type.toolCall,
-        )
-        if (index.facts.isEmpty()) {
-            Text("// no facts indexed yet", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall)
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(index.facts) { fact ->
-                    Column {
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("[${fact.type}]", color = colors.warning, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.label)
-                            Text(fact.sourcePath, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.label)
+        TerminalTabsRow(
+            spacing = 8.dp,
+            fadeColor = colors.background,
+            chevronColor = colors.textMuted,
+        ) {
+            editableFiles.forEach { file ->
+                val selected = file.key == selectedKey
+                Text(
+                    text = if (selected) "[\u25A3 ${file.label}]" else "[ ${file.label} ]",
+                    color = if (selected) colors.accent else colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = AgentTerminal.type.toolCall,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            selectedKey = file.key
+                            text = file.content
                         }
-                        Text(fact.text, color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall, lineHeight = 1.35.em)
-                    }
-                }
+                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                )
             }
+        }
+
+        Text(
+            text = selectedFile.path,
+            color = colors.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = AgentTerminal.type.label,
+            maxLines = 1,
+        )
+
+        MemoryTextEditor(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.heightIn(min = 300.dp, max = 520.dp),
+        )
+
+        AgentSheetActions {
+            AgentTextButton(
+                label = "[ save ]",
+                color = colors.accent,
+                enabled = true,
+                onClick = { onSave(selectedFile.key, text) },
+            )
+            AgentTextButton(
+                label = "[ rebuild index ]",
+                color = colors.textSecondary,
+                enabled = true,
+                onClick = onRebuildIndex,
+            )
+            AgentTextButton(
+                label = "[ done ]",
+                color = colors.textSecondary,
+                enabled = true,
+                onClick = onDismiss,
+            )
         }
     }
 }
 
 @Composable
-private fun MemorySearchPanel(
-    query: String,
-    onQueryChange: (String) -> Unit,
-    index: AiAgentMemoryStore.MemoryIndexSnapshot,
+fun AgentWorkingMemoryDialog(
+    content: String,
+    onSave: (String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val colors = AgentTerminal.colors
-    Column(
-        Modifier
+    var text by remember(content) { mutableStateOf(content) }
+
+    AgentTerminalBottomSheet(
+        title = "WORKING MEMORY",
+        onDismiss = onDismiss,
+    ) {
+        Text(
+            text = AiAgentMemoryStore.WORKING_MEMORY_FILE,
+            color = colors.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = AgentTerminal.type.label,
+            maxLines = 1,
+        )
+
+        MemoryTextEditor(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier.heightIn(min = 320.dp, max = 560.dp),
+        )
+
+        AgentSheetActions {
+            AgentTextButton(
+                label = "[ save ]",
+                color = colors.accent,
+                enabled = true,
+                onClick = { onSave(text) },
+            )
+            AgentTextButton(
+                label = "[ clear ]",
+                color = colors.error,
+                enabled = true,
+                onClick = {
+                    onClear()
+                    text = ""
+                },
+            )
+            AgentTextButton(
+                label = "[ done ]",
+                color = colors.textSecondary,
+                enabled = true,
+                onClick = onDismiss,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentTerminalBottomSheet(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colors = AgentTerminal.colors
+    var dragY by remember { mutableFloatStateOf(0f) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.58f))
+                .padding(top = 48.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 760.dp)
+                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                    .background(colors.background)
+                    .border(
+                        1.dp,
+                        colors.accent,
+                        RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp),
+                    )
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(18.dp)
+                        .pointerInput(onDismiss) {
+                            detectVerticalDragGestures(
+                                onDragStart = { dragY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    if (dragAmount > 0f) dragY += dragAmount
+                                },
+                                onDragEnd = {
+                                    if (dragY > 96f) onDismiss()
+                                    dragY = 0f
+                                },
+                                onDragCancel = { dragY = 0f },
+                            )
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        Modifier
+                            .width(38.dp)
+                            .height(3.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(colors.border),
+                    )
+                }
+                Text(
+                    text = title,
+                    color = colors.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = AgentTerminal.type.message,
+                    lineHeight = 1.3.em,
+                )
+                Spacer(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryTextEditor(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AgentTerminal.colors
+    val scrollState = rememberScrollState()
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        textStyle = TextStyle(
+            color = colors.textPrimary,
+            fontFamily = JetBrainsMono,
+            fontSize = AgentTerminal.type.toolCall,
+            lineHeight = 1.35.em,
+        ),
+        cursorBrush = SolidColor(colors.accent),
+        modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 280.dp, max = 520.dp)
             .clip(RoundedCornerShape(6.dp))
             .background(colors.surface)
             .border(1.dp, colors.border, RoundedCornerShape(6.dp))
+            .verticalScroll(scrollState)
             .padding(10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    )
+}
+
+@Composable
+private fun AgentSheetActions(content: @Composable () -> Unit) {
+    val colors = AgentTerminal.colors
+    TerminalTabsRow(
+        spacing = 12.dp,
+        fadeColor = colors.background,
+        chevronColor = colors.textMuted,
     ) {
-        BasicTextField(
-            value = query,
-            onValueChange = onQueryChange,
-            singleLine = true,
-            textStyle = TextStyle(color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall),
-            cursorBrush = SolidColor(colors.accent),
-            decorationBox = { inner ->
-                Row {
-                    Text("$ ", color = colors.accent, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall)
-                    if (query.isBlank()) {
-                        Text("search indexed memory", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall)
-                    }
-                    inner()
-                }
-            },
-            modifier = Modifier.fillMaxWidth().border(1.dp, colors.border).padding(8.dp),
-        )
-        Spacer(Modifier.height(2.dp))
-        if (query.isBlank()) {
-            Text("// type to search project.md, preferences, decisions, summaries and full chats", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.label)
-        } else if (index.searchResults.isEmpty()) {
-            Text("// no matches", color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall)
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(index.searchResults) { result ->
-                    Column {
-                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("[${result.kind}]", color = colors.warning, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.label)
-                            Text(result.path, color = colors.textMuted, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.label)
-                        }
-                        Text(result.snippet, color = colors.textPrimary, fontFamily = JetBrainsMono, fontSize = AgentTerminal.type.toolCall, lineHeight = 1.35.em)
-                    }
-                }
-            }
-        }
+        content()
     }
 }
