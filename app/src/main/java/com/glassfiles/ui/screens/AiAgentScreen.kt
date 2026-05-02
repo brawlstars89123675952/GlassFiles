@@ -124,6 +124,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -775,13 +776,18 @@ fun AiAgentScreen(
                                 ),
                             )
                         } else {
-                            executeChatOnlyTool(context, call, existingFiles, localExecutor)
+                            executeChatOnlyTool(context, call, existingFiles, localExecutor, activeSessionId)
                         }
                         execution.generatedFile?.let { fileOut ->
                             val current = transcript.getOrNull(assistantIndex) as? AgentEntry.Assistant
                             if (current != null) {
+                                val visibleFiles = removeGeneratedFilesForArchive(
+                                    current.generatedFiles,
+                                    execution.replacedGeneratedPaths,
+                                    fileOut.name,
+                                )
                                 transcript[assistantIndex] = current.copy(
-                                    generatedFiles = mergeGeneratedFiles(current.generatedFiles, listOf(fileOut)),
+                                    generatedFiles = mergeGeneratedFiles(visibleFiles, listOf(fileOut)),
                                 )
                             }
                         }
@@ -2617,6 +2623,7 @@ private fun AgentGeneratedFilesRow(
     )
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         files.forEach { file ->
+            val isArchive = isGeneratedArchiveFile(file)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -2634,7 +2641,12 @@ private fun AgentGeneratedFilesRow(
                         .background(colors.accent.copy(alpha = pulse * 0.18f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.AttachFile, null, Modifier.size(14.dp), tint = colors.accent)
+                    Icon(
+                        Icons.Rounded.AttachFile,
+                        null,
+                        Modifier.size(14.dp),
+                        tint = if (isArchive) colors.warning else colors.accent,
+                    )
                 }
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
@@ -2647,7 +2659,7 @@ private fun AgentGeneratedFilesRow(
                         maxLines = 1,
                     )
                     Text(
-                        "${file.content.length} chars",
+                        generatedFileSubtitle(file),
                         fontSize = 10.sp,
                         color = colors.textMuted,
                         fontFamily = FontFamily.Monospace,
@@ -2667,8 +2679,9 @@ private fun AgentGeneratedFilePreviewSheet(
     val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var saving by remember(file.name, file.content) { mutableStateOf(false) }
-    var saveStatus by remember(file.name, file.content) { mutableStateOf<String?>(null) }
+    val isArchive = isGeneratedArchiveFile(file)
+    var saving by remember(file.name, file.content, file.sourcePath) { mutableStateOf(false) }
+    var saveStatus by remember(file.name, file.content, file.sourcePath) { mutableStateOf<String?>(null) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -2707,8 +2720,8 @@ private fun AgentGeneratedFilePreviewSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            "FILE PREVIEW",
-                            color = colors.accent,
+                            if (isArchive) "ARCHIVE FILE" else "FILE PREVIEW",
+                            color = if (isArchive) colors.warning else colors.accent,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
@@ -2753,18 +2766,41 @@ private fun AgentGeneratedFilePreviewSheet(
                         fontSize = 11.sp,
                     )
                 }
-                com.glassfiles.ui.screens.ai.terminal.AgentTerminalCodeBlock(
-                    text = file.content,
-                    lang = file.language,
-                    filePath = file.name,
-                    context = context,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    scrollBody = true,
-                    fillBody = true,
-                    plainText = true,
-                )
+                if (isArchive) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.surfaceElevated)
+                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AgentTerminalKeyValue("name", file.name)
+                        AgentTerminalKeyValue("type", "archive")
+                        AgentTerminalKeyValue("size", generatedFileSizeLabel(file))
+                        Text(
+                            "Archive contents are hidden in chat. Use [ download ] to save the archive file itself.",
+                            color = colors.textSecondary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                    }
+                } else {
+                    com.glassfiles.ui.screens.ai.terminal.AgentTerminalCodeBlock(
+                        text = file.content,
+                        lang = file.language,
+                        filePath = file.name,
+                        context = context,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        scrollBody = true,
+                        fillBody = true,
+                        plainText = true,
+                    )
+                }
             }
         }
     }
@@ -3852,7 +3888,7 @@ private fun saveGeneratedFileToDownloads(
     file: AiChatSessionStore.GeneratedFile,
 ): String {
     val displayName = safeDownloadFileName(file.name)
-    val bytes = file.content.toByteArray(Charsets.UTF_8)
+    val bytes = generatedFileBytes(context, file)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
@@ -3877,6 +3913,54 @@ private fun saveGeneratedFileToDownloads(
     outFile.writeBytes(bytes)
     return outFile.absolutePath
 }
+
+private fun generatedFileBytes(context: Context, file: AiChatSessionStore.GeneratedFile): ByteArray {
+    val sourcePath = file.sourcePath
+    if (!sourcePath.isNullOrBlank()) {
+        val source = File(sourcePath).canonicalFile
+        val allowedRoots = listOfNotNull(
+            context.filesDir,
+            context.cacheDir,
+            context.getExternalFilesDir(null),
+        ).map { it.canonicalFile }
+        require(allowedRoots.any { root -> source.path == root.path || source.path.startsWith(root.path + File.separator) }) {
+            "Generated file source is outside app storage"
+        }
+        require(source.isFile) { "Generated file source is missing" }
+        return source.readBytes()
+    }
+    return file.content.toByteArray(Charsets.UTF_8)
+}
+
+private val generatedArchiveExtensions = setOf("zip", "jar", "aar", "7z", "tar", "gz", "tgz", "rar")
+
+private fun isGeneratedArchiveName(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase(Locale.US) in generatedArchiveExtensions
+
+private fun isGeneratedArchiveFile(file: AiChatSessionStore.GeneratedFile): Boolean =
+    isGeneratedArchiveName(file.name)
+
+private fun generatedFileSubtitle(file: AiChatSessionStore.GeneratedFile): String =
+    if (isGeneratedArchiveFile(file)) {
+        "archive · ${generatedFileSizeLabel(file)}"
+    } else {
+        "${file.content.length} chars"
+    }
+
+private fun generatedFileSizeLabel(file: AiChatSessionStore.GeneratedFile): String {
+    file.sourcePath?.takeIf { it.isNotBlank() }?.let { path ->
+        val length = runCatching { File(path).length() }.getOrDefault(0L)
+        if (length > 0L) return formatAgentBytes(length)
+    }
+    return formatAgentBytes(file.content.toByteArray(Charsets.UTF_8).size.toLong())
+}
+
+private fun formatAgentBytes(bytes: Long): String =
+    when {
+        bytes >= 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / 1024.0 / 1024.0)
+        bytes >= 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+        else -> "$bytes B"
+    }
 
 private fun safeDownloadFileName(name: String): String {
     val base = name.replace('\\', '/')
@@ -3905,6 +3989,13 @@ private fun uniqueDownloadFile(directory: java.io.File, name: String): java.io.F
 
 private fun mimeForGeneratedFile(name: String): String =
     when (name.substringAfterLast('.', "").lowercase(Locale.US)) {
+        "zip" -> "application/zip"
+        "jar" -> "application/java-archive"
+        "aar" -> "application/zip"
+        "7z" -> "application/x-7z-compressed"
+        "tar" -> "application/x-tar"
+        "gz", "tgz" -> "application/gzip"
+        "rar" -> "application/vnd.rar"
         "md", "markdown" -> "text/markdown"
         "json" -> "application/json"
         "xml" -> "application/xml"
@@ -4951,6 +5042,8 @@ file contents here
 ```
 The app will turn that block into a clickable chat attachment. You can also use artifact_write or local_write_file to create a visible chat attachment.
 
+Do not send archives as fenced file blocks. To send a zip/tar/7z archive, write the source files in the local workspace, call archive_create, and then reply with a short note naming the archive.
+
 For any long prompt, skill, template, code file, markdown document, or other output longer than about 2000 characters, create a chat attachment with artifact_write instead of writing the full content inline in the chat. After the tool succeeds, reply with a short note naming the file. Do not split long files across chat messages unless the user explicitly asks for inline text.
 """.trimIndent()
 
@@ -4963,6 +5056,7 @@ private data class PendingAgentSend(
 private data class ChatArtifactExecution(
     val result: AiToolResult,
     val generatedFile: AiChatSessionStore.GeneratedFile? = null,
+    val replacedGeneratedPaths: List<String> = emptyList(),
 )
 
 private suspend fun executeChatOnlyTool(
@@ -4970,6 +5064,7 @@ private suspend fun executeChatOnlyTool(
     call: AiToolCall,
     existingFiles: List<AiChatSessionStore.GeneratedFile>,
     localExecutor: LocalToolExecutor,
+    sessionId: String,
 ): ChatArtifactExecution {
     val args = runCatching { JSONObject(call.argsJson) }.getOrElse { JSONObject() }
     return runCatching {
@@ -5021,23 +5116,37 @@ private suspend fun executeChatOnlyTool(
                     error("Unknown chat tool: ${call.name}")
                 }
                 val result = localExecutor.execute(context, call)
-                val generatedFile = if (!result.isError && call.name == AgentTools.LOCAL_WRITE_FILE.name) {
-                    val rawPath = args.optString("path")
-                    val path = cleanGeneratedFileName(
-                        if (rawPath.startsWith("/")) rawPath.substringAfterLast('/') else rawPath,
-                    )
-                    val content = args.optString("content", "")
-                    path?.let {
-                        AiChatSessionStore.GeneratedFile(
-                            name = it,
-                            language = languageForGeneratedFile(it, ""),
-                            content = content,
-                        )
+                val generatedFile = if (!result.isError) {
+                    when (call.name) {
+                        AgentTools.LOCAL_WRITE_FILE.name -> {
+                            val rawPath = args.optString("path")
+                            val path = cleanGeneratedFileName(
+                                if (rawPath.startsWith("/")) rawPath.substringAfterLast('/') else rawPath,
+                            )
+                            val content = args.optString("content", "")
+                            path?.let {
+                                AiChatSessionStore.GeneratedFile(
+                                    name = it,
+                                    language = languageForGeneratedFile(it, ""),
+                                    content = content,
+                                )
+                            }
+                        }
+                        AgentTools.ARCHIVE_CREATE.name -> generatedArchiveFile(context, sessionId, args)
+                        else -> null
                     }
                 } else {
                     null
                 }
-                ChatArtifactExecution(result = result, generatedFile = generatedFile)
+                ChatArtifactExecution(
+                    result = result,
+                    generatedFile = generatedFile,
+                    replacedGeneratedPaths = if (generatedFile != null && call.name == AgentTools.ARCHIVE_CREATE.name) {
+                        archiveSourceGeneratedPaths(args)
+                    } else {
+                        emptyList()
+                    },
+                )
             }
         }
     }.getOrElse { error ->
@@ -5058,6 +5167,62 @@ private fun currentChatArtifacts(
     transcript
         .filterIsInstance<AgentEntry.Assistant>()
         .flatMap { it.generatedFiles }
+
+private fun generatedArchiveFile(
+    context: Context,
+    sessionId: String,
+    args: JSONObject,
+): AiChatSessionStore.GeneratedFile? {
+    val destination = args.optString("destination", "").trim()
+    if (destination.isBlank()) return null
+    val archive = runCatching {
+        val raw = File(destination)
+        val file = if (raw.isAbsolute) {
+            raw
+        } else {
+            File(LocalToolExecutor.ensureSessionWorkspace(context, sessionId), destination)
+        }.canonicalFile
+        file.takeIf { it.isFile && isGeneratedArchiveName(it.name) }
+    }.getOrNull() ?: return null
+    val name = cleanGeneratedFileName(archive.name) ?: return null
+    return AiChatSessionStore.GeneratedFile(
+        name = name,
+        language = languageForGeneratedFile(name, ""),
+        content = "",
+        sourcePath = archive.absolutePath,
+    )
+}
+
+private fun archiveSourceGeneratedPaths(args: JSONObject): List<String> {
+    val arr = args.optJSONArray("source_paths") ?: return emptyList()
+    return buildList {
+        for (i in 0 until arr.length()) {
+            archiveSourceGeneratedPath(arr.optString(i))?.let { add(it) }
+        }
+    }.distinct()
+}
+
+private fun archiveSourceGeneratedPath(raw: String): String? {
+    val normalized = raw.trim().replace('\\', '/')
+    val clean = normalized.removePrefix("./").trim('/')
+    if (clean.isBlank() || clean == ".") return ""
+    val displayPath = if (File(normalized).isAbsolute) normalized.substringAfterLast('/') else clean
+    return cleanGeneratedFileName(displayPath)
+}
+
+private fun removeGeneratedFilesForArchive(
+    files: List<AiChatSessionStore.GeneratedFile>,
+    sourcePaths: List<String>,
+    archiveName: String,
+): List<AiChatSessionStore.GeneratedFile> {
+    if (sourcePaths.isEmpty()) return files
+    if (sourcePaths.any { it.isBlank() }) return files.filter { it.name == archiveName }
+    return files.filter { file ->
+        file.name == archiveName || sourcePaths.none { source ->
+            file.name == source || file.name.startsWith("$source/")
+        }
+    }
+}
 
 private fun mergeGeneratedFiles(
     existing: List<AiChatSessionStore.GeneratedFile>,

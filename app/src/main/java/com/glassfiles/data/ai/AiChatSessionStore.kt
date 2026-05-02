@@ -39,6 +39,7 @@ object AiChatSessionStore {
         val name: String,
         val language: String,
         val content: String,
+        val sourcePath: String? = null,
     )
 
     data class Session(
@@ -165,7 +166,10 @@ object AiChatSessionStore {
                                     JSONObject()
                                         .put("name", file.name)
                                         .put("language", file.language)
-                                        .put("content", file.content),
+                                        .put("content", file.content)
+                                        .apply {
+                                            file.sourcePath?.takeIf { it.isNotBlank() }?.let { put("sourcePath", it) }
+                                        },
                                 )
                             }
                         },
@@ -203,6 +207,7 @@ object AiChatSessionStore {
                         name = name,
                         language = obj.optString("language", ""),
                         content = obj.optString("content", ""),
+                        sourcePath = obj.optString("sourcePath", "").takeIf { it.isNotBlank() },
                     ),
                 )
             }
