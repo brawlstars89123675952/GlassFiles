@@ -28,6 +28,7 @@ object AnthropicProvider : AiProvider {
 
     private const val BASE = "https://api.anthropic.com/v1"
     private const val ANTHROPIC_VERSION = "2023-06-01"
+    private const val MAX_OUTPUT_TOKENS = 8192
 
     private fun authHeaders(apiKey: String): Map<String, String> = mapOf(
         "x-api-key" to apiKey,
@@ -90,7 +91,7 @@ object AnthropicProvider : AiProvider {
             .put("model", modelId)
             .put("messages", msgs)
             .put("system", SystemPrompts.DEFAULT)
-            .put("max_tokens", 4096)
+            .put("max_tokens", MAX_OUTPUT_TOKENS)
             .put("stream", true)
             .toString()
 
@@ -146,7 +147,7 @@ object AnthropicProvider : AiProvider {
             .put("model", modelId)
             .put("messages", msgs)
             .put("system", SystemPrompts.DEFAULT)
-            .put("max_tokens", 4096)
+            .put("max_tokens", MAX_OUTPUT_TOKENS)
             .put("tools", toolsJson)
             .toString()
 
@@ -211,7 +212,7 @@ object AnthropicProvider : AiProvider {
             .put("model", modelId)
             .put("messages", msgs)
             .put("system", SystemPrompts.DEFAULT)
-            .put("max_tokens", 4096)
+            .put("max_tokens", MAX_OUTPUT_TOKENS)
             .put("tools", toolsJson)
             .put("stream", true)
             .toString()

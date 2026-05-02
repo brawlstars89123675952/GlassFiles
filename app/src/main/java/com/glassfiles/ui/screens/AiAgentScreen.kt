@@ -4237,6 +4237,8 @@ When you need to send a file to the user, include it as a fenced block with an e
 file contents here
 ```
 The app will turn that block into a clickable chat attachment. You can also use artifact_write or local_write_file to create a visible chat attachment.
+
+For any long prompt, skill, template, code file, markdown document, or other output longer than about 2000 characters, create a chat attachment with artifact_write instead of writing the full content inline in the chat. After the tool succeeds, reply with a short note naming the file. Do not split long files across chat messages unless the user explicitly asks for inline text.
 """.trimIndent()
 
 private data class PendingAgentSend(
