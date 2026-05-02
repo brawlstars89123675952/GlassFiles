@@ -925,6 +925,7 @@ fun AiAgentScreen(
                     .takeIf { it.isNotEmpty() }
                     ?.flatMap { AiSkillStore.allowedToolsForSkill(context, it) }
                     ?.toSet()
+                val activeSkillsLabel = activeSkillLabel(activeSkills)
                 val taskToolNames = AgentTools.TASK_TOOLS.map { it.name }.toSet()
                 val messages = mutableListOf<AiMessage>().apply {
                     addAll(chatOnlyMemoryPrompt(chatScope, text))
@@ -1007,7 +1008,7 @@ fun AiAgentScreen(
                                 result = AiToolResult(
                                     callId = call.id,
                                     name = call.name,
-                                    output = "deny: tool not allowed by active skill (${activeSkill?.id})",
+                                    output = "deny: tool not allowed by active skill ($activeSkillsLabel)",
                                     isError = true,
                                 ),
                             )
@@ -1189,6 +1190,7 @@ fun AiAgentScreen(
                 .takeIf { it.isNotEmpty() }
                 ?.flatMap { AiSkillStore.allowedToolsForSkill(context, it) }
                 ?.toSet()
+            val activeSkillsLabel = activeSkillLabel(activeSkills)
             val taskToolNames = AgentTools.TASK_TOOLS.map { it.name }.toSet()
             val planFirst = com.glassfiles.data.ai.AiAgentPrefs
                 .getPlanThenExecute(context, repo.fullName)
@@ -1311,7 +1313,7 @@ fun AiAgentScreen(
                     todoItems = todoItems,
                     approvals = approvals,
                     approvalSettings = approvalSettings,
-                    activeSkill = activeSkill,
+                    activeSkillLabel = activeSkillsLabel,
                     allowedSkillTools = skillAllowedTools,
                     context = context,
                     fallbackCandidates = fallbacks,
@@ -4730,7 +4732,7 @@ private suspend fun runAgentLoop(
      * `autoApproveReads`, which used to be the only one wired in.
      */
     approvalSettings: com.glassfiles.data.ai.agent.AiAgentApprovalSettings,
-    activeSkill: AiSkill? = null,
+    activeSkillLabel: String = "",
     allowedSkillTools: Set<String>? = null,
     context: android.content.Context,
     fallbackCandidates: List<FallbackCandidate>,
@@ -4944,7 +4946,7 @@ private suspend fun runAgentLoop(
                 val result = AiToolResult(
                     callId = call.id,
                     name = call.name,
-                    output = "deny: tool not allowed by active skill (${activeSkill?.id.orEmpty()})",
+                    output = "deny: tool not allowed by active skill (${activeSkillLabel.ifBlank { "unknown" }})",
                     isError = true,
                 )
                 transcript += AgentEntry.ToolResult(result)
@@ -5370,6 +5372,12 @@ private fun repoOwner(repo: GHRepo): String =
 
 private fun repoName(repo: GHRepo): String =
     repo.fullName.substringAfter('/').ifBlank { repo.name }
+
+private fun activeSkillLabel(skills: List<AiSkill>): String =
+    skills
+        .takeIf { it.isNotEmpty() }
+        ?.joinToString(", ") { "${it.packId}/${it.id}" }
+        ?: "auto"
 
 private fun newAgentSessionId(): String = "agent_${System.currentTimeMillis()}"
 
