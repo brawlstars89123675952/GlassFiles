@@ -72,6 +72,11 @@ fun AgentSettingsBottomSheet(
     onViewWorkingMemory: () -> Unit,
     onViewMemoryFiles: () -> Unit,
     onClearMemory: () -> Unit,
+    onSkillsEnabledChange: (Boolean) -> Unit,
+    onSkillsAutoSuggestChange: (Boolean) -> Unit,
+    onSkillsAllowUntrustedDangerousChange: (Boolean) -> Unit,
+    onViewSkills: () -> Unit,
+    onImportSkillPack: () -> Unit,
     onInstantRenderChange: (Boolean) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
@@ -286,6 +291,35 @@ fun AgentSettingsBottomSheet(
                 color = colors.warning,
                 onClick = onViewWorkingMemory,
             )
+            AgentSheetDivider()
+            AgentSheetLabel("SKILLS")
+            AgentSheetCheckbox(
+                label = "enable skills",
+                checked = state.skillsEnabled,
+                onChange = onSkillsEnabledChange,
+            )
+            AgentSheetCheckbox(
+                label = "auto-suggest matching skill",
+                checked = state.skillsAutoSuggest,
+                onChange = onSkillsAutoSuggestChange,
+            )
+            AgentSheetCheckbox(
+                label = "allow untrusted dangerous tools",
+                checked = state.skillsAllowUntrustedDangerous,
+                onChange = onSkillsAllowUntrustedDangerousChange,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AgentSheetCommand(
+                    label = "[ view installed skills: ${state.installedSkillsCount} ]",
+                    color = colors.warning,
+                    onClick = onViewSkills,
+                )
+                AgentSheetCommand(
+                    label = "[ import .gskill ]",
+                    color = colors.accent,
+                    onClick = onImportSkillPack,
+                )
+            }
             AgentSheetDivider()
             AgentSheetLabel("MEMORY FILES")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -622,6 +656,10 @@ data class AgentSettingsState(
      * the system prompt without nagging the model on every edit.
      */
     val workingMemoryReminders: Boolean,
+    val skillsEnabled: Boolean,
+    val skillsAutoSuggest: Boolean,
+    val skillsAllowUntrustedDangerous: Boolean,
+    val installedSkillsCount: Int,
     val instantRender: Boolean,
 )
 

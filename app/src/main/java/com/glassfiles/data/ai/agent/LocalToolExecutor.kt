@@ -12,6 +12,7 @@ import android.webkit.MimeTypeMap
 import com.glassfiles.data.ArchiveHelper
 import com.glassfiles.data.TrashManager
 import com.glassfiles.data.ai.AiPreparedAttachment
+import com.glassfiles.data.ai.skills.AiSkillStore
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -265,6 +266,15 @@ class LocalToolExecutor(
                         args.optString("path", ""),
                         args.optString("ref", ""),
                     )
+                    AgentTools.SKILL_IMPORT.name -> skillImportPreview(context, args.getString("path"))
+                    AgentTools.SKILL_LIST.name -> skillList(context)
+                    AgentTools.SKILL_READ.name -> skillRead(context, args.getString("skill_id"))
+                    AgentTools.SKILL_ENABLE.name -> skillEnable(
+                        context,
+                        args.getString("skill_id"),
+                        args.getBoolean("enabled"),
+                    )
+                    AgentTools.SKILL_DELETE.name -> skillDelete(context, args.getString("pack_id"))
                     else -> "Unknown local tool: ${call.name}"
                 }
             }
@@ -1091,6 +1101,69 @@ class LocalToolExecutor(
                 appendLine("${if (item.optString("type") == "dir") "[dir] " else "      "}${item.optString("path")} ${formatBytes(item.optLong("size", 0))}")
             }
         }.trimEnd()
+    }
+
+    private fun skillImportPreview(context: Context, path: String): String {
+        val file = resolve(context, path, mustExist = true)
+        val preview = AiSkillStore.prepareImport(context, file)
+        return buildString {
+            appendLine("IMPORT SKILL PACK")
+            appendLine("name: ${preview.pack.name}")
+            appendLine("version: ${preview.pack.version}")
+            appendLine("author: ${preview.pack.author.orEmpty()}")
+            appendLine("risk: ${preview.pack.risk.name.lowercase(Locale.US)}")
+            appendLine("skills: ${preview.skills.size}")
+            appendLine("tools: ${preview.pack.tools.joinToString(", ")}")
+            if (preview.warnings.isNotEmpty()) {
+                appendLine()
+                appendLine("WARNINGS")
+                preview.warnings.forEach { appendLine("! $it") }
+            }
+            appendLine()
+            appendLine("Validated only. Install from AI Agent settings > skills so the user can confirm import.")
+        }.trimEnd()
+    }
+
+    private fun skillList(context: Context): String {
+        val packs = AiSkillStore.listPacks(context)
+        val skills = AiSkillStore.listSkills(context)
+        if (packs.isEmpty()) return "(no installed skills)"
+        return buildString {
+            packs.forEach { pack ->
+                val packSkills = skills.filter { it.packId == pack.id }
+                appendLine("${if (pack.enabled) "[✓]" else "[ ]"} ${pack.name}  ${pack.risk.name.lowercase(Locale.US)}  ${packSkills.size} skills")
+                appendLine("    ${pack.author ?: "unknown"} · ${if (pack.trusted) "trusted" else "untrusted"} · ${pack.id}")
+                packSkills.forEach { skill ->
+                    appendLine("    - ${if (skill.enabled) "[✓]" else "[ ]"} ${skill.id}: ${skill.name}")
+                }
+            }
+        }.trimEnd()
+    }
+
+    private fun skillRead(context: Context, skillId: String): String {
+        val skill = AiSkillStore.readSkill(context, skillId) ?: throw IllegalArgumentException("skill not found: $skillId")
+        return buildString {
+            appendLine("skill: ${skill.id}")
+            appendLine("pack: ${skill.packId}")
+            appendLine("name: ${skill.name}")
+            appendLine("risk: ${skill.risk.name.lowercase(Locale.US)}")
+            appendLine("category: ${skill.category}")
+            appendLine("triggers: ${skill.triggers.joinToString(", ")}")
+            appendLine("tools: ${skill.tools.joinToString(", ")}")
+            appendLine()
+            appendLine(skill.instructions)
+        }.trimEnd()
+    }
+
+    private fun skillEnable(context: Context, skillId: String, enabled: Boolean): String {
+        val skill = AiSkillStore.readSkill(context, skillId) ?: throw IllegalArgumentException("skill not found: $skillId")
+        AiSkillStore.setSkillEnabled(context, skill.packId, skill.id, enabled)
+        return "${if (enabled) "Enabled" else "Disabled"} skill ${skill.packId}/${skill.id}."
+    }
+
+    private fun skillDelete(context: Context, packId: String): String {
+        AiSkillStore.deletePack(context, packId)
+        return "Deleted skill pack $packId."
     }
 
     private fun resolveZipArchive(context: Context, path: String): File {

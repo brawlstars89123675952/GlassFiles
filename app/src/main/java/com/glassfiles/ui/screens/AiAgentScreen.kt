@@ -100,6 +100,12 @@ import com.glassfiles.data.ai.models.AiMessage
 import com.glassfiles.data.ai.models.AiModel
 import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
+import com.glassfiles.data.ai.skills.AiSkill
+import com.glassfiles.data.ai.skills.AiSkillImportPreview
+import com.glassfiles.data.ai.skills.AiSkillPrefs
+import com.glassfiles.data.ai.skills.AiSkillRouter
+import com.glassfiles.data.ai.skills.AiSkillStore
+import com.glassfiles.data.ai.skills.AppAgentContext
 import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
@@ -203,6 +209,10 @@ fun AiAgentScreen(
     // without leaving overlays stranded.
     var showMemoryFiles by remember { mutableStateOf(false) }
     var showWorkingMemory by remember { mutableStateOf(false) }
+    var showSkills by remember { mutableStateOf(false) }
+    var skillImportPreview by remember { mutableStateOf<AiSkillImportPreview?>(null) }
+    var skillImportError by remember { mutableStateOf<String?>(null) }
+    var skillsVersion by remember { mutableStateOf(0) }
     var memorySheetRepoFullName by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceId by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceDiff by remember {
@@ -612,6 +622,28 @@ fun AiAgentScreen(
         }
     }
 
+    val skillPackPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val preview = runCatching {
+                    withContext(Dispatchers.IO) { AiSkillStore.prepareImport(context, uri) }
+                }
+                preview
+                    .onSuccess {
+                        skillImportPreview = it
+                        skillImportError = null
+                    }
+                    .onFailure {
+                        skillImportError = it.message ?: it.javaClass.simpleName
+                        skillImportPreview = null
+                        showSkills = true
+                    }
+            }
+        }
+    }
+
     fun stop() {
         runJob?.cancel()
         runJob = null
@@ -639,10 +671,24 @@ fun AiAgentScreen(
                     currentAttachment = file,
                     allowExternalPaths = false,
                 )
+                val skillMatch = AiSkillRouter().match(
+                    context = context,
+                    userMessage = text,
+                    appContext = AppAgentContext(repoFullName = null, chatOnly = true),
+                )
+                val skillAllowedTools = skillMatch?.let { AiSkillStore.allowedToolsForSkill(context, it.skill) }
                 val messages = mutableListOf<AiMessage>().apply {
                     addAll(chatOnlyMemoryPrompt(chatScope))
                     add(AiMessage("system", CHAT_ONLY_SYSTEM_PROMPT))
+                    if (skillMatch != null && skillAllowedTools != null) {
+                        add(AiMessage("system", AiSkillStore.promptFor(skillMatch.skill, skillAllowedTools)))
+                    }
                     addAll(transcript.dropLast(1).toAiMessages())
+                }
+                val chatTools = if (skillAllowedTools != null) {
+                    AgentTools.CHAT_TOOLS.filter { it.name in skillAllowedTools }
+                } else {
+                    AgentTools.CHAT_TOOLS
                 }
                 var turnIndex = 0
                 while (turnIndex < 8) {
@@ -654,7 +700,7 @@ fun AiAgentScreen(
                         context = context,
                         modelId = model.id,
                         messages = messages,
-                        tools = AgentTools.CHAT_TOOLS,
+                        tools = chatTools,
                         apiKey = key,
                         onTextDelta = { chunk ->
                             val current = transcript.getOrNull(assistantIndex)
@@ -692,7 +738,18 @@ fun AiAgentScreen(
                     for (call in turn.toolCalls) {
                         transcript += AgentEntry.ToolCall(call)
                         val existingFiles = currentChatArtifacts(transcript)
-                        val execution = executeChatOnlyTool(context, call, existingFiles, localExecutor)
+                        val execution = if (skillAllowedTools != null && call.name !in skillAllowedTools) {
+                            ChatArtifactExecution(
+                                result = AiToolResult(
+                                    callId = call.id,
+                                    name = call.name,
+                                    output = "deny: tool not allowed by active skill (${skillMatch?.skill?.id})",
+                                    isError = true,
+                                ),
+                            )
+                        } else {
+                            executeChatOnlyTool(context, call, existingFiles, localExecutor)
+                        }
                         execution.generatedFile?.let { fileOut ->
                             val current = transcript.getOrNull(assistantIndex) as? AgentEntry.Assistant
                             if (current != null) {
@@ -850,6 +907,17 @@ fun AiAgentScreen(
             } else {
                 AgentTools.ALL.filter { it.readOnly }
             }
+            val skillMatch = AiSkillRouter().match(
+                context = context,
+                userMessage = displayText,
+                appContext = AppAgentContext(repoFullName = repo.fullName, chatOnly = false),
+            )
+            val skillAllowedTools = skillMatch?.let { AiSkillStore.allowedToolsForSkill(context, it.skill) }
+            val effectiveTools = if (skillAllowedTools != null) {
+                tools.filter { it.name in skillAllowedTools }
+            } else {
+                tools
+            }
             // Build the ordered fallback list: every other tool-use
             // capable model the user has a key for, ranked by the same
             // heuristic that picked `selectedModel` originally. We
@@ -894,6 +962,9 @@ fun AiAgentScreen(
                 }
                 if (systemOverride != null) {
                     add(AiMessage(role = "system", content = systemOverride))
+                }
+                if (skillMatch != null && skillAllowedTools != null) {
+                    add(AiMessage(role = "system", content = AiSkillStore.promptFor(skillMatch.skill, skillAllowedTools)))
                 }
                 if (workspaceRecord != null) {
                     add(
@@ -945,11 +1016,13 @@ fun AiAgentScreen(
                     initialProvider = provider,
                     initialModelId = model.id,
                     initialApiKey = key,
-                    tools = tools,
+                    tools = effectiveTools,
                     executor = executor,
                     transcript = transcript,
                     approvals = approvals,
                     approvalSettings = approvalSettings,
+                    activeSkill = skillMatch?.skill,
+                    allowedSkillTools = skillAllowedTools,
                     context = context,
                     fallbackCandidates = fallbacks,
                     estimate = estimate,
@@ -1690,6 +1763,8 @@ fun AiAgentScreen(
                 com.glassfiles.data.ai.AiAgentApprovalPrefs.getProtectedPaths(context)
             }
             val protectedPathsText = remember(protectedPaths) { protectedPaths.joinToString("\n") }
+            val skillsRefresh = skillsVersion
+            val installedSkillsCount = remember(skillsRefresh) { AiSkillStore.listSkills(context).size }
             val state = com.glassfiles.ui.screens.ai.terminal.AgentSettingsState(
                 repoLabel = if (chatOnlyMode) "chat only" else selectedRepo?.fullName ?: "—",
                 branchLabel = if (chatOnlyMode) "—" else selectedBranch ?: "—",
@@ -1715,6 +1790,10 @@ fun AiAgentScreen(
                 memorySemanticSearch = com.glassfiles.data.ai.AiAgentMemoryPrefs.getSemanticSearch(context),
                 workingMemoryEnabled = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context),
                 workingMemoryReminders = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getReminders(context),
+                skillsEnabled = AiSkillPrefs.getEnableSkills(context),
+                skillsAutoSuggest = AiSkillPrefs.getAutoSuggest(context),
+                skillsAllowUntrustedDangerous = AiSkillPrefs.getAllowUntrustedDangerousTools(context),
+                installedSkillsCount = installedSkillsCount,
                 instantRender = instantRender,
             )
             val chatRepoDisplay = com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
@@ -1878,6 +1957,26 @@ fun AiAgentScreen(
                 onClearMemory = {
                     com.glassfiles.data.ai.AiAgentMemoryStore.clearAll(context)
                 },
+                onSkillsEnabledChange = {
+                    AiSkillPrefs.setEnableSkills(context, it)
+                    skillsVersion += 1
+                },
+                onSkillsAutoSuggestChange = {
+                    AiSkillPrefs.setAutoSuggest(context, it)
+                    skillsVersion += 1
+                },
+                onSkillsAllowUntrustedDangerousChange = {
+                    AiSkillPrefs.setAllowUntrustedDangerousTools(context, it)
+                    skillsVersion += 1
+                },
+                onViewSkills = {
+                    showSettings = false
+                    showSkills = true
+                },
+                onImportSkillPack = {
+                    showSettings = false
+                    skillPackPicker.launch("*/*")
+                },
                 onInstantRenderChange = { instantRender = it },
                 onOpenHistory = {
                     showSettings = false
@@ -1900,6 +1999,55 @@ fun AiAgentScreen(
                     showSettings = false
                 },
                 onDismiss = { showSettings = false },
+            )
+        }
+        if (showSkills) {
+            AgentSkillsDialog(
+                version = skillsVersion,
+                importError = skillImportError,
+                onImport = {
+                    showSkills = false
+                    skillPackPicker.launch("*/*")
+                },
+                onToggleSkill = { skill, enabled ->
+                    AiSkillStore.setSkillEnabled(context, skill.packId, skill.id, enabled)
+                    skillsVersion += 1
+                },
+                onTogglePack = { packId, enabled ->
+                    AiSkillStore.setPackEnabled(context, packId, enabled)
+                    skillsVersion += 1
+                },
+                onDeletePack = { packId ->
+                    AiSkillStore.deletePack(context, packId)
+                    skillsVersion += 1
+                },
+                onDismiss = {
+                    skillImportError = null
+                    showSkills = false
+                },
+            )
+        }
+        skillImportPreview?.let { preview ->
+            AgentSkillImportPreviewDialog(
+                preview = preview,
+                onImport = {
+                    scope.launch {
+                        runCatching {
+                            withContext(Dispatchers.IO) { AiSkillStore.commitImport(context, preview) }
+                        }
+                            .onSuccess {
+                                skillsVersion += 1
+                                skillImportPreview = null
+                                showSkills = true
+                            }
+                            .onFailure {
+                                skillImportError = it.message ?: it.javaClass.simpleName
+                                skillImportPreview = null
+                                showSkills = true
+                            }
+                    }
+                },
+                onDismiss = { skillImportPreview = null },
             )
         }
         val memoryRepoFullName = memorySheetRepoFullName
@@ -2533,6 +2681,238 @@ private fun AgentGeneratedFilePreviewSheet(
         }
     }
 }
+
+@Composable
+private fun AgentSkillsDialog(
+    version: Int,
+    importError: String?,
+    onImport: () -> Unit,
+    onToggleSkill: (AiSkill, Boolean) -> Unit,
+    onTogglePack: (String, Boolean) -> Unit,
+    onDeletePack: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    val packs = remember(version) { AiSkillStore.listPacks(context) }
+    val skills = remember(version) { AiSkillStore.listSkills(context) }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.58f))
+                .padding(top = 48.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                    .background(colors.background)
+                    .border(1.dp, colors.accent, RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                AgentTerminalSectionTitle("AI SKILLS")
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AgentTerminalCommand("[ import .gskill ]", colors.accent, onImport)
+                    AgentTerminalCommand("[ done ]", colors.textSecondary, onDismiss)
+                }
+                if (!importError.isNullOrBlank()) {
+                    Text(
+                        "IMPORT ERROR: $importError",
+                        color = colors.error,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                    )
+                }
+                AgentTerminalSectionTitle("INSTALLED PACKS")
+                if (packs.isEmpty()) {
+                    Text(
+                        "(no installed skills)",
+                        color = colors.textMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                    )
+                }
+                packs.forEach { pack ->
+                    val packSkills = skills.filter { it.packId == pack.id }
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.surfaceElevated)
+                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${if (pack.enabled) "[✓]" else "[ ]"} ${pack.name}",
+                                color = colors.textPrimary,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Text(
+                                pack.risk.name.lowercase(Locale.US),
+                                color = riskColor(pack.risk, colors),
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                            )
+                        }
+                        Text(
+                            "${pack.author ?: "unknown"} · ${if (pack.trusted) "trusted" else "untrusted"} · ${packSkills.size} skills",
+                            color = colors.textMuted,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            AgentTerminalCommand(
+                                if (pack.enabled) "[ disable ]" else "[ enable ]",
+                                colors.warning,
+                            ) { onTogglePack(pack.id, !pack.enabled) }
+                            AgentTerminalCommand("[ delete ]", colors.error) { onDeletePack(pack.id) }
+                        }
+                        packSkills.forEach { skill ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(colors.surface)
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    "${if (skill.enabled) "[✓]" else "[ ]"} ${skill.id}",
+                                    color = colors.accent,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    "risk: ${skill.risk.name.lowercase(Locale.US)} · tools: ${skill.tools.joinToString(", ")}",
+                                    color = colors.textSecondary,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                )
+                                if (!skill.description.isNullOrBlank()) {
+                                    Text(
+                                        skill.description,
+                                        color = colors.textMuted,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                                AgentTerminalCommand(
+                                    if (skill.enabled) "[ disable ]" else "[ enable ]",
+                                    colors.warning,
+                                ) { onToggleSkill(skill, !skill.enabled) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentSkillImportPreviewDialog(
+    preview: AiSkillImportPreview,
+    onImport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.accent, RoundedCornerShape(8.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AgentTerminalSectionTitle("IMPORT SKILL PACK")
+            AgentTerminalKeyValue("name", preview.pack.name)
+            AgentTerminalKeyValue("version", preview.pack.version)
+            AgentTerminalKeyValue("author", preview.pack.author ?: "unknown")
+            AgentTerminalKeyValue("risk", preview.pack.risk.name.lowercase(Locale.US))
+            AgentTerminalKeyValue("skills", preview.skills.size.toString())
+            preview.pack.source?.let { AgentTerminalKeyValue("source", it) }
+            AgentTerminalSectionTitle("REQUESTED TOOLS")
+            preview.pack.tools.forEach {
+                Text("[ ] $it", color = colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+            }
+            if (preview.warnings.isNotEmpty()) {
+                AgentTerminalSectionTitle("WARNINGS")
+                preview.warnings.forEach {
+                    Text("! $it", color = colors.warning, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AgentTerminalCommand("[ import ]", colors.accent, onImport)
+                AgentTerminalCommand("[ cancel ]", colors.textSecondary, onDismiss)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentTerminalSectionTitle(text: String) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Text(
+        text,
+        color = colors.accent,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 12.sp,
+    )
+}
+
+@Composable
+private fun AgentTerminalKeyValue(key: String, value: String) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Text(
+        "${key.padEnd(12)} $value",
+        color = colors.textSecondary,
+        fontFamily = FontFamily.Monospace,
+        fontSize = 11.sp,
+    )
+}
+
+@Composable
+private fun AgentTerminalCommand(label: String, color: Color, onClick: () -> Unit) {
+    Text(
+        label,
+        color = color,
+        fontFamily = FontFamily.Monospace,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+    )
+}
+
+private fun riskColor(risk: com.glassfiles.data.ai.skills.AiSkillRisk, colors: com.glassfiles.ui.screens.ai.terminal.AgentTerminalColors): Color =
+    when (risk) {
+        com.glassfiles.data.ai.skills.AiSkillRisk.READ_ONLY,
+        com.glassfiles.data.ai.skills.AiSkillRisk.LOW -> colors.accent
+        com.glassfiles.data.ai.skills.AiSkillRisk.MEDIUM -> colors.warning
+        com.glassfiles.data.ai.skills.AiSkillRisk.HIGH,
+        com.glassfiles.data.ai.skills.AiSkillRisk.DANGEROUS -> colors.error
+    }
 
 @Composable
 private fun AgentMessageImage(base64: String) {
@@ -3599,6 +3979,8 @@ private suspend fun runAgentLoop(
      * `autoApproveReads`, which used to be the only one wired in.
      */
     approvalSettings: com.glassfiles.data.ai.agent.AiAgentApprovalSettings,
+    activeSkill: AiSkill? = null,
+    allowedSkillTools: Set<String>? = null,
     context: android.content.Context,
     fallbackCandidates: List<FallbackCandidate>,
     onFallback: (AiModel) -> Unit,
@@ -3796,6 +4178,22 @@ private suspend fun runAgentLoop(
             val tool = AgentTools.byName(call.name)
             estimate?.bumpToolCall()
             if (tool?.readOnly == false) estimate?.bumpWriteProposal()
+            if (allowedSkillTools != null && call.name !in allowedSkillTools) {
+                val result = AiToolResult(
+                    callId = call.id,
+                    name = call.name,
+                    output = "deny: tool not allowed by active skill (${activeSkill?.id.orEmpty()})",
+                    isError = true,
+                )
+                transcript += AgentEntry.ToolResult(result)
+                results += AiMessage(
+                    role = "tool",
+                    content = result.output,
+                    toolCallId = result.callId,
+                    toolName = result.name,
+                )
+                continue
+            }
             // Run the call through the central approval policy so YOLO,
             // per-category auto-approve toggles, session-trust and
             // protected-paths all line up with what the user picked in

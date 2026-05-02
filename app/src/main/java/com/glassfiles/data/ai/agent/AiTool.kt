@@ -940,6 +940,12 @@ object AgentTools {
     val GITHUB_READ_PUBLIC_FILE = tool("github_read_public_file", "Read a public GitHub file without authentication.", true, arrayOf("owner", "repo", "path"), "owner" to "string", "repo" to "string", "path" to "string", "ref" to "string", "max_chars" to "integer")
     val GITHUB_LIST_PUBLIC_DIR = tool("github_list_public_dir", "List a public GitHub repository directory without authentication.", true, arrayOf("owner", "repo"), "owner" to "string", "repo" to "string", "path" to "string", "ref" to "string")
 
+    val SKILL_IMPORT = tool("skill_import", "Validate a local .gskill/.zip skill pack and return an import preview. UI confirmation is still required before installing.", true, arrayOf("path"), "path" to "string")
+    val SKILL_LIST = tool("skill_list", "List installed AI skills and packs.", true, arrayOf())
+    val SKILL_READ = tool("skill_read", "Read metadata and instructions for an installed AI skill.", true, arrayOf("skill_id"), "skill_id" to "string")
+    val SKILL_ENABLE = tool("skill_enable", "Enable or disable an installed AI skill.", false, arrayOf("skill_id", "enabled"), "skill_id" to "string", "enabled" to "boolean")
+    val SKILL_DELETE = tool("skill_delete", "Delete an installed AI skill pack. Destructive.", false, arrayOf("pack_id"), "pack_id" to "string")
+
     val FILE_PICKER_CURRENT_CONTEXT = AiTool(
         name = "file_picker_current_context",
         description = "Describe the current local file context: session workspace, attached file path, selected repository, and supported local/archive tool roots.",
@@ -971,6 +977,7 @@ object AgentTools {
     )
 
     val PUBLIC_REMOTE_TOOLS: List<AiTool> = listOf(GITHUB_READ_PUBLIC_FILE, GITHUB_LIST_PUBLIC_DIR)
+    val SKILL_TOOLS: List<AiTool> = listOf(SKILL_IMPORT, SKILL_LIST, SKILL_READ, SKILL_ENABLE, SKILL_DELETE)
 
     /** All tools, in canonical order. */
     val ALL: List<AiTool> = listOf(
@@ -983,16 +990,16 @@ object AgentTools {
         EDIT_FILE, WRITE_FILE, CREATE_BRANCH, COMMIT, OPEN_PR,
         COMMENT_PR, COMMENT_ISSUE, CREATE_ISSUE,
         MEMORY_READ, MEMORY_WRITE, MEMORY_APPEND, MEMORY_LIST, MEMORY_SEARCH, MEMORY_DELETE,
-    ) + LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS
+    ) + LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS + SKILL_TOOLS
 
     val CHAT_ARTIFACTS: List<AiTool> = listOf(ARTIFACT_WRITE, ARTIFACT_UPDATE)
-    val CHAT_TOOLS: List<AiTool> = CHAT_ARTIFACTS + listOf(WEB_SEARCH, WEB_FETCH) + LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS
+    val CHAT_TOOLS: List<AiTool> = CHAT_ARTIFACTS + listOf(WEB_SEARCH, WEB_FETCH) + LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS + SKILL_TOOLS
 
     fun byName(name: String): AiTool? =
         (ALL + CHAT_ARTIFACTS).firstOrNull { it.name == name }
 
     fun isLocalOrArchive(name: String): Boolean =
-        (LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS).any { it.name == name }
+        (LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS + SKILL_TOOLS).any { it.name == name }
 
     fun isChatRuntimeTool(name: String): Boolean =
         isLocalOrArchive(name) || name == WEB_SEARCH.name || name == WEB_FETCH.name

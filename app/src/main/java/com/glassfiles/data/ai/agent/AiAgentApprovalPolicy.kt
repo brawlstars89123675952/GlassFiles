@@ -65,6 +65,7 @@ object AiAgentApprovalPolicy {
         "archive_extract_nested",
         "exif_remove",
         "terminal_run",
+        "skill_enable",
     )
     private val commitTools = setOf("commit", "open_pr", "create_branch", "commit_changes", "create_pull_request")
     private val destructiveTools = setOf(
@@ -76,6 +77,7 @@ object AiAgentApprovalPolicy {
         "local_delete",
         "local_trash_empty",
         "archive_delete_entries",
+        "skill_delete",
     )
     // Only actual git-commit tool calls trigger the "commits to main/master require approval"
     // safety stop. write_file / edit_file no longer fall under it — those are governed by
