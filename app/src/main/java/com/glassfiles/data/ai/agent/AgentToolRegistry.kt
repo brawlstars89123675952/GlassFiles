@@ -189,13 +189,13 @@ object AgentToolRegistry {
             AgentTools.PDF_EXTRACT_TEXT.name -> readLocal(tool, AiToolUiKind.READ, "extract pdf text", shouldDefer = true)
             AgentTools.MEDIA_GET_INFO.name -> readLocal(tool, AiToolUiKind.READ, "read media metadata", shouldDefer = true)
             AgentTools.STORAGE_ANALYZE.name -> readLocal(tool, AiToolUiKind.SEARCH, "analyze storage usage", shouldDefer = true)
-            AgentTools.TERMINAL_RUN.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.TERMINAL, AiAgentApprovalCategory.WRITE, AiToolRisk.HIGH, true, "run terminal commands", dangerous = true, shouldDefer = true),
+            AgentTools.TERMINAL_RUN.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.TERMINAL, AiAgentApprovalCategory.WRITE, AiToolRisk.HIGH, true, "run terminal commands", dangerous = true, shouldDefer = true)
             AgentTools.LOCAL_DELETE_TO_TRASH.name,
             AgentTools.LOCAL_DELETE.name,
-            AgentTools.LOCAL_TRASH_EMPTY.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.DELETE, AiAgentApprovalCategory.DESTRUCTIVE, AiToolRisk.DESTRUCTIVE, true, "delete local files", changesFiles = true, destructive = true, dangerous = true),
+            AgentTools.LOCAL_TRASH_EMPTY.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.DELETE, AiAgentApprovalCategory.DESTRUCTIVE, AiToolRisk.DESTRUCTIVE, true, "delete local files", changesFiles = true, destructive = true, dangerous = true)
             AgentTools.LOCAL_REPLACE_IN_FILE.name,
             AgentTools.LOCAL_APPLY_PATCH.name,
-            AgentTools.LOCAL_APPLY_BATCH_PATCH.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.EDIT, AiAgentApprovalCategory.EDIT, AiToolRisk.MEDIUM, true, "edit local files", changesFiles = true),
+            AgentTools.LOCAL_APPLY_BATCH_PATCH.name -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.EDIT, AiAgentApprovalCategory.EDIT, AiToolRisk.MEDIUM, true, "edit local files", changesFiles = true)
             else -> meta(tool, AiToolDomain.LOCAL_FILE, AiToolUiKind.WRITE, AiAgentApprovalCategory.WRITE, AiToolRisk.LOW, true, "write local files", changesFiles = true)
         }
     }
