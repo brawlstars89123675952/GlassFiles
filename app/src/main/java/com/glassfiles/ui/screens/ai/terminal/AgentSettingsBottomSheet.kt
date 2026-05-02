@@ -78,6 +78,7 @@ fun AgentSettingsBottomSheet(
     onViewSkills: () -> Unit,
     onImportSkillPack: () -> Unit,
     onInstantRenderChange: (Boolean) -> Unit,
+    onExpandToolCallsChange: (Boolean) -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
     onClearChat: () -> Unit,
@@ -128,6 +129,18 @@ fun AgentSettingsBottomSheet(
                     onClick = onOpenSystemPrompt,
                 )
             }
+            AgentSheetDivider()
+            AgentSheetLabel("DISPLAY MODE")
+            AgentSheetCheckbox(
+                label = "expand tool calls by default",
+                checked = state.expandToolCallsByDefault,
+                onChange = onExpandToolCallsChange,
+            )
+            AgentSheetCheckbox(
+                label = "collapsed (tap to expand)",
+                checked = !state.expandToolCallsByDefault,
+                onChange = { checked -> onExpandToolCallsChange(!checked) },
+            )
             AgentSheetDivider()
             AgentTerminalPickerRow(
                 label = "REPO",
@@ -663,6 +676,7 @@ data class AgentSettingsState(
     val selectedSkillLabel: String,
     val installedSkillsCount: Int,
     val instantRender: Boolean,
+    val expandToolCallsByDefault: Boolean,
 )
 
 enum class AgentMode(val label: String) {

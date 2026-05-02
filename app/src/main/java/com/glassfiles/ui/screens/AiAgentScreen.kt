@@ -215,6 +215,11 @@ fun AiAgentScreen(
     var skillImportPreview by remember { mutableStateOf<AiSkillImportPreview?>(null) }
     var skillImportError by remember { mutableStateOf<String?>(null) }
     var skillsVersion by remember { mutableStateOf(0) }
+    var expandToolCallsByDefault by remember {
+        mutableStateOf(com.glassfiles.data.ai.AiAgentApprovalPrefs.getExpandToolCalls(context))
+    }
+    var expandedToolRows by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var collapsedToolRows by remember { mutableStateOf<Set<String>>(emptySet()) }
     var memorySheetRepoFullName by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceId by remember { mutableStateOf<String?>(null) }
     var pendingWorkspaceDiff by remember {
@@ -1363,8 +1368,10 @@ fun AiAgentScreen(
         // so the chat takes the full screen height.
         val listState = rememberLazyListState()
         val entries by remember { derivedStateOf { transcript.toList() + approvals.map { AgentEntry.Pending(it) } } }
-        LaunchedEffect(entries.size) {
-            if (entries.isNotEmpty()) listState.animateScrollToItem(entries.size - 1)
+        val displayEntries by remember { derivedStateOf { entries.toDisplayEntries() } }
+        val toolActionCount by remember { derivedStateOf { displayEntries.count { it.isToolAction } } }
+        LaunchedEffect(displayEntries.size) {
+            if (displayEntries.isNotEmpty()) listState.animateScrollToItem(displayEntries.size - 1)
         }
 
         if (!chatOnlyMode && selectedRepo == null && repos.isEmpty() && !GitHubManager.isLoggedIn(context)) {
@@ -1431,13 +1438,38 @@ fun AiAgentScreen(
                         )
                     }
                 }
-                entries.forEach { entry ->
-                    item(key = entry.stableKey()) {
-                        TranscriptEntry(
-                            entry = entry,
+                if (toolActionCount > 0) {
+                    item("tool-progress") {
+                        ToolProgressHeader(
+                            count = toolActionCount,
+                            onExpandAll = {
+                                val ids = displayEntries.mapNotNull { (it as? AgentDisplayEntry.ToolAction)?.id }.toSet()
+                                expandedToolRows = expandedToolRows + ids
+                                collapsedToolRows = collapsedToolRows - ids
+                            },
+                        )
+                    }
+                }
+                displayEntries.forEach { displayEntry ->
+                    item(key = displayEntry.stableKey()) {
+                        TranscriptDisplayEntry(
+                            entry = displayEntry,
                             activeRepoFullName = selectedRepo?.fullName,
                             activeBranch = selectedBranch,
                             activeDefaultBranch = selectedRepo?.defaultBranch,
+                            expandToolCallsByDefault = expandToolCallsByDefault,
+                            expandedToolRows = expandedToolRows,
+                            collapsedToolRows = collapsedToolRows,
+                            onToggleToolRow = { id ->
+                                val expanded = if (expandToolCallsByDefault) id !in collapsedToolRows else id in expandedToolRows
+                                if (expanded) {
+                                    expandedToolRows = expandedToolRows - id
+                                    collapsedToolRows = collapsedToolRows + id
+                                } else {
+                                    expandedToolRows = expandedToolRows + id
+                                    collapsedToolRows = collapsedToolRows - id
+                                }
+                            },
                             onGeneratedFileClick = { previewGeneratedFile = it },
                         )
                     }
@@ -1822,6 +1854,7 @@ fun AiAgentScreen(
                 selectedSkillLabel = selectedSkillForSettings?.let { "${it.packId}/${it.id}" } ?: "auto",
                 installedSkillsCount = installedSkillsCount,
                 instantRender = instantRender,
+                expandToolCallsByDefault = expandToolCallsByDefault,
             )
             val chatRepoDisplay = com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
                 key = CHAT_ONLY_REPO_KEY,
@@ -2005,6 +2038,12 @@ fun AiAgentScreen(
                     skillPackPicker.launch("*/*")
                 },
                 onInstantRenderChange = { instantRender = it },
+                onExpandToolCallsChange = {
+                    expandToolCallsByDefault = it
+                    com.glassfiles.data.ai.AiAgentApprovalPrefs.setExpandToolCalls(context, it)
+                    expandedToolRows = emptySet()
+                    collapsedToolRows = emptySet()
+                },
                 onOpenHistory = {
                     showSettings = false
                     showHistory = true
@@ -3284,6 +3323,145 @@ private fun HistorySearchField(
 }
 
 @Composable
+private fun TranscriptDisplayEntry(
+    entry: AgentDisplayEntry,
+    activeRepoFullName: String?,
+    activeBranch: String?,
+    activeDefaultBranch: String?,
+    expandToolCallsByDefault: Boolean,
+    expandedToolRows: Set<String>,
+    collapsedToolRows: Set<String>,
+    onToggleToolRow: (String) -> Unit,
+    onGeneratedFileClick: (AiChatSessionStore.GeneratedFile) -> Unit,
+) {
+    when (entry) {
+        is AgentDisplayEntry.Raw -> TranscriptEntry(
+            entry = entry.entry,
+            activeRepoFullName = activeRepoFullName,
+            activeBranch = activeBranch,
+            activeDefaultBranch = activeDefaultBranch,
+            onGeneratedFileClick = onGeneratedFileClick,
+        )
+        is AgentDisplayEntry.ToolAction -> {
+            val expanded = if (expandToolCallsByDefault) {
+                entry.id !in collapsedToolRows
+            } else {
+                entry.id in expandedToolRows
+            }
+            ToolActionRow(
+                call = entry.call,
+                result = entry.result,
+                expanded = expanded,
+                onToggle = { onToggleToolRow(entry.id) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ToolProgressHeader(
+    count: Int,
+    onExpandAll: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "[task progress · $count actions]",
+            color = colors.textSecondary,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "[⤢ expand all]",
+            color = colors.warning,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(onClick = onExpandAll)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun ToolActionRow(
+    call: AiToolCall,
+    result: AiToolResult?,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    val accent = if (result?.isError == true) colors.error else colors.textSecondary
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (expanded) colors.surfaceElevated else colors.background)
+            .border(
+                1.dp,
+                if (expanded) colors.border else colors.border.copy(alpha = 0.42f),
+                RoundedCornerShape(6.dp),
+            )
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "$ ${compactToolVerb(call.name).padEnd(8)} | ",
+                color = colors.accent,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                compactToolTarget(call, result),
+                color = colors.textPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                compactToolStatus(result),
+                color = accent,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+            )
+        }
+        if (expanded) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                redactedToolArgsJson(call),
+                color = colors.textSecondary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                result?.output ?: "(waiting for result)",
+                color = if (result?.isError == true) colors.error else colors.textPrimary,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "[tap to collapse]",
+                color = colors.textMuted,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            )
+        }
+    }
+}
+
+@Composable
 private fun TranscriptEntry(
     entry: AgentEntry,
     activeRepoFullName: String?,
@@ -3587,6 +3765,78 @@ private fun hiddenToolArgLabel(value: Any?): String {
         else -> 0
     }
     return "[hidden ${if (length > 0) "$length chars" else "value"}]"
+}
+
+private fun compactToolVerb(name: String): String = when {
+    name.contains("search", ignoreCase = true) -> "search"
+    name.contains("read", ignoreCase = true) || name == AgentTools.LIST_DIR.name -> "read"
+    name.contains("write", ignoreCase = true) || name.contains("create", ignoreCase = true) -> "write"
+    name.contains("edit", ignoreCase = true) || name.contains("replace", ignoreCase = true) || name.contains("patch", ignoreCase = true) -> "edit"
+    name.contains("delete", ignoreCase = true) || name.contains("trash", ignoreCase = true) -> "delete"
+    name.contains("move", ignoreCase = true) || name.contains("rename", ignoreCase = true) || name.contains("copy", ignoreCase = true) -> "move"
+    name.contains("archive", ignoreCase = true) -> "archive"
+    name.contains("terminal", ignoreCase = true) -> "run"
+    name.contains("think", ignoreCase = true) -> "thinking"
+    name.contains("memory", ignoreCase = true) -> "memory"
+    name.contains("web", ignoreCase = true) -> "web"
+    name.contains("github", ignoreCase = true) -> "github"
+    else -> name.substringBefore("_").take(8).ifBlank { "tool" }
+}
+
+private fun compactToolTarget(call: AiToolCall, result: AiToolResult?): String {
+    val args = runCatching { org.json.JSONObject(call.argsJson) }.getOrNull()
+    val target = args?.let { obj ->
+        listOf("path", "file", "filename", "filepath", "directory", "query", "command", "url", "skill_id", "pack_id", "repo", "owner")
+            .firstNotNullOfOrNull { key ->
+                obj.optString(key, "").takeIf { it.isNotBlank() }?.let { value ->
+                    if (key == "query") "\"${value.shortenMiddle(42)}\"" else value.shortenPath()
+                }
+            }
+    }.orEmpty().ifBlank { call.name }
+    val resultHint = compactToolResultHint(result)
+    return if (resultHint.isBlank()) target else "$target -> $resultHint"
+}
+
+private fun compactToolResultHint(result: AiToolResult?): String {
+    if (result == null) return ""
+    if (result.isError) return "error"
+    val output = result.output.trim()
+    if (output.isBlank()) return "done"
+    return when {
+        output.contains("no matches", ignoreCase = true) -> "no matches"
+        output.contains("(empty", ignoreCase = true) -> "empty"
+        output.length > 900 -> "${output.length}b"
+        else -> output.lineSequence().firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?.removePrefix("✓")
+            ?.shortenMiddle(38)
+            .orEmpty()
+    }
+}
+
+private fun compactToolStatus(result: AiToolResult?): String = when {
+    result == null -> "..."
+    result.isError -> "!"
+    else -> "✓"
+}
+
+private fun String.shortenPath(max: Int = 52): String {
+    val clean = trim().replace('\\', '/')
+    if (clean.length <= max) return clean
+    val parts = clean.split('/').filter { it.isNotBlank() }
+    if (parts.size >= 3) {
+        val compact = parts.takeLast(3).joinToString("/")
+        if (compact.length <= max) return compact
+    }
+    return clean.shortenMiddle(max)
+}
+
+private fun String.shortenMiddle(max: Int): String {
+    if (length <= max) return this
+    if (max <= 3) return take(max)
+    val left = (max - 1) / 2
+    val right = max - left - 1
+    return take(left) + "…" + takeLast(right)
 }
 
 private fun saveGeneratedFileToDownloads(
@@ -4823,6 +5073,41 @@ private fun AgentEntry.stableKey(): String = when (this) {
     is AgentEntry.ToolCall -> "tc:${call.id}"
     is AgentEntry.ToolResult -> "tr:${result.callId}"
     is AgentEntry.Pending -> "pending:${pending.call.id}"
+}
+
+private fun AgentDisplayEntry.stableKey(): String = when (this) {
+    is AgentDisplayEntry.Raw -> entry.stableKey()
+    is AgentDisplayEntry.ToolAction -> "ta:${call.id}"
+}
+
+private val AgentDisplayEntry.isToolAction: Boolean
+    get() = this is AgentDisplayEntry.ToolAction ||
+        (this is AgentDisplayEntry.Raw && entry is AgentEntry.Pending)
+
+private fun List<AgentEntry>.toDisplayEntries(): List<AgentDisplayEntry> {
+    val resultByCallId = filterIsInstance<AgentEntry.ToolResult>()
+        .associateBy { it.result.callId }
+    val pairedResultIds = mutableSetOf<String>()
+    return mapNotNull { entry ->
+        when (entry) {
+            is AgentEntry.ToolCall -> {
+                val result = resultByCallId[entry.call.id]?.result
+                if (result != null) pairedResultIds += result.callId
+                AgentDisplayEntry.ToolAction(entry.call, result)
+            }
+            is AgentEntry.ToolResult -> {
+                if (entry.result.callId in pairedResultIds) null else AgentDisplayEntry.Raw(entry)
+            }
+            else -> AgentDisplayEntry.Raw(entry)
+        }
+    }
+}
+
+private sealed class AgentDisplayEntry {
+    data class Raw(val entry: AgentEntry) : AgentDisplayEntry()
+    data class ToolAction(val call: AiToolCall, val result: AiToolResult?) : AgentDisplayEntry() {
+        val id: String = call.id
+    }
 }
 
 private sealed class AgentEntry {
