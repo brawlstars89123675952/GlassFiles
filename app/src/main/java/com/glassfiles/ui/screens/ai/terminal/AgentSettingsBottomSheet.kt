@@ -84,6 +84,7 @@ fun AgentSettingsBottomSheet(
     onImportSkillPack: () -> Unit,
     onInstantRenderChange: (Boolean) -> Unit,
     onExpandToolCallsChange: (Boolean) -> Unit,
+    onOpenContextInspector: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSystemPrompt: () -> Unit,
     onClearChat: () -> Unit,
@@ -122,17 +123,26 @@ fun AgentSettingsBottomSheet(
         ) {
             AgentSheetHeader("AGENT SETTINGS")
             AgentSheetLabel("CHAT")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AgentSheetCommand(
-                    label = "[ chat history \u2192 ]",
-                    color = colors.textSecondary,
-                    onClick = onOpenHistory,
-                )
-                AgentSheetCommand(
-                    label = "[ system prompt \u2192 ]",
-                    color = colors.warning,
-                    onClick = onOpenSystemPrompt,
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AgentSheetCommand(
+                        label = "[ chat history \u2192 ]",
+                        color = colors.textSecondary,
+                        onClick = onOpenHistory,
+                    )
+                    AgentSheetCommand(
+                        label = "[ system prompt \u2192 ]",
+                        color = colors.warning,
+                        onClick = onOpenSystemPrompt,
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    AgentSheetCommand(
+                        label = "[ context inspector \u2192 ]",
+                        color = colors.accent,
+                        onClick = onOpenContextInspector,
+                    )
+                }
             }
             AgentSheetDivider()
             AgentSheetLabel("DISPLAY MODE")

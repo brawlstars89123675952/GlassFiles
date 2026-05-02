@@ -118,6 +118,9 @@ import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
 import com.glassfiles.ui.screens.ai.ExpensiveActionWarningDialog
+import com.glassfiles.ui.screens.ai.terminal.AgentContextInspectorDialog
+import com.glassfiles.ui.screens.ai.terminal.AgentContextInspectorSection
+import com.glassfiles.ui.screens.ai.terminal.AgentContextInspectorState
 import com.glassfiles.ui.screens.ai.terminal.AgentTextButton
 import com.glassfiles.ui.screens.ai.terminal.Icon
 import com.glassfiles.ui.screens.ai.terminal.IconButton
@@ -209,6 +212,7 @@ fun AiAgentScreen(
     // that previously lived under the topbar; opens via the gear icon in
     // [AgentTopBar].
     var showSettings by remember { mutableStateOf(false) }
+    var showContextInspector by remember { mutableStateOf(false) }
     // Pure presentation toggle — when on, transcript entries appear as
     // a single block (no gradual append) so streaming is invisible. Local
     // to this screen; not persisted because it's a UX preference rather
@@ -721,6 +725,7 @@ fun AiAgentScreen(
         /help            show this list
         /clear           clear current chat session
         /cost            show local token/cost estimate
+        /context         inspect prompt/tool context
         /memory          open working memory
         /memory files    open memory files
         /skills          open installed skills
@@ -754,6 +759,120 @@ fun AiAgentScreen(
             appendLine("cost: ~$cost")
             appendLine("tool calls: $toolCalls")
         }.trimEnd()
+    }
+
+    fun buildContextInspectorState(): AgentContextInspectorState {
+        val scopeFullName = activeAgentScopeFullName()
+        val planFirst = com.glassfiles.data.ai.AiAgentPrefs
+            .getPlanThenExecute(context, scopeFullName)
+        val systemOverride = com.glassfiles.data.ai.AiAgentPrefs
+            .getSystemPromptOverride(context, scopeFullName)
+            .orEmpty()
+        val memoryPrompt = com.glassfiles.data.ai.AiAgentMemoryStore
+            .buildMemoryPrompt(context, scopeFullName)
+        val workingMemoryPrompt = if (com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context)) {
+            com.glassfiles.data.ai.AiAgentMemoryStore.workingMemoryPrompt(context, scopeFullName)
+        } else {
+            ""
+        }
+        val selectedSkill = AiSkillPrefs.getSelectedSkillId(context)
+            ?.let { AiSkillStore.readSkill(context, it) }
+            ?.takeIf { it.enabled && AiSkillPrefs.getEnableSkills(context) }
+        val skillAllowedTools = selectedSkill
+            ?.let { AiSkillStore.allowedToolsForSkill(context, it).toSet() }
+        val baseTools = if (chatOnlyMode || selectedRepo == null) {
+            AgentTools.CHAT_TOOLS
+        } else {
+            selectedRepo
+                ?.takeIf { it.canWrite() }
+                ?.let { AgentTools.ALL }
+                ?: AgentTools.ALL.filter { AgentToolRegistry.isReadOnly(it.name) }
+        }
+        val scopedTools = if (planFirst) {
+            baseTools.filter { AgentToolRegistry.isReadOnly(it.name) }
+        } else {
+            baseTools
+        }
+        val taskToolNames = AgentTools.TASK_TOOLS.map { it.name }.toSet()
+        val effectiveTools = if (skillAllowedTools != null) {
+            scopedTools.filter { it.name in skillAllowedTools || it.name in taskToolNames }
+        } else {
+            scopedTools
+        }
+        val visibleTools = toolsForPrompt(effectiveTools, emptySet())
+        val deferredTools = effectiveTools.count { AgentToolRegistry.byName(it.name)?.shouldDefer == true }
+        val generatedFiles = transcript
+            .filterIsInstance<AgentEntry.Assistant>()
+            .sumOf { it.generatedFiles.size }
+        val toolCalls = transcript.count { it is AgentEntry.ToolCall }
+        val toolResults = transcript.count { it is AgentEntry.ToolResult }
+        val pendingApprovals = transcript.count { it is AgentEntry.Pending }
+        val sections = listOf(
+            AgentContextInspectorSection(
+                title = "session",
+                rows = listOf(
+                    "session id" to activeSessionId,
+                    "scope" to agentScopeLabel(scopeFullName),
+                    "mode" to if (chatOnlyMode) "chat only" else "repository",
+                    "running" to running.toString(),
+                    "repo" to (selectedRepo?.fullName ?: "none"),
+                    "branch" to (selectedBranch ?: "none"),
+                    "model" to (selectedModel?.displayName ?: "not selected"),
+                ),
+            ),
+            AgentContextInspectorSection(
+                title = "prompt inputs",
+                rows = listOf(
+                    "core prompts" to (AGENT_TODO_SYSTEM_PROMPT.length + AGENT_TOOL_DISCOVERY_SYSTEM_PROMPT.length + if (chatOnlyMode) CHAT_ONLY_SYSTEM_PROMPT.length else 0).toString(),
+                    "memory chars" to memoryPrompt.length.toString(),
+                    "working memory chars" to workingMemoryPrompt.length.toString(),
+                    "system override chars" to systemOverride.length.toString(),
+                    "skill catalog chars" to AiSkillStore.catalogPrompt(context).length.toString(),
+                    "plan-first" to planFirst.toString(),
+                ),
+            ),
+            AgentContextInspectorSection(
+                title = "skills",
+                rows = listOf(
+                    "enabled" to AiSkillPrefs.getEnableSkills(context).toString(),
+                    "auto suggest" to AiSkillPrefs.getAutoSuggest(context).toString(),
+                    "when_to_use detect" to AiSkillPrefs.getAutoDetectWhenToUse(context).toString(),
+                    "selector model" to AiSkillPrefs.getAutoDetectModel(context),
+                    "max auto-skills" to AiSkillPrefs.getAutoDetectMax(context).toString(),
+                    "selected skill" to (selectedSkill?.let { "${it.packId}/${it.id}" } ?: "auto"),
+                    "selected allowed tools" to (skillAllowedTools?.size?.toString() ?: "not restricted"),
+                ),
+            ),
+            AgentContextInspectorSection(
+                title = "tools",
+                rows = listOf(
+                    "effective tools" to effectiveTools.size.toString(),
+                    "visible schemas now" to visibleTools.size.toString(),
+                    "deferred hidden" to deferredTools.toString(),
+                    "read-only schemas" to effectiveTools.count { AgentToolRegistry.isReadOnly(it.name) }.toString(),
+                    "write/action schemas" to effectiveTools.count { !AgentToolRegistry.isReadOnly(it.name) }.toString(),
+                ),
+                body = visibleTools.joinToString("\n") { "- ${it.name}" }.take(2400),
+            ),
+            AgentContextInspectorSection(
+                title = "transcript",
+                rows = listOf(
+                    "entries" to transcript.size.toString(),
+                    "tool calls" to toolCalls.toString(),
+                    "tool results" to toolResults.toString(),
+                    "pending approvals" to pendingApprovals.toString(),
+                    "todos" to todoItems.size.toString(),
+                    "generated files" to generatedFiles.toString(),
+                    "pending file" to (pendingFile?.displayName ?: "none"),
+                    "pending image" to (pendingImage != null).toString(),
+                ),
+            ),
+            AgentContextInspectorSection(
+                title = "usage estimate",
+                body = buildCostSummary(),
+            ),
+        )
+        return AgentContextInspectorState(sections)
     }
 
     fun buildCompactSummary(source: List<AgentEntry>): String {
@@ -819,6 +938,11 @@ fun AiAgentScreen(
                 Toast.makeText(context, "Chat cleared", Toast.LENGTH_SHORT).show()
             }
             "cost" -> appendLocalCommandResult(rawText, buildCostSummary())
+            "context", "inspect" -> {
+                resetPendingInput()
+                showSettings = false
+                showContextInspector = true
+            }
             "memory" -> {
                 resetPendingInput()
                 if (args == "files" || args == "file") openMemoryFilesSheet() else openWorkingMemorySheet()
@@ -1986,6 +2110,12 @@ fun AiAgentScreen(
                 )
             }
         }
+        if (showContextInspector) {
+            AgentContextInspectorDialog(
+                state = buildContextInspectorState(),
+                onDismiss = { showContextInspector = false },
+            )
+        }
         if (showHistory) {
             AgentHistorySheet(
                 sessions = sessions,
@@ -2355,6 +2485,10 @@ fun AiAgentScreen(
                     com.glassfiles.data.ai.AiAgentApprovalPrefs.setExpandToolCalls(context, it)
                     expandedToolRows = emptySet()
                     collapsedToolRows = emptySet()
+                },
+                onOpenContextInspector = {
+                    showSettings = false
+                    showContextInspector = true
                 },
                 onOpenHistory = {
                     showSettings = false
@@ -5512,6 +5646,7 @@ private val AGENT_SLASH_COMMANDS = listOf(
     "/help" to "show commands",
     "/clear" to "clear current task",
     "/cost" to "show context estimate",
+    "/context" to "inspect prompt/tool context",
     "/memory" to "open working memory",
     "/memory files" to "open memory files",
     "/skills" to "open installed skills",
