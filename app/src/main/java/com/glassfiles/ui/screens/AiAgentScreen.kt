@@ -1049,13 +1049,25 @@ fun AiAgentScreen(
                     currentAttachment = file,
                     allowExternalPaths = false,
                 )
+                val appAgentContext = AppAgentContext(
+                    repoFullName = null,
+                    chatOnly = true,
+                    currentScreen = "ai_agent_chat",
+                    activeProvider = model.providerId.displayName,
+                    localWorkspacePath = LocalToolExecutor.ensureSessionWorkspace(context, activeSessionId).absolutePath,
+                    attachedFileName = file?.name,
+                    attachedFilePath = file?.tempPath,
+                    attachedFileMime = file?.mimeType,
+                    attachedFileIsArchive = file?.isArchive == true,
+                    workspaceMode = false,
+                )
                 val selectedSkill = AiSkillPrefs.getSelectedSkillId(context)
                     ?.let { AiSkillStore.readSkill(context, it) }
                     ?.takeIf { it.enabled && AiSkillPrefs.getEnableSkills(context) }
                 val activeSkills = AiSkillAutoDetector().resolveActiveSkills(
                     context = context,
                     userQuery = text,
-                    appContext = AppAgentContext(repoFullName = null, chatOnly = true),
+                    appContext = appAgentContext,
                     selectedSkill = selectedSkill,
                 )
                 val skillAllowedTools = activeSkills
@@ -1067,6 +1079,7 @@ fun AiAgentScreen(
                 val messages = mutableListOf<AiMessage>().apply {
                     addAll(chatOnlyMemoryPrompt(chatScope, text))
                     add(AiMessage("system", CHAT_ONLY_SYSTEM_PROMPT))
+                    add(AiMessage("system", appAgentContext.toPromptBlock()))
                     add(AiMessage("system", AGENT_TODO_SYSTEM_PROMPT))
                     add(AiMessage("system", AGENT_TOOL_DISCOVERY_SYSTEM_PROMPT))
                     AiSkillStore.catalogPrompt(context).takeIf { it.isNotBlank() }?.let {
@@ -1326,13 +1339,26 @@ fun AiAgentScreen(
             } else {
                 AgentTools.ALL.filter { AgentToolRegistry.isReadOnly(it.name) }
             }
+            val appAgentContext = AppAgentContext(
+                repoFullName = repo.fullName,
+                chatOnly = false,
+                currentScreen = "ai_agent_repo",
+                activeBranch = selectedBranch,
+                activeProvider = model.providerId.displayName,
+                localWorkspacePath = LocalToolExecutor.ensureSessionWorkspace(context, activeSessionId).absolutePath,
+                attachedFileName = file?.name,
+                attachedFilePath = file?.tempPath,
+                attachedFileMime = file?.mimeType,
+                attachedFileIsArchive = file?.isArchive == true,
+                workspaceMode = workspaceMode,
+            )
             val selectedSkill = AiSkillPrefs.getSelectedSkillId(context)
                 ?.let { AiSkillStore.readSkill(context, it) }
                 ?.takeIf { it.enabled && AiSkillPrefs.getEnableSkills(context) }
             val activeSkills = AiSkillAutoDetector().resolveActiveSkills(
                 context = context,
                 userQuery = displayText,
-                appContext = AppAgentContext(repoFullName = repo.fullName, chatOnly = false),
+                appContext = appAgentContext,
                 selectedSkill = selectedSkill,
             )
             val skillAllowedTools = activeSkills
@@ -1392,6 +1418,7 @@ fun AiAgentScreen(
             val systemMessages = buildList {
                 add(AiMessage(role = "system", content = AGENT_TODO_SYSTEM_PROMPT))
                 add(AiMessage(role = "system", content = AGENT_TOOL_DISCOVERY_SYSTEM_PROMPT))
+                add(AiMessage(role = "system", content = appAgentContext.toPromptBlock()))
                 if (workingMemoryBlock.isNotBlank()) {
                     add(AiMessage(role = "system", content = workingMemoryBlock))
                 }
