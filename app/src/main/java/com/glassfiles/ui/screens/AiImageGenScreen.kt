@@ -312,9 +312,9 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AiPickerChip(
-                label = "MODEL",
+                label = Strings.aiAgentSelectModel.uppercase(),
                 value = selected?.displayName ?: Strings.aiRefreshing,
-                title = "Model",
+                title = Strings.aiAgentSelectModel,
                 options = imageModels,
                 optionLabel = { it.displayName },
                 optionSubtitle = { m ->
@@ -326,9 +326,9 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                 modifier = Modifier.weight(2f),
             )
             AiPickerChip(
-                label = "SIZE",
+                label = Strings.aiImageSize.uppercase(),
                 value = size,
-                title = "Size",
+                title = Strings.aiImageSize,
                 options = sizeOptionsFor(selected),
                 optionLabel = { it },
                 selected = size,
@@ -336,9 +336,9 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             AiPickerChip(
-                label = "N",
+                label = Strings.aiImageCount.uppercase(),
                 value = count.toString(),
-                title = "Count",
+                title = Strings.aiImageCount,
                 options = listOf(1, 2, 3, 4),
                 optionLabel = { it.toString() },
                 selected = count,

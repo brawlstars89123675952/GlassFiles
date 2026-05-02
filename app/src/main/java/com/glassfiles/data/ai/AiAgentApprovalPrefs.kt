@@ -4,17 +4,33 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
+import com.glassfiles.data.Strings
 import kotlinx.coroutines.flow.first
 
-enum class AiAgentPermissionMode(
-    val label: String,
-    val description: String,
-) {
-    ASK("ask", "Ask before every tool action."),
-    AUTO_READS("auto reads", "Read-only tools run automatically; edits still ask."),
-    ACCEPT_EDITS("accept edits", "Reads, edits and file writes run automatically; commits still ask."),
-    YOLO("yolo", "Most actions run automatically; destructive actions still require approval."),
-    CUSTOM("custom", "Manual approval toggles are active."),
+enum class AiAgentPermissionMode {
+    ASK,
+    AUTO_READS,
+    ACCEPT_EDITS,
+    YOLO,
+    CUSTOM;
+
+    val label: String
+        get() = when (this) {
+            ASK -> Strings.aiAgentPermissionAsk
+            AUTO_READS -> Strings.aiAgentPermissionAutoReads
+            ACCEPT_EDITS -> Strings.aiAgentPermissionAcceptEdits
+            YOLO -> Strings.aiAgentPermissionYolo
+            CUSTOM -> Strings.aiAgentPermissionCustom
+        }
+
+    val description: String
+        get() = when (this) {
+            ASK -> Strings.aiAgentPermissionAskDesc
+            AUTO_READS -> Strings.aiAgentPermissionAutoReadsDesc
+            ACCEPT_EDITS -> Strings.aiAgentPermissionAcceptEditsDesc
+            YOLO -> Strings.aiAgentPermissionYoloDesc
+            CUSTOM -> Strings.aiAgentPermissionCustomDesc
+        }
 }
 
 object AiAgentApprovalPrefs {

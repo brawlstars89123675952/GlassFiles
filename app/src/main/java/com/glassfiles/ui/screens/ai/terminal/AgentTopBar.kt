@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
@@ -97,7 +98,7 @@ fun AgentTopBar(
             }
             if (workingFiles != null && workingFiles > 0) {
                 Text(
-                    text = "\u25B8 $workingFiles file" + if (workingFiles == 1) "" else "s",
+                    text = "\u25B8 $workingFiles ${Strings.files.lowercase()}",
                     color = colors.textSecondary,
                     fontFamily = JetBrainsMono,
                     fontSize = AgentTerminal.type.label,

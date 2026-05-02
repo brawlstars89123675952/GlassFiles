@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.components.highlightCode
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -148,8 +149,8 @@ private fun AgentCodeHeader(
                 .weight(1f)
                 .padding(vertical = 8.dp),
         )
-        AgentCodeHeaderButton(label = "copy", onClick = onCopy)
-        AgentCodeHeaderButton(label = "open", onClick = onExpand)
+        AgentCodeHeaderButton(label = Strings.copy.lowercase(), onClick = onCopy)
+        AgentCodeHeaderButton(label = Strings.open.lowercase(), onClick = onExpand)
     }
 }
 
@@ -192,8 +193,8 @@ private fun AgentFullscreenCodeView(
                 fontFamily = JetBrainsMono,
                 modifier = Modifier.weight(1f).padding(vertical = 10.dp),
             )
-            AgentCodeHeaderButton(label = "copy", onClick = { copyToClipboard(context, text) })
-            AgentCodeHeaderButton(label = "close", onClick = onClose)
+            AgentCodeHeaderButton(label = Strings.copy.lowercase(), onClick = { copyToClipboard(context, text) })
+            AgentCodeHeaderButton(label = Strings.close.lowercase(), onClick = onClose)
         }
         Box(
             Modifier

@@ -8,6 +8,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.usage.AiUsageAccounting
 import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModulePillButton
@@ -48,17 +49,17 @@ fun AiCostPreviewDialog(
     val colors = AiModuleTheme.colors
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        title = "estimated cost above threshold",
+        title = Strings.aiAgentEstimatedCostTitle,
         confirmButton = {
             AiModulePillButton(
-                label = "y · send anyway",
+                label = Strings.aiAgentSendAnyway,
                 onClick = onConfirm,
                 accent = true,
             )
         },
         dismissButton = {
             AiModulePillButton(
-                label = "n · cancel",
+                label = "n · ${Strings.cancel.lowercase()}",
                 onClick = onDismiss,
                 accent = false,
             )
@@ -66,7 +67,7 @@ fun AiCostPreviewDialog(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             AiModuleText(
-                text = "this request is expected to cost",
+                text = Strings.aiAgentRequestExpectedCost,
                 fontFamily = JetBrainsMono,
                 fontSize = 12.sp,
                 color = colors.textMuted,
@@ -83,9 +84,9 @@ fun AiCostPreviewDialog(
                 color = colors.warning,
             )
             AiModuleText(
-                text = "your threshold: " +
+                text = Strings.aiAgentThresholdLabel +
                     AiUsageAccounting.formatUsd(thresholdUsd) +
-                    "  ·  set in Settings → AI Module",
+                    Strings.aiAgentThresholdSettingsNote,
                 fontFamily = JetBrainsMono,
                 fontSize = 11.sp,
                 color = colors.textMuted,

@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.ui.theme.JetBrainsMono
 import com.glassfiles.data.ai.agent.AiToolResult
@@ -119,7 +120,7 @@ private fun AgentToolDetails(call: AiToolCall, result: AiToolResult?) {
             .background(colors.surface)
             .padding(PaddingValues(horizontal = 12.dp, vertical = 8.dp)),
     ) {
-        AgentDetailLabel(text = "args", color = colors.textMuted)
+        AgentDetailLabel(text = Strings.aiAgentToolArgs, color = colors.textMuted)
         Text(
             text = prettyJson(call.argsJson),
             color = colors.textSecondary,
@@ -128,7 +129,7 @@ private fun AgentToolDetails(call: AiToolCall, result: AiToolResult?) {
             lineHeight = 1.3.em,
         )
         if (result != null) {
-            AgentDetailLabel(text = if (result.isError) "error" else "result", color = colors.textMuted)
+            AgentDetailLabel(text = if (result.isError) Strings.aiAgentToolError.lowercase() else Strings.aiAgentToolResult, color = colors.textMuted)
             Text(
                 text = cleanAgentText(result.output),
                 color = if (result.isError) colors.error else colors.textPrimary,

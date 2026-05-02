@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
@@ -41,8 +42,8 @@ fun AgentApprovalBlock(
     onReject: () -> Unit,
     destructive: Boolean = false,
     approveEnabled: Boolean = true,
-    approveLabel: String = "[ y \u00B7 approve ]",
-    rejectLabel: String = "[ n \u00B7 reject ]",
+    approveLabel: String = "[ y \u00B7 ${Strings.aiAgentApprove.lowercase()} ]",
+    rejectLabel: String = "[ n \u00B7 ${Strings.aiAgentReject.lowercase()} ]",
     secondaryActionLabel: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
     extra: (@Composable () -> Unit)? = null,
@@ -68,7 +69,7 @@ fun AgentApprovalBlock(
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = if (destructive) "DESTRUCTIVE ACTION" else "APPROVAL REQUIRED",
+                text = if (destructive) Strings.aiAgentDestructiveAction else Strings.aiAgentApprovalRequired,
                 color = frameColor,
                 fontFamily = JetBrainsMono,
                 fontWeight = FontWeight.Bold,

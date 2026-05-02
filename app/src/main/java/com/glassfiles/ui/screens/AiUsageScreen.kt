@@ -68,7 +68,7 @@ fun AiUsageScreen(onBack: () -> Unit) {
     AiModuleScreenScaffold(
         title = Strings.aiUsageTitle,
         onBack = onBack,
-        subtitle = "local · " + when (window) {
+        subtitle = "${Strings.aiUsageLocal} · " + when (window) {
             AiUsageWindow.TODAY -> "1d"
             AiUsageWindow.WEEK -> "7d"
             AiUsageWindow.MONTH -> "30d"
@@ -153,7 +153,7 @@ fun AiUsageScreen(onBack: () -> Unit) {
                         summary.filesWrittenCount.toString(),
                     )
                     AiModuleKeyValueRow(
-                        "reported usage",
+                        Strings.aiReportedUsage,
                         "${summary.reportedPercent}% · ${summary.reportedTokens} tok",
                         valueColor = if (summary.reportedTokens > 0) colors.accent else colors.textMuted,
                     )
@@ -167,10 +167,10 @@ fun AiUsageScreen(onBack: () -> Unit) {
                         )
                     }
                     summary.reportedCostUsd?.let {
-                        AiModuleKeyValueRow("reported cost", com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it), valueColor = colors.accent)
+                        AiModuleKeyValueRow(Strings.aiReportedCost, com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it), valueColor = colors.accent)
                     }
                     summary.estimatedCostUsd?.let {
-                        AiModuleKeyValueRow("estimated cost", com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it, estimated = true), valueColor = colors.warning)
+                        AiModuleKeyValueRow(Strings.aiEstimatedCost, com.glassfiles.data.ai.usage.AiUsageAccounting.formatUsd(it, estimated = true), valueColor = colors.warning)
                     }
                 }
                 item { UsageSectionHeader(Strings.aiUsageByProvider) }
@@ -180,7 +180,7 @@ fun AiUsageScreen(onBack: () -> Unit) {
                 item { UsageSectionHeader(Strings.aiUsageByMode) }
                 items(summary.byMode) { BucketRow(it) }
                 if (calibrations.isNotEmpty()) {
-                    item { UsageSectionHeader("cost tracking accuracy") }
+                    item { UsageSectionHeader(Strings.aiCostTrackingAccuracy) }
                     items(calibrations) { calibration ->
                         // Map the EMA factor to a coarse accuracy
                         // status: factor ≈ 1.0 with enough samples →

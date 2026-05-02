@@ -316,9 +316,9 @@ private fun AiVideoGenScreenInner(onBack: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             AiPickerChip(
-                label = "MODEL",
+                label = Strings.aiAgentSelectModel.uppercase(),
                 value = selected?.displayName ?: Strings.aiRefreshing,
-                title = "Model",
+                title = Strings.aiAgentSelectModel,
                 options = videoModels,
                 optionLabel = { it.displayName },
                 optionSubtitle = { m ->
@@ -330,9 +330,9 @@ private fun AiVideoGenScreenInner(onBack: () -> Unit) {
                 modifier = Modifier.weight(2f),
             )
             AiPickerChip(
-                label = "ASPECT",
+                label = Strings.aiVideoAspect.uppercase(),
                 value = aspect,
-                title = "Aspect ratio",
+                title = Strings.aiVideoAspect,
                 options = aspectOptions,
                 optionLabel = { it },
                 selected = aspect,
@@ -340,9 +340,9 @@ private fun AiVideoGenScreenInner(onBack: () -> Unit) {
                 modifier = Modifier.weight(1f),
             )
             AiPickerChip(
-                label = "SEC",
+                label = Strings.aiVideoDuration.uppercase(),
                 value = duration.toString(),
-                title = "Duration (s)",
+                title = Strings.aiVideoDuration,
                 options = listOf(2, 3, 4, 5, 6, 8),
                 optionLabel = { it.toString() },
                 selected = duration,

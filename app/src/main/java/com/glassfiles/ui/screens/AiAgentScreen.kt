@@ -637,14 +637,14 @@ fun AiAgentScreen(
                     pendingFile = runCatching { AiAttachmentProcessor.prepare(context, uri) }
                         .getOrElse { e ->
                             AiPreparedAttachment(
-                                name = name.ifBlank { "attachment" },
+                                name = name.ifBlank { Strings.aiAttachment },
                                 mimeType = mime,
                                 extension = "",
                                 tempPath = "",
                                 isArchive = false,
                                 promptContent = "[attachment error: ${e.message ?: e.javaClass.simpleName}]",
                                 previewContent = null,
-                                summary = "attachment error",
+                                summary = Strings.aiAttachmentError,
                             )
                         }
                     pendingImage = null
@@ -670,13 +670,13 @@ fun AiAgentScreen(
                         skillImportError = null
                         skillImportPreview = null
                         showSkills = true
-                        Toast.makeText(context, "Imported: ${it.name}", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "${Strings.aiSkillImportedToast}: ${it.name}", Toast.LENGTH_SHORT).show()
                     }
                     .onFailure {
                         skillImportError = it.message ?: it.javaClass.simpleName
                         skillImportPreview = null
                         showSkills = true
-                        Toast.makeText(context, "Import failed: $skillImportError", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "${Strings.aiSkillImportFailedToast}: $skillImportError", Toast.LENGTH_SHORT).show()
                     }
             }
         }
@@ -722,20 +722,20 @@ fun AiAgentScreen(
     }
 
     fun buildSlashHelp(): String = """
-        [slash commands]
-        /help            show this list
-        /clear           clear current chat session
-        /cost            show local token/cost estimate
-        /context         inspect prompt/tool context
-        /memory          open working memory
-        /memory files    open memory files
-        /skills          open installed skills
-        /permissions     show or set permission mode
-        /plan [on|off]   toggle plan-first mode for this scope
-        /system          open system prompt
-        /compact         compact visible transcript locally
-        /resume          open chat history
-        /diff            open pending workspace diff
+        ${Strings.aiSlashCommands}
+        /help            ${Strings.aiSlashShowCommands}
+        /clear           ${Strings.aiSlashClearTask}
+        /cost            ${Strings.aiSlashCost}
+        /context         ${Strings.aiSlashContext}
+        /memory          ${Strings.aiSlashMemory}
+        /memory files    ${Strings.aiSlashMemoryFiles}
+        /skills          ${Strings.aiSlashSkills}
+        /permissions     ${Strings.aiSlashPermissions}
+        /plan [on|off]   ${Strings.aiSlashPlan}
+        /system          ${Strings.aiSlashSystem}
+        /compact         ${Strings.aiSlashCompactVisible}
+        /resume          ${Strings.aiSlashResume}
+        /diff            ${Strings.aiSlashDiff}
     """.trimIndent()
 
     fun buildCostSummary(): String {
@@ -750,15 +750,15 @@ fun AiAgentScreen(
         } ?: "\$0.00"
         val toolCalls = transcript.count { it is AgentEntry.ToolCall }
         return buildString {
-            appendLine("[cost estimate]")
-            appendLine("scope: ${agentScopeLabel(activeAgentScopeFullName())}")
-            appendLine("model: ${selectedModel?.displayName ?: "not selected"}")
-            appendLine("input chars: ${stats.inputChars}")
-            appendLine("output chars: ${stats.outputChars}")
-            appendLine("total chars: ${stats.totalChars}")
-            appendLine("tokens: ~${stats.tokens}")
-            appendLine("cost: ~$cost")
-            appendLine("tool calls: $toolCalls")
+            appendLine(Strings.aiCostEstimateTitle)
+            appendLine("${Strings.aiCostScope}: ${agentScopeLabel(activeAgentScopeFullName())}")
+            appendLine("${Strings.aiCostModel}: ${selectedModel?.displayName ?: Strings.aiNotSelected}")
+            appendLine("${Strings.aiCostInputChars}: ${stats.inputChars}")
+            appendLine("${Strings.aiCostOutputChars}: ${stats.outputChars}")
+            appendLine("${Strings.aiCostTotalChars}: ${stats.totalChars}")
+            appendLine("${Strings.aiCostTokens}: ~${stats.tokens}")
+            appendLine("${Strings.aiCostCost}: ~$cost")
+            appendLine("${Strings.aiCostToolCalls}: $toolCalls")
         }.trimEnd()
     }
 
@@ -811,7 +811,7 @@ fun AiAgentScreen(
         val permissionLog = AiAgentPermissionLog.recent(context, limit = 8)
         val sections = listOf(
             AgentContextInspectorSection(
-                title = "session",
+                title = Strings.aiAgentContextSession,
                 rows = listOf(
                     "session id" to activeSessionId,
                     "scope" to agentScopeLabel(scopeFullName),
@@ -819,11 +819,11 @@ fun AiAgentScreen(
                     "running" to running.toString(),
                     "repo" to (selectedRepo?.fullName ?: "none"),
                     "branch" to (selectedBranch ?: "none"),
-                    "model" to (selectedModel?.displayName ?: "not selected"),
+                    "model" to (selectedModel?.displayName ?: Strings.aiNotSelected),
                 ),
             ),
             AgentContextInspectorSection(
-                title = "prompt inputs",
+                title = Strings.aiAgentContextPromptInputs,
                 rows = listOf(
                     "core prompts" to (AGENT_TODO_SYSTEM_PROMPT.length + AGENT_TOOL_DISCOVERY_SYSTEM_PROMPT.length + if (chatOnlyMode) CHAT_ONLY_SYSTEM_PROMPT.length else 0).toString(),
                     "memory chars" to memoryPrompt.length.toString(),
@@ -834,7 +834,7 @@ fun AiAgentScreen(
                 ),
             ),
             AgentContextInspectorSection(
-                title = "skills",
+                title = Strings.aiAgentContextSkills,
                 rows = listOf(
                     "enabled" to AiSkillPrefs.getEnableSkills(context).toString(),
                     "auto suggest" to AiSkillPrefs.getAutoSuggest(context).toString(),
@@ -846,7 +846,7 @@ fun AiAgentScreen(
                 ),
             ),
             AgentContextInspectorSection(
-                title = "tools",
+                title = Strings.aiAgentContextTools,
                 rows = listOf(
                     "effective tools" to effectiveTools.size.toString(),
                     "visible schemas now" to visibleTools.size.toString(),
@@ -857,7 +857,7 @@ fun AiAgentScreen(
                 body = visibleTools.joinToString("\n") { "- ${it.name}" }.take(2400),
             ),
             AgentContextInspectorSection(
-                title = "permission log",
+                title = Strings.aiAgentContextPermissionLog,
                 rows = listOf(
                     "recent entries" to permissionLog.size.toString(),
                     "latest decision" to (permissionLog.firstOrNull()?.decision ?: "none"),
@@ -867,7 +867,7 @@ fun AiAgentScreen(
                 }.take(2400),
             ),
             AgentContextInspectorSection(
-                title = "transcript",
+                title = Strings.aiAgentContextTranscript,
                 rows = listOf(
                     "entries" to transcript.size.toString(),
                     "tool calls" to toolCalls.toString(),
@@ -880,7 +880,7 @@ fun AiAgentScreen(
                 ),
             ),
             AgentContextInspectorSection(
-                title = "usage estimate",
+                title = Strings.aiAgentContextUsageEstimate,
                 body = buildCostSummary(),
             ),
         )
@@ -898,22 +898,22 @@ fun AiAgentScreen(
         val toolCalls = source.filterIsInstance<AgentEntry.ToolCall>()
         val todos = todoItems.toList()
         return buildString {
-            appendLine("[compact summary]")
-            appendLine("entries: ${source.size}")
-            appendLine("tool calls: ${toolCalls.size}")
+            appendLine(Strings.aiCompactSummary)
+            appendLine("${Strings.aiSummaryEntries}: ${source.size}")
+            appendLine("${Strings.aiCostToolCalls}: ${toolCalls.size}")
             if (todos.isNotEmpty()) {
                 appendLine()
-                appendLine("todos:")
+                appendLine("${Strings.aiSummaryTodos}:")
                 todos.forEach { item -> appendLine("- ${todoStatusMarker(item.status)} ${item.title}") }
             }
             if (generatedFiles.isNotEmpty()) {
                 appendLine()
-                appendLine("generated files:")
+                appendLine("${Strings.aiSummaryGeneratedFiles}:")
                 generatedFiles.forEach { file -> appendLine("- ${file.name} (${file.content.length} chars)") }
             }
             if (userMessages.isNotEmpty()) {
                 appendLine()
-                appendLine("recent user requests:")
+                appendLine("${Strings.aiRecentUserRequests}:")
                 userMessages.forEach { message ->
                     appendLine("- ${message.lineSequence().firstOrNull().orEmpty().take(160)}")
                 }
@@ -924,7 +924,7 @@ fun AiAgentScreen(
     fun compactTranscriptLocally(commandText: String) {
         val source = transcript.toList()
         if (source.size <= 10) {
-            appendLocalCommandResult(commandText, "[system] nothing to compact yet.")
+            appendLocalCommandResult(commandText, Strings.aiNothingToCompact)
             return
         }
         val summary = buildCompactSummary(source)
@@ -947,7 +947,7 @@ fun AiAgentScreen(
             "help", "?" -> appendLocalCommandResult(rawText, buildSlashHelp())
             "clear" -> {
                 startNewSession()
-                Toast.makeText(context, "Chat cleared", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, Strings.aiChatCleared, Toast.LENGTH_SHORT).show()
             }
             "cost" -> appendLocalCommandResult(rawText, buildCostSummary())
             "context", "inspect" -> {
@@ -975,7 +975,7 @@ fun AiAgentScreen(
                     else -> {
                         appendLocalCommandResult(
                             rawText,
-                            "[system] unknown permission mode: $args\nknown: ask, reads, accept-edits, yolo",
+                            "${Strings.aiAgentUnknownPermissionMode}: $args\n${Strings.aiAgentKnownPermissionModes}",
                         )
                         return true
                     }
@@ -988,7 +988,7 @@ fun AiAgentScreen(
                 val current = com.glassfiles.data.ai.AiAgentApprovalPrefs.getPermissionMode(context)
                 appendLocalCommandResult(
                     rawText,
-                    "[system] permission mode: ${current.label}\n${current.description}",
+                    "${Strings.aiAgentPermissionModeLabel}: ${current.label}\n${current.description}",
                 )
             }
             "plan" -> {
@@ -997,7 +997,7 @@ fun AiAgentScreen(
                 com.glassfiles.data.ai.AiAgentPrefs.setPlanThenExecute(context, scopeFullName, enabled)
                 appendLocalCommandResult(
                     rawText,
-                    "[system] plan-first mode ${if (enabled) "enabled" else "disabled"} for ${agentScopeLabel(scopeFullName)}.",
+                    "${Strings.aiAgentPlanFirstMode} ${if (enabled) Strings.aiAgentEnabled else Strings.aiAgentDisabled} for ${agentScopeLabel(scopeFullName)}.",
                 )
             }
             "system", "prompt" -> {
@@ -1006,7 +1006,7 @@ fun AiAgentScreen(
             }
             "compact" -> {
                 if (running) {
-                    appendLocalCommandResult(rawText, "[system] wait for the current agent run to finish before compacting.")
+                    appendLocalCommandResult(rawText, Strings.aiAgentWaitForRun)
                 } else {
                     compactTranscriptLocally(rawText)
                 }
@@ -1022,10 +1022,10 @@ fun AiAgentScreen(
                 if (pendingWorkspaceDiff != null) {
                     showWorkspaceReview = true
                 } else {
-                    appendLocalCommandResult(rawText, "[system] no pending workspace diff.")
+                    appendLocalCommandResult(rawText, Strings.aiAgentNoPendingWorkspaceDiff)
                 }
             }
-            else -> appendLocalCommandResult(rawText, "[system] unknown slash command: /$name\n\n${buildSlashHelp()}")
+            else -> appendLocalCommandResult(rawText, "${Strings.aiUnknownSlashCommand}: /$name\n\n${buildSlashHelp()}")
         }
         return true
     }
@@ -1741,20 +1741,20 @@ fun AiAgentScreen(
             }
         } else null
         val subtitle = listOfNotNull(
-            if (chatOnlyMode) "chat" else selectedRepo?.fullName,
+            if (chatOnlyMode) Strings.aiAgentTopBarChat else selectedRepo?.fullName,
             if (chatOnlyMode) null else selectedBranch?.takeIf { it.isNotBlank() }?.let { "@$it" },
         ).joinToString("").ifBlank { null }
-        val approvalIndicator = remember(autoApproveReads, approvalPrefsVersion, workspaceMode, selectedRepo?.fullName) {
+        val approvalIndicator = remember(autoApproveReads, approvalPrefsVersion, workspaceMode, selectedRepo?.fullName, Strings.lang) {
             val yolo = com.glassfiles.data.ai.AiAgentApprovalPrefs.getYoloMode(context)
             val edits = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveEdits(context)
             val writes = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveWrites(context)
             val commits = com.glassfiles.data.ai.AiAgentApprovalPrefs.getAutoApproveCommits(context)
             when {
-                workspaceMode -> "workspace" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
-                yolo -> "auto: yolo" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
-                commits || writes -> "auto: writes" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
-                edits -> "auto: edits" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
-                autoApproveReads -> "auto: reads" to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
+                workspaceMode -> Strings.aiAgentIndicatorWorkspace to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
+                yolo -> Strings.aiAgentIndicatorYolo to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.ERROR
+                commits || writes -> Strings.aiAgentIndicatorWrites to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
+                edits -> Strings.aiAgentIndicatorEdits to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.WARNING
+                autoApproveReads -> Strings.aiAgentIndicatorReads to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
                 else -> null to com.glassfiles.ui.screens.ai.terminal.AgentAutoApproveTone.NEUTRAL
             }
         }
@@ -2086,7 +2086,7 @@ fun AiAgentScreen(
         if (input.text.trim().startsWith("/") && pendingImage == null && pendingFile == null) {
             com.glassfiles.ui.screens.ai.terminal.TerminalSlashCommandHint(
                 query = input.text,
-                commands = AGENT_SLASH_COMMANDS,
+                commands = agentSlashCommands(),
                 onPick = { command ->
                     val next = "$command "
                     input = TextFieldValue(next, selection = TextRange(next.length))
@@ -2327,8 +2327,8 @@ fun AiAgentScreen(
             )
             val chatRepoDisplay = com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
                 key = CHAT_ONLY_REPO_KEY,
-                title = "chat only",
-                subtitle = "no repository tools",
+                title = Strings.aiAgentChatOnly,
+                subtitle = Strings.aiAgentChatOnlySubtitle,
             )
             val repoOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
                 items = listOf(chatRepoDisplay) + repos.map {
@@ -2817,9 +2817,9 @@ private fun WorkspacePendingReviewBlock(
             Text(error, color = colors.error, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            AgentTextButton("[ review diff ]", colors.accent, true, onReview)
-            AgentTextButton("[ commit ]", colors.warning, true, onCommit)
-            AgentTextButton("[ discard ]", colors.error, true, onDiscard)
+            AgentTextButton("[ ${Strings.aiAgentReviewDiff} ]", colors.accent, true, onReview)
+            AgentTextButton("[ ${Strings.aiAgentCommit} ]", colors.warning, true, onCommit)
+            AgentTextButton("[ ${Strings.aiAgentDiscard} ]", colors.error, true, onDiscard)
         }
     }
 }
@@ -2854,7 +2854,7 @@ private fun WorkspaceReviewDialog(
                     fontSize = 14.sp,
                     modifier = Modifier.weight(1f),
                 )
-                AgentTextButton("[ close ]", colors.textSecondary, true, onDismiss)
+                AgentTextButton("[ ${Strings.close.lowercase()} ]", colors.textSecondary, true, onDismiss)
             }
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 LazyColumn(
@@ -2925,7 +2925,7 @@ private fun WorkspaceCommitDialog(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                "commit message:",
+                Strings.aiAgentCommitMessage,
                 color = colors.textPrimary,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
@@ -2952,12 +2952,12 @@ private fun WorkspaceCommitDialog(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentTextButton(
-                    label = if (busy) "[ committing... ]" else "[ commit & push ]",
+                    label = if (busy) "[ ${Strings.aiAgentCommitting} ]" else "[ ${Strings.aiAgentCommitAndPush} ]",
                     color = if (busy) colors.textMuted else colors.accent,
                     enabled = !busy && message.isNotBlank(),
                     onClick = onCommit,
                 )
-                AgentTextButton("[ cancel ]", colors.textSecondary, !busy, onDismiss)
+                AgentTextButton("[ ${Strings.cancel.lowercase()} ]", colors.textSecondary, !busy, onDismiss)
             }
         }
     }
@@ -3082,7 +3082,7 @@ private fun AgentFileContentSummary(fileContent: String) {
         Icon(Icons.Rounded.AttachFile, null, Modifier.size(14.dp), tint = colors.textSecondary)
         Spacer(Modifier.width(8.dp))
         Text(
-            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { "Attached file" },
+            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { Strings.aiAttachedFile },
             fontSize = 11.sp,
             color = colors.textSecondary,
             fontFamily = FontFamily.Monospace,
@@ -3208,7 +3208,7 @@ private fun AgentGeneratedFilePreviewSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            if (isArchive) "ARCHIVE FILE" else "FILE PREVIEW",
+                            if (isArchive) Strings.aiAgentArchiveFile else Strings.aiAgentFilePreview,
                             color = if (isArchive) colors.warning else colors.accent,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -3224,7 +3224,7 @@ private fun AgentGeneratedFilePreviewSheet(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         AgentTextButton(
-                            if (saving) "[ saving... ]" else "[ download ]",
+                            if (saving) "[ ${Strings.aiAgentSaving} ]" else "[ ${Strings.aiAgentDownload} ]",
                             if (saving) colors.textMuted else colors.accent,
                             !saving,
                         ) {
@@ -3237,19 +3237,19 @@ private fun AgentGeneratedFilePreviewSheet(
                                     }
                                 }
                                 saveStatus = result.fold(
-                                    onSuccess = { "saved: $it" },
-                                    onFailure = { "error: ${it.message ?: it.javaClass.simpleName}" },
+                                    onSuccess = { "${Strings.aiAgentSaved}: $it" },
+                                    onFailure = { "${Strings.error}: ${it.message ?: it.javaClass.simpleName}" },
                                 )
                                 saving = false
                             }
                         }
-                        AgentTextButton("[ done ]", colors.textSecondary, true, onDismiss)
+                        AgentTextButton("[ ${Strings.done.lowercase()} ]", colors.textSecondary, true, onDismiss)
                     }
                 }
                 if (!saveStatus.isNullOrBlank()) {
                     Text(
                         saveStatus.orEmpty(),
-                        color = if (saveStatus?.startsWith("error:") == true) colors.error else colors.accent,
+                        color = if (saveStatus?.startsWith(Strings.error) == true) colors.error else colors.accent,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                     )
@@ -3265,11 +3265,11 @@ private fun AgentGeneratedFilePreviewSheet(
                             .padding(12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        AgentTerminalKeyValue("name", file.name)
-                        AgentTerminalKeyValue("type", "archive")
-                        AgentTerminalKeyValue("size", generatedFileSizeLabel(file))
+                        AgentTerminalKeyValue(Strings.aiAgentNameKey, file.name)
+                        AgentTerminalKeyValue(Strings.aiAgentTypeKey, Strings.aiAgentArchiveType)
+                        AgentTerminalKeyValue(Strings.aiAgentSizeKey, generatedFileSizeLabel(file))
                         Text(
-                            "Archive contents are hidden in chat. Use [ download ] to save the archive file itself.",
+                            Strings.aiAgentArchiveContentHidden,
                             color = colors.textSecondary,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
@@ -3334,30 +3334,30 @@ private fun AgentSkillsDialog(
                     .padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                AgentTerminalSectionTitle("AI SKILLS")
+                AgentTerminalSectionTitle(Strings.aiAgentSkillsTitle)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AgentTerminalCommand("[+ import .gskill]", colors.accent, onImport)
-                    AgentTerminalCommand("[ auto skill ]", colors.warning) { onSelectSkill(null) }
-                    AgentTerminalCommand("[ done ]", colors.textSecondary, onDismiss)
+                    AgentTerminalCommand(Strings.aiAgentImportSkillPack, colors.accent, onImport)
+                    AgentTerminalCommand("[ ${Strings.aiAgentAutoSkill} ]", colors.warning) { onSelectSkill(null) }
+                    AgentTerminalCommand("[ ${Strings.done.lowercase()} ]", colors.textSecondary, onDismiss)
                 }
                 Text(
-                    "selected: ${selectedSkillId ?: "auto"}",
+                    "${Strings.aiAgentSelected}: ${selectedSkillId ?: "auto"}",
                     color = colors.textSecondary,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                 )
                 if (!importError.isNullOrBlank()) {
                     Text(
-                        "IMPORT ERROR: $importError",
+                        "${Strings.aiAgentImportError}: $importError",
                         color = colors.error,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                     )
                 }
-                AgentTerminalSectionTitle("INSTALLED PACKS")
+                AgentTerminalSectionTitle(Strings.aiAgentInstalledPacks)
                 if (packs.isEmpty()) {
                     Text(
-                        "(no installed skills)",
+                        Strings.aiAgentNoInstalledSkills,
                         color = colors.textMuted,
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,
@@ -3391,17 +3391,17 @@ private fun AgentSkillsDialog(
                             )
                         }
                         Text(
-                            "${pack.author ?: "unknown"} · ${if (pack.trusted) "trusted" else "untrusted"} · ${packSkills.size} skills",
+                            "${pack.author ?: Strings.aiAgentUnknown} · ${if (pack.trusted) Strings.aiAgentTrusted else Strings.aiAgentUntrusted} · ${packSkills.size} ${Strings.aiAgentSkillsCount}",
                             color = colors.textMuted,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             AgentTerminalCommand(
-                                if (pack.enabled) "[ disable ]" else "[ enable ]",
+                                if (pack.enabled) "[ ${Strings.aiAgentDisable} ]" else "[ ${Strings.aiAgentEnable} ]",
                                 colors.warning,
                             ) { onTogglePack(pack.id, !pack.enabled) }
-                            AgentTerminalCommand("[ delete ]", colors.error) { onDeletePack(pack.id) }
+                            AgentTerminalCommand("[ ${Strings.aiAgentDelete} ]", colors.error) { onDeletePack(pack.id) }
                         }
                         packSkills.forEach { skill ->
                             val skillKey = "${skill.packId}/${skill.id}"
@@ -3422,7 +3422,7 @@ private fun AgentSkillsDialog(
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
-                                    "risk: ${skill.risk.name.lowercase(Locale.US)} · tools: ${skill.tools.joinToString(", ")}",
+                                    "${Strings.aiAgentRiskKey}: ${skill.risk.name.lowercase(Locale.US)} · ${Strings.aiAgentToolsKey}: ${skill.tools.joinToString(", ")}",
                                     color = colors.textSecondary,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
@@ -3437,11 +3437,11 @@ private fun AgentSkillsDialog(
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     AgentTerminalCommand(
-                                        if (isSelected) "[ selected ]" else "[ use ]",
+                                        if (isSelected) "[ ${Strings.aiAgentSelected} ]" else "[ ${Strings.aiAgentUse} ]",
                                         if (isSelected) colors.warning else colors.accent,
                                     ) { onSelectSkill(skill) }
                                     AgentTerminalCommand(
-                                        if (skill.enabled) "[ disable ]" else "[ enable ]",
+                                        if (skill.enabled) "[ ${Strings.aiAgentDisable} ]" else "[ ${Strings.aiAgentEnable} ]",
                                         colors.warning,
                                     ) { onToggleSkill(skill, !skill.enabled) }
                                 }
@@ -3471,26 +3471,26 @@ private fun AgentSkillImportPreviewDialog(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AgentTerminalSectionTitle("IMPORT SKILL PACK")
-            AgentTerminalKeyValue("name", preview.pack.name)
-            AgentTerminalKeyValue("version", preview.pack.version)
-            AgentTerminalKeyValue("author", preview.pack.author ?: "unknown")
-            AgentTerminalKeyValue("risk", preview.pack.risk.name.lowercase(Locale.US))
-            AgentTerminalKeyValue("skills", preview.skills.size.toString())
-            preview.pack.source?.let { AgentTerminalKeyValue("source", it) }
-            AgentTerminalSectionTitle("REQUESTED TOOLS")
+            AgentTerminalSectionTitle(Strings.aiAgentImportSkillPackTitle)
+            AgentTerminalKeyValue(Strings.aiAgentNameKey, preview.pack.name)
+            AgentTerminalKeyValue(Strings.aiAgentVersionKey, preview.pack.version)
+            AgentTerminalKeyValue(Strings.aiAgentAuthorKey, preview.pack.author ?: Strings.aiAgentUnknown)
+            AgentTerminalKeyValue(Strings.aiAgentRiskKey, preview.pack.risk.name.lowercase(Locale.US))
+            AgentTerminalKeyValue(Strings.aiAgentSkillsCount, preview.skills.size.toString())
+            preview.pack.source?.let { AgentTerminalKeyValue(Strings.aiAgentSourceKey, it) }
+            AgentTerminalSectionTitle(Strings.aiAgentRequestedTools)
             preview.pack.tools.forEach {
                 Text("[ ] $it", color = colors.textSecondary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
             }
             if (preview.warnings.isNotEmpty()) {
-                AgentTerminalSectionTitle("WARNINGS")
+                AgentTerminalSectionTitle(Strings.aiAgentWarnings)
                 preview.warnings.forEach {
                     Text("! $it", color = colors.warning, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                AgentTerminalCommand("[ import ]", colors.accent, onImport)
-                AgentTerminalCommand("[ cancel ]", colors.textSecondary, onDismiss)
+                AgentTerminalCommand("[ ${Strings.aiAgentImport} ]", colors.accent, onImport)
+                AgentTerminalCommand("[ ${Strings.cancel.lowercase()} ]", colors.textSecondary, onDismiss)
             }
         }
     }
@@ -4777,7 +4777,7 @@ private fun DiffPreview(
             val path = args.optString("path", "?")
             val oldStr = args.optString("old_string", "")
             val newStr = args.optString("new_string", "")
-            DiffBlockHeader(label = "$path  (edit)")
+            DiffBlockHeader(label = "$path  (${Strings.aiDiffEdit})")
             Spacer(Modifier.height(4.dp))
             DiffLines(LineDiff.diff(oldStr, newStr))
         }
@@ -4799,7 +4799,7 @@ private fun DiffPreview(
                 }
             }
             val orig = original.value
-            DiffBlockHeader(label = "$path  (write)")
+            DiffBlockHeader(label = "$path  (${Strings.aiDiffWrite})")
             Spacer(Modifier.height(4.dp))
             if (orig == null) {
                 Text(Strings.aiAgentDiffLoading, fontSize = 11.sp, color = colors.textSecondary)
@@ -5811,20 +5811,20 @@ private fun List<AiChatSessionStore.Message>.toAgentEntries(): List<AgentEntry> 
 
 private const val CHAT_ONLY_REPO_KEY = "__chat_only__"
 private const val CHAT_MEMORY_SCOPE_PREFIX = "chat/"
-private val AGENT_SLASH_COMMANDS = listOf(
-    "/help" to "show commands",
-    "/clear" to "clear current task",
-    "/cost" to "show context estimate",
-    "/context" to "inspect prompt/tool context",
-    "/memory" to "open working memory",
-    "/memory files" to "open memory files",
-    "/skills" to "open installed skills",
-    "/permissions" to "show or set permission mode",
-    "/plan" to "toggle plan-first mode",
-    "/system" to "edit system prompt",
-    "/compact" to "compact transcript",
-    "/resume" to "open history",
-    "/diff" to "open workspace diff",
+private fun agentSlashCommands() = listOf(
+    "/help" to Strings.aiSlashShowCommands,
+    "/clear" to Strings.aiSlashClearTask,
+    "/cost" to Strings.aiSlashCost,
+    "/context" to Strings.aiSlashContext,
+    "/memory" to Strings.aiSlashMemory,
+    "/memory files" to Strings.aiSlashMemoryFiles,
+    "/skills" to Strings.aiSlashSkills,
+    "/permissions" to Strings.aiSlashPermissions,
+    "/plan" to Strings.aiSlashPlan,
+    "/system" to Strings.aiSlashSystem,
+    "/compact" to Strings.aiSlashCompact,
+    "/resume" to Strings.aiSlashResume,
+    "/diff" to Strings.aiSlashDiff,
 )
 private val AGENT_TODO_SYSTEM_PROMPT: String = """
 For multi-step work, maintain a short task checklist with todo_write and todo_update.

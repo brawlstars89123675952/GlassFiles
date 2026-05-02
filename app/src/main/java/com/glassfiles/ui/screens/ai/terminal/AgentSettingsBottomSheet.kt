@@ -39,6 +39,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.glassfiles.data.ai.AiAgentPermissionMode
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.components.AiPickerSheet
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -121,66 +122,66 @@ fun AgentSettingsBottomSheet(
                 .padding(bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AgentSheetHeader("AGENT SETTINGS")
-            AgentSheetLabel("CHAT")
+            AgentSheetHeader(Strings.aiAgentSettingsTitle)
+            AgentSheetLabel(Strings.aiAgentSettingsChat)
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AgentSheetCommand(
-                        label = "[ chat history \u2192 ]",
+                        label = Strings.aiAgentSettingsHistory,
                         color = colors.textSecondary,
                         onClick = onOpenHistory,
                     )
                     AgentSheetCommand(
-                        label = "[ system prompt \u2192 ]",
+                        label = Strings.aiAgentSettingsSystemPrompt,
                         color = colors.warning,
                         onClick = onOpenSystemPrompt,
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     AgentSheetCommand(
-                        label = "[ context inspector \u2192 ]",
+                        label = Strings.aiAgentSettingsContextInspector,
                         color = colors.accent,
                         onClick = onOpenContextInspector,
                     )
                 }
             }
             AgentSheetDivider()
-            AgentSheetLabel("DISPLAY MODE")
+            AgentSheetLabel(Strings.aiAgentSettingsDisplayMode)
             AgentSheetCheckbox(
-                label = "expand tool calls by default",
+                label = Strings.aiAgentExpandToolsDefault,
                 checked = state.expandToolCallsByDefault,
                 onChange = onExpandToolCallsChange,
             )
             AgentSheetCheckbox(
-                label = "collapsed (tap to expand)",
+                label = Strings.aiAgentCollapseToolsDefault,
                 checked = !state.expandToolCallsByDefault,
                 onChange = { checked -> onExpandToolCallsChange(!checked) },
             )
             AgentSheetDivider()
             AgentTerminalPickerRow(
-                label = "REPO",
+                label = Strings.aiAgentSettingsRepo,
                 value = state.repoLabel,
-                title = "Select repository",
+                title = Strings.aiAgentSelectRepositoryTitle,
                 options = repos,
                 onSelect = onRepoSelected,
             )
             AgentTerminalPickerRow(
-                label = "BRANCH",
+                label = Strings.aiAgentSelectBranch.uppercase(),
                 value = state.branchLabel,
-                title = "Select branch",
+                title = Strings.aiAgentSelectBranchTitle,
                 options = branches,
                 onSelect = onBranchSelected,
             )
             AgentTerminalPickerRow(
-                label = "MODEL",
+                label = Strings.aiAgentSettingsModel,
                 value = state.modelLabel,
-                title = "Select model",
+                title = Strings.aiAgentSelectModelTitle,
                 options = models,
                 onSelect = onModelSelected,
             )
             AgentSheetDivider()
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                AgentSheetLabel("MODE")
+                AgentSheetLabel(Strings.aiAgentSettingsMode)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AgentMode.values().forEach { mode ->
                         val selected = mode == state.mode
@@ -207,7 +208,7 @@ fun AgentSettingsBottomSheet(
             }
             AgentSheetDivider()
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                AgentSheetLabel("PERMISSIONS")
+                AgentSheetLabel(Strings.aiAgentSettingsPermissions)
                 AiAgentPermissionMode.values()
                     .filter { it != AiAgentPermissionMode.CUSTOM }
                     .chunked(2)
@@ -239,37 +240,37 @@ fun AgentSettingsBottomSheet(
             }
             AgentSheetDivider()
             AgentSheetCheckbox(
-                label = "YOLO mode (no confirmations)",
+                label = Strings.aiAgentYoloMode,
                 checked = state.yoloMode,
                 onChange = onYoloModeChange,
             )
             AgentSheetCheckbox(
-                label = "auto-approve reads",
+                label = Strings.aiAgentAutoApproveReadsLabel,
                 checked = state.autoApproveReads,
                 onChange = onAutoApproveReadsChange,
             )
             AgentSheetCheckbox(
-                label = "auto-approve edits",
+                label = Strings.aiAgentAutoApproveEditsLabel,
                 checked = state.autoApproveEdits,
                 onChange = onAutoApproveEditsChange,
             )
             AgentSheetCheckbox(
-                label = "auto-approve writes / new files",
+                label = Strings.aiAgentAutoApproveWritesLabel,
                 checked = state.autoApproveWrites,
                 onChange = onAutoApproveWritesChange,
             )
             AgentSheetCheckbox(
-                label = "auto-approve commits / PRs",
+                label = Strings.aiAgentAutoApproveCommitsLabel,
                 checked = state.autoApproveCommits,
                 onChange = onAutoApproveCommitsChange,
             )
             AgentSheetCheckbox(
-                label = "destructive option (approval always required)",
+                label = Strings.aiAgentDestructiveApprovalLabel,
                 checked = state.autoApproveDestructive,
                 onChange = onAutoApproveDestructiveChange,
             )
             AgentSheetCheckbox(
-                label = "session trust for edits/writes",
+                label = Strings.aiAgentSessionTrustLabel,
                 checked = state.sessionTrust,
                 onChange = onSessionTrustChange,
             )
@@ -278,34 +279,34 @@ fun AgentSettingsBottomSheet(
                 onSelect = onWriteLimitChange,
             )
             AgentSheetCommand(
-                label = "[ protected paths: ${state.protectedPathsCount} ]",
+                label = "[ ${Strings.aiAgentProtectedPaths}: ${state.protectedPathsCount} ]",
                 color = colors.warning,
                 onClick = { showProtectedPaths = true },
             )
             AgentSheetDivider()
-            AgentSheetLabel("BACKGROUND EXECUTION")
+            AgentSheetLabel(Strings.aiAgentSettingsBackground)
             AgentSheetCheckbox(
-                label = "continue working when app is in background",
+                label = Strings.aiAgentBackgroundExecution,
                 checked = state.backgroundExecution,
                 onChange = onBackgroundExecutionChange,
             )
             AgentSheetCheckbox(
-                label = "keep CPU awake during long tasks",
+                label = Strings.aiAgentKeepCpuAwake,
                 checked = state.keepCpuAwake,
                 onChange = onKeepCpuAwakeChange,
             )
             AgentSheetDivider()
-            AgentSheetLabel("WORKSPACE MODE")
+            AgentSheetLabel(Strings.aiAgentSettingsWorkspace)
             AgentSheetCheckbox(
-                label = "use workspaces for atomic changes",
+                label = Strings.aiAgentUseWorkspaces,
                 checked = state.workspaceMode,
                 onChange = onWorkspaceModeChange,
             )
             Text(
                 text = if (state.workspaceMode) {
-                    "edits accumulate in SQLite until review"
+                    Strings.aiAgentWorkspaceOnHint
                 } else {
-                    "legacy: write tools commit immediately"
+                    Strings.aiAgentWorkspaceOffHint
                 },
                 color = colors.textMuted,
                 fontFamily = JetBrainsMono,
@@ -313,65 +314,65 @@ fun AgentSettingsBottomSheet(
                 lineHeight = 1.4.em,
             )
             AgentSheetDivider()
-            AgentSheetLabel("MEMORY")
+            AgentSheetLabel(Strings.aiAgentSettingsMemory)
             AgentSheetCheckbox(
-                label = "project knowledge (project.md)",
+                label = Strings.aiAgentMemoryProjectKnowledge,
                 checked = state.memoryProjectKnowledge,
                 onChange = onMemoryProjectKnowledgeChange,
             )
             AgentSheetCheckbox(
-                label = "user preferences (preferences.md)",
+                label = Strings.aiAgentMemoryUserPreferences,
                 checked = state.memoryUserPreferences,
                 onChange = onMemoryUserPreferencesChange,
             )
             AgentSheetCheckbox(
-                label = "chat summaries",
+                label = Strings.aiAgentMemoryChatSummaries,
                 checked = state.memoryChatSummaries,
                 onChange = onMemoryChatSummariesChange,
             )
             AgentSheetCheckbox(
-                label = "semantic search across chats",
+                label = Strings.aiAgentMemorySemanticSearch,
                 checked = state.memorySemanticSearch,
                 onChange = onMemorySemanticSearchChange,
             )
             AgentSheetDivider()
-            AgentSheetLabel("WORKING MEMORY")
+            AgentSheetLabel(Strings.aiAgentSettingsWorkingMemory)
             AgentSheetCheckbox(
-                label = "maintain working memory during tasks",
+                label = Strings.aiAgentMaintainWorkingMemory,
                 checked = state.workingMemoryEnabled,
                 onChange = onWorkingMemoryEnabledChange,
             )
             AgentSheetCheckbox(
-                label = "auto-remind agent to update after edits",
+                label = Strings.aiAgentWorkingMemoryReminders,
                 checked = state.workingMemoryReminders,
                 onChange = onWorkingMemoryRemindersChange,
             )
             AgentSheetCommand(
-                label = "[ view working memory \u2192 ]",
+                label = Strings.aiAgentViewWorkingMemory,
                 color = colors.warning,
                 onClick = onViewWorkingMemory,
             )
             AgentSheetDivider()
-            AgentSheetLabel("SKILLS")
+            AgentSheetLabel(Strings.aiAgentSettingsSkills)
             AgentSheetCheckbox(
-                label = "enable skills",
+                label = Strings.aiAgentEnableSkills,
                 checked = state.skillsEnabled,
                 onChange = onSkillsEnabledChange,
             )
             AgentSheetCheckbox(
-                label = "auto-suggest matching skill",
+                label = Strings.aiAgentAutoSuggestSkill,
                 checked = state.skillsAutoSuggest,
                 onChange = onSkillsAutoSuggestChange,
             )
             AgentSheetCheckbox(
-                label = "auto-detection (when_to_use)",
+                label = Strings.aiAgentAutoDetectSkill,
                 checked = state.skillsAutoDetect,
                 onChange = onSkillsAutoDetectChange,
             )
             AgentTerminalPickerRow(
-                label = "SELECTOR MODEL",
+                label = Strings.aiAgentSelectorModel,
                 value = state.skillsAutoDetectModel,
-                title = "Selector model",
+                title = Strings.aiAgentSelectorModelTitle,
                 options = AgentSettingsOptions(
                     items = listOf("claude-haiku-4-5", "claude-3-5-haiku", "gpt-5.5-mini", "gpt-4.1-mini", "gpt-4o-mini", "gemini-2.5-flash"),
                     selected = state.skillsAutoDetectModel,
@@ -381,9 +382,9 @@ fun AgentSettingsBottomSheet(
                 onSelect = onSkillsAutoDetectModelChange,
             )
             AgentTerminalPickerRow(
-                label = "MAX AUTO-SKILLS",
+                label = Strings.aiAgentMaxAutoSkills,
                 value = state.skillsAutoDetectMax.toString(),
-                title = "Max auto-detected skills",
+                title = Strings.aiAgentMaxAutoSkillsTitle,
                 options = AgentSettingsOptions(
                     items = listOf(1, 2, 3, 4, 5),
                     selected = state.skillsAutoDetectMax,
@@ -393,51 +394,51 @@ fun AgentSettingsBottomSheet(
                 onSelect = onSkillsAutoDetectMaxChange,
             )
             AgentSheetCheckbox(
-                label = "allow untrusted dangerous tools",
+                label = Strings.aiAgentAllowUntrustedDangerous,
                 checked = state.skillsAllowUntrustedDangerous,
                 onChange = onSkillsAllowUntrustedDangerousChange,
             )
-            AgentSheetLabel("selected skill: ${state.selectedSkillLabel}")
+            AgentSheetLabel("${Strings.aiAgentSelectedSkillPrefix}: ${state.selectedSkillLabel}")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentSheetCommand(
-                    label = "[ view installed skills: ${state.installedSkillsCount} ]",
+                    label = "[ ${Strings.aiAgentViewInstalledSkills}: ${state.installedSkillsCount} ]",
                     color = colors.warning,
                     onClick = onViewSkills,
                 )
                 AgentSheetCommand(
-                    label = "[+ import .gskill]",
+                    label = Strings.aiAgentImportSkillPack,
                     color = colors.accent,
                     onClick = onImportSkillPack,
                 )
             }
             AgentSheetDivider()
-            AgentSheetLabel("MEMORY FILES")
+            AgentSheetLabel(Strings.aiAgentSettingsMemoryFiles)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentSheetCommand(
-                    label = "[ view memory files \u2192 ]",
+                    label = Strings.aiAgentViewMemoryFiles,
                     color = colors.warning,
                     onClick = onViewMemoryFiles,
                 )
                 AgentSheetCommand(
-                    label = "[ clear all memory ]",
+                    label = Strings.aiAgentClearAllMemory,
                     color = colors.error,
                     onClick = onClearMemory,
                 )
             }
             AgentSheetCheckbox(
-                label = "instant render (no streaming animation)",
+                label = Strings.aiAgentInstantRender,
                 checked = state.instantRender,
                 onChange = onInstantRenderChange,
             )
             AgentSheetDivider()
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentSheetCommand(
-                    label = "[ clear chat ]",
+                    label = Strings.aiAgentClearChat,
                     color = colors.error,
                     onClick = onClearChat,
                 )
                 AgentSheetCommand(
-                    label = "[ export chat ]",
+                    label = Strings.aiAgentExportChat,
                     color = colors.textSecondary,
                     onClick = onExportChat,
                 )
@@ -561,7 +562,7 @@ private fun AgentWriteLimitRow(
 ) {
     val colors = AgentTerminal.colors
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        AgentSheetLabel("WRITE LIMIT PER TASK")
+        AgentSheetLabel(Strings.aiAgentWriteLimitPerTask)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(20, 50, 100, 0).forEach { limit ->
                 val isSelected = selected == limit
@@ -599,9 +600,9 @@ private fun AgentProtectedPathsDialog(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AgentSheetHeader("PROTECTED PATHS")
+            AgentSheetHeader(Strings.aiAgentProtectedPathsTitle)
             Text(
-                text = "one glob pattern per line",
+                text = Strings.aiAgentProtectedPathsHint,
                 color = colors.textMuted,
                 fontFamily = JetBrainsMono,
                 fontSize = AgentTerminal.type.label,
@@ -626,7 +627,7 @@ private fun AgentProtectedPathsDialog(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 AgentSheetCommand(
-                    label = "[ done ]",
+                    label = "[ ${Strings.done.lowercase()} ]",
                     color = colors.accent,
                     onClick = onDismiss,
                 )
@@ -759,10 +760,17 @@ data class AgentSettingsState(
     val expandToolCallsByDefault: Boolean,
 )
 
-enum class AgentMode(val label: String) {
-    ECO("eco"),
-    BALANCED("balanced"),
-    MAX_QUALITY("max quality"),
+enum class AgentMode {
+    ECO,
+    BALANCED,
+    MAX_QUALITY;
+
+    val label: String
+        get() = when (this) {
+            ECO -> Strings.aiAgentModeEco
+            BALANCED -> Strings.aiAgentModeBalanced
+            MAX_QUALITY -> Strings.aiAgentModeMaxQuality
+        }
 }
 
 data class RepoDisplay(val key: String, val title: String, val subtitle: String?)

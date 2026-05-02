@@ -118,12 +118,12 @@ import java.util.Locale
 
 private const val HISTORY_MODE = "coding"
 private const val SESSION_MODE = AiChatSessionStore.MODE_CODING
-private val CODING_SLASH_COMMANDS = listOf(
-    "/help" to "show commands",
-    "/clear" to "clear current coding chat",
-    "/cost" to "show context estimate",
-    "/compact" to "compact transcript",
-    "/resume" to "open history",
+private fun codingSlashCommands() = listOf(
+    "/help" to Strings.aiSlashShowCommands,
+    "/clear" to Strings.aiSlashClearCoding,
+    "/cost" to Strings.aiSlashCost,
+    "/compact" to Strings.aiSlashCompact,
+    "/resume" to Strings.aiSlashResume,
 )
 
 /**
@@ -299,7 +299,7 @@ private fun CodingSessionsList(
                     fontFamily = JetBrainsMono,
                 )
                 Text(
-                    "${sessions.size} sessions",
+                    "${sessions.size} ${Strings.aiChatSessions}",
                     fontSize = 10.sp,
                     color = colors.textSecondary,
                 )
@@ -338,7 +338,7 @@ private fun CodingSessionsList(
                 Box(Modifier.weight(1f)) {
                     if (query.isEmpty()) {
                         Text(
-                            "Search…",
+                            Strings.aiChatSearchHint,
                             color = colors.textSecondary,
                             fontSize = 13.sp,
                         )
@@ -364,7 +364,7 @@ private fun CodingSessionsList(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    if (sessions.isEmpty()) "No chats yet" else "Nothing found",
+                    if (sessions.isEmpty()) Strings.aiChatNoChatsYet else Strings.aiChatNoMatches,
                     color = colors.textSecondary,
                     fontSize = 13.sp,
                 )
@@ -402,7 +402,7 @@ private fun CodingSessionsList(
                             )
                             Spacer(Modifier.size(2.dp))
                             Text(
-                                "${sdf.format(Date(s.updatedAt))} · ${s.messages.size} msgs",
+                                "${sdf.format(Date(s.updatedAt))} · ${s.messages.size} ${if (s.messages.size == 1) Strings.aiChatMessagesShort else Strings.aiChatMessagesShortPlural}",
                                 color = colors.textSecondary,
                                 fontSize = 11.sp,
                                 fontFamily = JetBrainsMono,
@@ -446,7 +446,7 @@ private fun CodingSessionsList(
             )
             Spacer(Modifier.size(8.dp))
             Text(
-                "New chat",
+                Strings.aiChatNewFull,
                 color = colors.background,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -594,14 +594,14 @@ private fun CodingChatView(
                     pendingFile = runCatching { AiAttachmentProcessor.prepare(context, uri) }
                         .getOrElse { e ->
                             AiPreparedAttachment(
-                                name = name.ifBlank { "attachment" },
+                                name = name.ifBlank { Strings.aiAttachment },
                                 mimeType = mime,
                                 extension = "",
                                 tempPath = "",
                                 isArchive = false,
                                 promptContent = "[attachment error: ${e.message ?: e.javaClass.simpleName}]",
                                 previewContent = null,
-                                summary = "attachment error",
+                                summary = Strings.aiAttachmentError,
                             )
                         }
                     pendingImage = null
@@ -690,33 +690,33 @@ private fun CodingChatView(
     }
 
     fun codingSlashHelp(): String = """
-        [slash commands]
-        /help       show this list
-        /clear      clear current coding chat
-        /cost       show local token/cost estimate
-        /compact    compact visible transcript locally
-        /resume     open coding chat history
+        ${Strings.aiSlashCommands}
+        /help       ${Strings.aiSlashShowCommands}
+        /clear      ${Strings.aiSlashClearCoding}
+        /cost       ${Strings.aiSlashCost}
+        /compact    ${Strings.aiSlashCompactVisible}
+        /resume     ${Strings.aiSlashResume}
     """.trimIndent()
 
     fun codingCostSummary(): String = buildString {
-        appendLine("[cost estimate]")
-        appendLine("model: ${currentModel?.displayName ?: modelId.ifBlank { "not selected" }}")
-        appendLine("input chars: ${codingInputChars(transcript)}")
-        appendLine("output chars: ${codingOutputChars(transcript)}")
-        appendLine("tokens: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
+        appendLine(Strings.aiCostEstimateTitle)
+        appendLine("${Strings.aiCostModel}: ${currentModel?.displayName ?: modelId.ifBlank { Strings.aiNotSelected }}")
+        appendLine("${Strings.aiCostInputChars}: ${codingInputChars(transcript)}")
+        appendLine("${Strings.aiCostOutputChars}: ${codingOutputChars(transcript)}")
+        appendLine("${Strings.aiCostTokens}: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
         usageEstimate.costUsd?.let {
-            appendLine("cost: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
+            appendLine("${Strings.aiCostCost}: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
         }
-        appendLine("messages: ${transcript.size}")
+        appendLine("${Strings.aiCostMessages}: ${transcript.size}")
     }.trimEnd()
 
     fun compactCodingLocally(commandText: String) {
         if (streaming) {
-            appendLocalCommandResult(commandText, "[system] wait for the current response to finish before compacting.")
+            appendLocalCommandResult(commandText, Strings.aiWaitForResponse)
             return
         }
         if (transcript.size <= 8) {
-            appendLocalCommandResult(commandText, "[system] nothing to compact yet.")
+            appendLocalCommandResult(commandText, Strings.aiNothingToCompact)
             return
         }
         val recentUser = transcript
@@ -725,13 +725,13 @@ private fun CodingChatView(
             .filter { it.isNotBlank() }
             .takeLast(6)
         val summary = buildString {
-            appendLine("[compact summary]")
-            appendLine("messages: ${transcript.size}")
-            appendLine("input chars: ${codingInputChars(transcript)}")
-            appendLine("output chars: ${codingOutputChars(transcript)}")
+            appendLine(Strings.aiCompactSummary)
+            appendLine("${Strings.aiCostMessages}: ${transcript.size}")
+            appendLine("${Strings.aiCostInputChars}: ${codingInputChars(transcript)}")
+            appendLine("${Strings.aiCostOutputChars}: ${codingOutputChars(transcript)}")
             if (recentUser.isNotEmpty()) {
                 appendLine()
-                appendLine("recent user requests:")
+                appendLine("${Strings.aiRecentUserRequests}:")
                 recentUser.forEach { appendLine("- ${it.lineSequence().firstOrNull().orEmpty().take(160)}") }
             }
         }.trimEnd()
@@ -766,7 +766,7 @@ private fun CodingChatView(
                 persist()
                 onBack()
             }
-            else -> appendLocalCommandResult(rawText, "[system] unknown slash command: /$name\n\n${codingSlashHelp()}")
+            else -> appendLocalCommandResult(rawText, "${Strings.aiUnknownSlashCommand}: /$name\n\n${codingSlashHelp()}")
         }
         return true
     }
@@ -774,8 +774,8 @@ private fun CodingChatView(
     fun actuallyDoSend(text: String, image: String?, file: AiPreparedAttachment?) {
         val displayText = text.ifBlank {
             when {
-                file != null -> "Analyze ${file.name}"
-                image != null -> "Analyze this image"
+                file != null -> "${Strings.aiAnalyzeFile} ${file.name}"
+                image != null -> Strings.aiAnalyzeImage
                 else -> text
             }
         }
@@ -861,7 +861,7 @@ private fun CodingChatView(
             .background(colors.background),
     ) {
         TerminalPageBar(
-            title = "> coding",
+            title = "> ${Strings.aiCoding.lowercase()}",
             subtitle = Strings.aiCodingHint,
             onBack = onBack,
             trailing = {
@@ -872,13 +872,13 @@ private fun CodingChatView(
                     CodingUsageChip(usageEstimate)
                     if (transcript.isNotEmpty()) {
                         TerminalPillButton(
-                            label = "regen",
+                            label = Strings.aiCodingRegenerate.lowercase(),
                             onClick = ::regenerate,
                             enabled = !streaming,
                             accent = false,
                         )
                         TerminalPillButton(
-                            label = "clear",
+                            label = Strings.aiCodingClear.lowercase(),
                             onClick = ::clearAll,
                             destructive = true,
                         )
@@ -961,7 +961,7 @@ private fun CodingChatView(
         if (draft.text.trim().startsWith("/") && pendingImage == null && pendingFile == null) {
             TerminalSlashCommandHint(
                 query = draft.text,
-                commands = CODING_SLASH_COMMANDS,
+                commands = codingSlashCommands(),
                 onPick = { command ->
                     val next = "$command "
                     draft = TextFieldValue(next, selection = TextRange(next.length))
@@ -1192,7 +1192,7 @@ private fun FileContentSummary(fileContent: String) {
         Icon(Icons.Rounded.AttachFile, null, Modifier.size(14.dp), tint = colors.textSecondary)
         Spacer(Modifier.size(8.dp))
         Text(
-            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { "Attached file" },
+            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { Strings.aiAttachedFile },
             color = colors.textSecondary,
             fontSize = 11.sp,
             fontFamily = JetBrainsMono,

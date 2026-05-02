@@ -234,7 +234,7 @@ private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
     var proxy by remember { mutableStateOf(AiKeyStore.getGeminiProxy(context)) }
     var qwenRegion by remember { mutableStateOf(AiKeyStore.getQwenRegion(context)) }
     val colors = AiModuleTheme.colors
-    AiModuleScreenScaffold(title = "AI · setup", onBack = onBack) {
+    AiModuleScreenScaffold(title = Strings.aiSetupTitle, onBack = onBack) {
         Column(
             Modifier
                 .fillMaxSize()
@@ -243,7 +243,7 @@ private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             AiModuleText(
-                "Add at least one provider key to continue.",
+                Strings.aiSetupAddKey,
                 color = colors.textSecondary,
                 fontFamily = JetBrainsMono,
                 fontSize = 13.sp,
@@ -265,14 +265,14 @@ private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
                 )
             }
             AiModuleHairline()
-            AiModuleSectionLabel("> google proxy (optional)")
+            AiModuleSectionLabel("> ${Strings.aiSetupGoogleProxy}")
             TerminalMonoField(
                 value = proxy,
                 onValueChange = { proxy = it },
-                placeholder = "proxy (optional)",
+                placeholder = Strings.aiSetupProxyOptional,
                 singleLine = true,
             )
-            AiModuleSectionLabel("> qwen region")
+            AiModuleSectionLabel("> ${Strings.aiSetupQwenRegion}")
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("intl" to "singapore", "cn" to "beijing").forEach { (code, label) ->
                     AiModulePillButton(
@@ -285,7 +285,7 @@ private fun ApiKeySetupScreen(onBack: () -> Unit, onKeySet: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             val ok = keyValues.values.any { it.trim().length > 10 }
             AiModulePillButton(
-                label = "continue",
+                label = Strings.aiSetupContinue,
                 onClick = {
                     AiProviderId.entries.forEach { provider ->
                         AiKeyStore.saveKey(context, provider, keyValues[provider].orEmpty())
@@ -319,13 +319,13 @@ private fun ChatHistoryList(
     else sessions.filter { it.title.contains(searchQ, true) || it.messages.any { m -> m.content.contains(searchQ, true) } }
     val colors = AiModuleTheme.colors
     AiModuleScreenScaffold(
-        title = "AI · chat",
+        title = Strings.aiChatTitle,
         onBack = onBack,
-        subtitle = if (sessions.isNotEmpty()) "${sessions.size} session${if (sessions.size == 1) "" else "s"}" else null,
+        subtitle = if (sessions.isNotEmpty()) "${sessions.size} ${if (sessions.size == 1) Strings.aiChatSession else Strings.aiChatSessions}" else null,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 AiModulePillButton(
-                    label = "new",
+                    label = Strings.aiChatNew,
                     onClick = onNew,
                     leadingIcon = Icons.Rounded.Add,
                     accent = true,
@@ -334,7 +334,7 @@ private fun ChatHistoryList(
                     AiModuleIconButton(onClick = onDelAll, modifier = Modifier.size(36.dp)) {
                         AiModuleIcon(
                             Icons.Rounded.DeleteSweep,
-                            contentDescription = "clear all",
+                            contentDescription = Strings.aiHistoryClearAll,
                             modifier = Modifier.size(18.dp),
                             tint = colors.warning,
                         )
@@ -371,7 +371,7 @@ private fun ChatHistoryList(
                             )
                             if (searchQ.isEmpty()) {
                                 AiModuleText(
-                                    "search chats…",
+                                    Strings.aiChatSearchHint,
                                     color = colors.textMuted,
                                     fontFamily = JetBrainsMono,
                                     fontSize = 13.sp,
@@ -390,7 +390,7 @@ private fun ChatHistoryList(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     AiModuleText(
-                        text = if (searchQ.isNotBlank()) "no matches" else "> no sessions yet",
+                        text = if (searchQ.isNotBlank()) Strings.aiChatNoMatches else Strings.aiChatNoSessions,
                         color = colors.textSecondary,
                         fontFamily = JetBrainsMono,
                         fontSize = 14.sp,
@@ -398,7 +398,7 @@ private fun ChatHistoryList(
                     if (searchQ.isBlank()) {
                         Spacer(Modifier.height(6.dp))
                         AiModuleText(
-                            text = "tap [ new ] above to start.",
+                            text = Strings.aiChatStartHint,
                             color = colors.textMuted,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -418,14 +418,14 @@ private fun ChatHistoryList(
                             title = s.title,
                             prefix = "▸",
                             prefixColor = pc,
-                            subtitle = "${sdf.format(Date(s.updatedAt))}  ·  ${s.messages.size} msg" +
+                            subtitle = "${sdf.format(Date(s.updatedAt))}  ·  ${s.messages.size} ${if (s.messages.size == 1) Strings.aiChatMessagesShort else Strings.aiChatMessagesShortPlural}" +
                                 (providerLabel?.let { "  ·  $it" } ?: ""),
                             onClick = { onOpen(s) },
                             trailing = {
                                 AiModuleIconButton(onClick = { onDel(s) }, modifier = Modifier.size(28.dp)) {
                                     AiModuleIcon(
                                         Icons.Rounded.Close,
-                                        contentDescription = "delete",
+                                        contentDescription = Strings.delete,
                                         modifier = Modifier.size(14.dp),
                                         tint = colors.textMuted,
                                     )
@@ -553,7 +553,7 @@ private fun ChatView(
                                     isArchive = false,
                                     promptContent = "Attached file: $name\n[read error: ${error.message ?: error.javaClass.simpleName}]",
                                     previewContent = null,
-                                    summary = "$name · read error",
+                                    summary = "$name · ${Strings.aiReadError}",
                                 )
                             }
                         attachedFile = prepared
@@ -562,7 +562,7 @@ private fun ChatView(
                 }
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "${Strings.error}: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -638,13 +638,13 @@ private fun ChatView(
             ?: modelId.takeIf { it.isNotBlank() }
             ?: selectedProvider?.displayName
             ?: "AI"
-        val sb = StringBuilder("# AI Chat\n**$modelLabel** — ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())}\n\n---\n\n")
-        messages.forEach { m -> sb.append(if (m.role == "user") "**You:**\n" else "**AI:**\n").append(m.content).append("\n\n") }
+        val sb = StringBuilder("# ${Strings.aiChatExportTitle}\n**$modelLabel** — ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())}\n\n---\n\n")
+        messages.forEach { m -> sb.append(if (m.role == "user") "**${Strings.aiChatYou}:**\n" else "**AI:**\n").append(m.content).append("\n\n") }
         val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_AI")
         dir.mkdirs()
         val f = File(dir, "chat_${System.currentTimeMillis()}.md")
         f.writeText(sb.toString())
-        Toast.makeText(context, "Saved: ${f.name}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "${Strings.aiKeySaved}: ${f.name}", Toast.LENGTH_SHORT).show()
     }
     fun saveCode(code: String, lang: String) {
         val ext = when (lang) {
@@ -657,7 +657,7 @@ private fun ChatView(
         dir.mkdirs()
         val f = File(dir, "code_${System.currentTimeMillis()}.$ext")
         f.writeText(code)
-        Toast.makeText(context, "Saved: ${f.name}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "${Strings.aiKeySaved}: ${f.name}", Toast.LENGTH_SHORT).show()
     }
     fun speak(text: String, idx: Int) {
         if (!ttsReady || tts == null) return
@@ -669,10 +669,10 @@ private fun ChatView(
     fun voiceInput() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak...")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, Strings.aiVoicePrompt)
         }
         try { voiceLauncher.launch(intent) } catch (_: Exception) {
-            Toast.makeText(context, "Voice not available", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, Strings.aiVoiceUnavailable, Toast.LENGTH_SHORT).show()
         }
     }
     fun recordUsage(requestProvider: AiProviderId, requestModelId: String, requestMessages: List<ChatMessage>, output: String) {
@@ -696,35 +696,35 @@ private fun ChatView(
     }
 
     fun chatSlashHelp(): String = """
-        [slash commands]
-        /help          show this list
-        /clear         clear current chat
-        /cost          show local token/cost estimate
-        /compact       compact visible transcript locally
-        /resume        open chat history
-        /export        save chat markdown to Downloads
-        /settings      open API/model settings
+        ${Strings.aiSlashCommands}
+        /help          ${Strings.aiSlashShowCommands}
+        /clear         ${Strings.aiSlashClearChat}
+        /cost          ${Strings.aiSlashCost}
+        /compact       ${Strings.aiSlashCompactVisible}
+        /resume        ${Strings.aiSlashResume}
+        /export        ${Strings.aiSlashExport}
+        /settings      ${Strings.aiSlashSettings}
     """.trimIndent()
 
     fun chatCostSummary(): String = buildString {
-        appendLine("[cost estimate]")
-        appendLine("model: ${currentModel?.displayName ?: modelId.ifBlank { "not selected" }}")
-        appendLine("input chars: ${chatInputChars(messages) + pendingInputChars}")
-        appendLine("output chars: ${chatOutputChars(messages) + currentResponse.length}")
-        appendLine("tokens: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
+        appendLine(Strings.aiCostEstimateTitle)
+        appendLine("${Strings.aiCostModel}: ${currentModel?.displayName ?: modelId.ifBlank { Strings.aiNotSelected }}")
+        appendLine("${Strings.aiCostInputChars}: ${chatInputChars(messages) + pendingInputChars}")
+        appendLine("${Strings.aiCostOutputChars}: ${chatOutputChars(messages) + currentResponse.length}")
+        appendLine("${Strings.aiCostTokens}: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
         usageEstimate.costUsd?.let {
-            appendLine("cost: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
+            appendLine("${Strings.aiCostCost}: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
         }
-        appendLine("messages: ${messages.size}")
+        appendLine("${Strings.aiCostMessages}: ${messages.size}")
     }.trimEnd()
 
     fun compactChatLocally(commandText: String) {
         if (isLoading) {
-            appendLocalCommandResult(commandText, "[system] wait for the current response to finish before compacting.")
+            appendLocalCommandResult(commandText, Strings.aiWaitForResponse)
             return
         }
         if (messages.size <= 8) {
-            appendLocalCommandResult(commandText, "[system] nothing to compact yet.")
+            appendLocalCommandResult(commandText, Strings.aiNothingToCompact)
             return
         }
         val recentUser = messages
@@ -733,13 +733,13 @@ private fun ChatView(
             .filter { it.isNotBlank() }
             .takeLast(6)
         val summary = buildString {
-            appendLine("[compact summary]")
-            appendLine("messages: ${messages.size}")
-            appendLine("input chars: ${chatInputChars(messages)}")
-            appendLine("output chars: ${chatOutputChars(messages)}")
+            appendLine(Strings.aiCompactSummary)
+            appendLine("${Strings.aiCostMessages}: ${messages.size}")
+            appendLine("${Strings.aiCostInputChars}: ${chatInputChars(messages)}")
+            appendLine("${Strings.aiCostOutputChars}: ${chatOutputChars(messages)}")
             if (recentUser.isNotEmpty()) {
                 appendLine()
-                appendLine("recent user requests:")
+                appendLine("${Strings.aiRecentUserRequests}:")
                 recentUser.forEach { appendLine("- ${it.lineSequence().firstOrNull().orEmpty().take(160)}") }
             }
         }.trimEnd()
@@ -766,7 +766,7 @@ private fun ChatView(
                 attachedImage = null
                 attachedFile = null
                 save(messages)
-                Toast.makeText(context, "Chat cleared", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, Strings.aiChatCleared, Toast.LENGTH_SHORT).show()
             }
             "cost" -> appendLocalCommandResult(rawText, chatCostSummary())
             "compact" -> compactChatLocally(rawText)
@@ -783,7 +783,7 @@ private fun ChatView(
                 input = ""
                 showSettings = true
             }
-            else -> appendLocalCommandResult(rawText, "[system] unknown slash command: /$name\n\n${chatSlashHelp()}")
+            else -> appendLocalCommandResult(rawText, "${Strings.aiUnknownSlashCommand}: /$name\n\n${chatSlashHelp()}")
         }
         return true
     }
@@ -874,8 +874,8 @@ private fun ChatView(
         }
         val file = attachedFile
         val fc = file?.promptContent
-        if (t.isEmpty() && attachedImage != null) t = "What is in this image?"
-        if (t.isEmpty() && fc != null) t = if (file?.isArchive == true) "Analyze this archive" else "Analyze this file"
+        if (t.isEmpty() && attachedImage != null) t = Strings.aiWhatsInThisImage
+        if (t.isEmpty() && fc != null) t = if (file?.isArchive == true) Strings.aiAnalyzeArchive else Strings.aiAnalyzeFile
         input = ""
         val img = attachedImage
         val fcc = fc
@@ -1001,18 +1001,18 @@ private fun ChatView(
     if (editIdx >= 0) {
         AiModuleAlertDialog(
             onDismissRequest = { editIdx = -1 },
-            title = "edit message",
+            title = Strings.aiEditMessage,
             confirmButton = {
-                AiModulePillButton(label = "send", onClick = { confirmEdit() }, accent = true)
+                AiModulePillButton(label = Strings.aiCodingSend.lowercase(), onClick = { confirmEdit() }, accent = true)
             },
             dismissButton = {
-                AiModulePillButton(label = "cancel", onClick = { editIdx = -1 }, accent = false)
+                AiModulePillButton(label = Strings.cancel.lowercase(), onClick = { editIdx = -1 }, accent = false)
             },
         ) {
                 TerminalMonoField(
                     value = editTxt,
                     onValueChange = { editTxt = it },
-                    placeholder = "edit…",
+                    placeholder = Strings.aiEditPlaceholder,
                     singleLine = false,
                     minHeight = 90.dp,
                 )
@@ -1027,9 +1027,9 @@ private fun ChatView(
     ) {
         // Topbar
         AiModulePageBar(
-            title = "AI · chat",
+            title = Strings.aiChatTitle,
             onBack = { save(messages); onBack() },
-            subtitle = currentFolder?.let { "ctx: ${it.substringAfterLast("/")}" },
+            subtitle = currentFolder?.let { "${Strings.aiContextPrefix}: ${it.substringAfterLast("/")}" },
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
@@ -1045,11 +1045,11 @@ private fun ChatView(
                         Box(Modifier.size(6.dp).clip(RoundedCornerShape(50)).background(pc))
                         AiModuleText(
                             when {
-                                loadingModels -> "loading"
-                                modelLoadError != null -> "model err"
+                                loadingModels -> Strings.aiLoading
+                                modelLoadError != null -> Strings.aiModelErrorShort
                                 currentModel != null -> currentModel.displayName
                                 modelId.isNotBlank() -> modelId
-                                else -> "model"
+                                else -> Strings.aiModelShort
                             },
                             color = colors.textPrimary,
                             fontFamily = JetBrainsMono,
@@ -1168,14 +1168,14 @@ private fun ChatView(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         val actions = mutableListOf(
-                            "shorter" to "shorter",
-                            "detail" to "detail",
+                            "shorter" to Strings.aiActionShorter,
+                            "detail" to Strings.aiActionMoreDetail,
                             "translate_ru" to "ru",
                             "translate_en" to "en",
-                            "explain" to "explain",
-                            "fix" to "fix",
+                            "explain" to Strings.aiActionExplain,
+                            "fix" to Strings.aiActionFix,
                         )
-                        if (onRunInTerminal != null) actions.add("script" to "script")
+                        if (onRunInTerminal != null) actions.add("script" to Strings.aiActionScript)
                         items(actions) { (key, label) ->
                             AiModulePillButton(
                                 label = label,
@@ -1249,7 +1249,7 @@ private fun ChatView(
         if (input.trim().startsWith("/") && attachedImage == null && attachedFile == null) {
             ChatSlashCommandHint(
                 query = input,
-                commands = CHAT_SLASH_COMMANDS,
+                commands = chatSlashCommands(),
                 onPick = { command -> input = "$command " },
             )
         }
@@ -1260,7 +1260,7 @@ private fun ChatView(
             onPickFile = { filePicker.launch("*/*") },
             onPickCamera = {
                 try { cameraLauncher.launch(cameraUri) } catch (_: Exception) {
-                    Toast.makeText(context, "Camera not available", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, Strings.aiCameraUnavailable, Toast.LENGTH_SHORT).show()
                 }
             },
             onVoice = ::voiceInput,
@@ -1334,14 +1334,14 @@ private const val CHAT_AUTO_PROVIDER = "AUTO"
 private const val CHAT_PREFS = "ai_chat_screen"
 private const val CHAT_PREF_PROVIDER = "provider"
 private const val CHAT_PREF_MODEL = "model"
-private val CHAT_SLASH_COMMANDS = listOf(
-    "/help" to "show commands",
-    "/clear" to "clear current chat",
-    "/cost" to "show context estimate",
-    "/compact" to "compact transcript",
-    "/resume" to "open history",
-    "/export" to "save markdown to Downloads",
-    "/settings" to "open model/API settings",
+private fun chatSlashCommands() = listOf(
+    "/help" to Strings.aiSlashShowCommands,
+    "/clear" to Strings.aiSlashClearChat,
+    "/cost" to Strings.aiSlashCost,
+    "/compact" to Strings.aiSlashCompact,
+    "/resume" to Strings.aiSlashResume,
+    "/export" to Strings.aiSlashExport,
+    "/settings" to Strings.aiSlashSettings,
 )
 
 private data class ChatModelKey(
@@ -1508,7 +1508,7 @@ private fun ChatSlashCommandHint(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         AiModuleText(
-            "[slash commands]",
+            Strings.aiSlashCommands,
             color = colors.textMuted,
             fontFamily = JetBrainsMono,
             fontSize = 10.sp,
@@ -1578,7 +1578,7 @@ private fun EmptyChatBanner(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         AiModuleText(
-            "> ai/$providerName ready",
+            "> ai/$providerName ${Strings.aiReady}",
             color = providerColor,
             fontFamily = JetBrainsMono,
             fontSize = 14.sp,
@@ -1586,10 +1586,10 @@ private fun EmptyChatBanner(
         )
         AiModuleText(
             when {
-                modelLoadError != null -> "model load failed: $modelLoadError"
+                modelLoadError != null -> "${Strings.aiModelLoadFailed}: $modelLoadError"
                 model != null -> "${model.providerId.displayName} · ${model.displayName}"
-                provider != null -> "Select a chat-capable API model."
-                else -> "Add an API key and select a chat-capable model."
+                provider != null -> Strings.aiSelectChatModelHint
+                else -> Strings.aiAddApiKeySelectModel
             },
             color = colors.textMuted,
             fontFamily = JetBrainsMono,
@@ -1598,18 +1598,18 @@ private fun EmptyChatBanner(
         )
         if (currentFolder != null) {
             AiModuleText(
-                "context: ${currentFolder.substringAfterLast("/")}",
+                "${Strings.aiContextPrefix}: ${currentFolder.substringAfterLast("/")}",
                 color = colors.textSecondary,
                 fontFamily = JetBrainsMono,
                 fontSize = 11.sp,
             )
         }
         Spacer(Modifier.height(8.dp))
-        AiModuleSectionLabel("> suggested")
-        val suggestions = mutableListOf("Explain this code", "Analyze ZIP archive", "What's in this image?")
+        AiModuleSectionLabel(Strings.aiSuggested)
+        val suggestions = mutableListOf(Strings.aiExplainThisCode, Strings.aiAnalyzeZipArchive, Strings.aiWhatsInThisImage)
         if (currentFolder != null) {
-            suggestions.add(0, "What files are in this folder?")
-            suggestions.add(1, "What takes the most space here?")
+            suggestions.add(0, Strings.aiWhatFilesInFolder)
+            suggestions.add(1, Strings.aiWhatTakesMostSpace)
         }
         suggestions.take(5).forEach { q ->
             AiModuleListRow(
@@ -1734,7 +1734,7 @@ private fun TerminalChatMessage(
                                     context = context,
                                 )
                                 AiModulePillButton(
-                                    label = "save",
+                                    label = Strings.aiKeySave.lowercase(),
                                     onClick = { onSaveCode(code.trimEnd(), lang) },
                                     accent = false,
                                 )
@@ -1766,14 +1766,14 @@ private fun TerminalChatMessage(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                MsgActionButton("copy", onCopy)
-                if (onEdit != null) MsgActionButton("edit", onEdit)
-                MsgActionButton("delete", onDelete, destructive = true)
+                MsgActionButton(Strings.copy.lowercase(), onCopy)
+                if (onEdit != null) MsgActionButton(Strings.aiChatEdit, onEdit)
+                MsgActionButton(Strings.delete.lowercase(), onDelete, destructive = true)
                 if (!isUser) {
-                    MsgActionButton(if (speakingIdx == msgIdx) "stop" else "speak", onSpeak)
+                    MsgActionButton(if (speakingIdx == msgIdx) Strings.aiCodingStop.lowercase() else Strings.aiChatSpeak, onSpeak)
                 }
-                if (onRegenerate != null) MsgActionButton("regen", onRegenerate)
-                if (onRunScript != null) MsgActionButton("term", onRunScript)
+                if (onRegenerate != null) MsgActionButton(Strings.aiCodingRegenerate.lowercase(), onRegenerate)
+                if (onRunScript != null) MsgActionButton(Strings.aiChatTerm, onRunScript)
             }
         }
     }
@@ -1995,7 +1995,7 @@ private fun TerminalChatInput(
                         )
                         if (value.isEmpty()) {
                             AiModuleText(
-                                "message…",
+                                Strings.aiMessagePlaceholder,
                                 color = colors.textMuted,
                                 fontFamily = JetBrainsMono,
                                 fontSize = 14.sp,
@@ -2042,9 +2042,9 @@ private fun TerminalModelPicker(
     val colors = AiModuleTheme.colors
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        title = "select api model",
+        title = Strings.aiSelectApiModel,
         confirmButton = {
-            AiModulePillButton(label = "close", onClick = onDismiss, accent = false)
+            AiModulePillButton(label = Strings.close.lowercase(), onClick = onDismiss, accent = false)
         },
     ) {
             LazyColumn(
@@ -2054,7 +2054,7 @@ private fun TerminalModelPicker(
                 when {
                     loading -> item {
                         AiModuleText(
-                            "loading model catalog...",
+                            Strings.aiLoadingModelCatalog,
                             color = colors.textMuted,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -2063,7 +2063,7 @@ private fun TerminalModelPicker(
                     }
                     error != null -> item {
                         AiModuleText(
-                            "model load failed: $error",
+                            "${Strings.aiModelLoadFailed}: $error",
                             color = colors.error,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -2072,7 +2072,7 @@ private fun TerminalModelPicker(
                     }
                     configuredProviders.isEmpty() -> item {
                         AiModuleText(
-                            "add an API key in [ settings ]",
+                            Strings.aiAddApiKeySettings,
                             color = colors.textMuted,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -2081,7 +2081,7 @@ private fun TerminalModelPicker(
                     }
                     models.isEmpty() -> item {
                         AiModuleText(
-                            "no chat-capable models found for configured providers",
+                            Strings.aiNoChatModelsFound,
                             color = colors.textMuted,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -2153,12 +2153,12 @@ private fun TerminalKeysDialog(
     var rI by remember { mutableStateOf(initialRegion) }
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        title = "ai · keys",
+        title = Strings.aiKeysTitle,
         confirmButton = {
-            AiModulePillButton(label = "save", onClick = { onSave(keys.toMap(), pU, rI) }, accent = true)
+            AiModulePillButton(label = Strings.aiKeySave.lowercase(), onClick = { onSave(keys.toMap(), pU, rI) }, accent = true)
         },
         dismissButton = {
-            AiModulePillButton(label = "cancel", onClick = onDismiss, accent = false)
+            AiModulePillButton(label = Strings.cancel.lowercase(), onClick = onDismiss, accent = false)
         },
     ) {
             Column(
@@ -2173,10 +2173,10 @@ private fun TerminalKeysDialog(
                         placeholder = provider.keyPlaceholder(),
                     )
                 }
-                AiModuleSectionLabel("> proxy (optional)")
+                AiModuleSectionLabel("> ${Strings.aiProxyOptional}")
                 TerminalMonoField(value = pU, onValueChange = { pU = it }, placeholder = "https://proxy/v1beta/models")
                 AiModuleHairline()
-                AiModuleSectionLabel("> region")
+                AiModuleSectionLabel("> ${Strings.aiSetupQwenRegion}")
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("intl" to "singapore", "cn" to "beijing").forEach { (c, l) ->
                         AiModulePillButton(

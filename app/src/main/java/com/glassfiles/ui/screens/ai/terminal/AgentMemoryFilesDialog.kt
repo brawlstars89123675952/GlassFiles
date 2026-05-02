@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiAgentMemoryStore
 import com.glassfiles.ui.components.terminal.TerminalTabsRow
 import com.glassfiles.ui.theme.JetBrainsMono
@@ -61,7 +62,7 @@ fun AgentMemoryFilesDialog(
     var text by remember(selectedFile.key, selectedFile.content) { mutableStateOf(selectedFile.content) }
 
     AgentTerminalBottomSheet(
-        title = "MEMORY FILES",
+        title = Strings.aiAgentMemoryFilesTitle,
         onDismiss = onDismiss,
     ) {
         TerminalTabsRow(
@@ -105,19 +106,19 @@ fun AgentMemoryFilesDialog(
 
         AgentSheetActions {
             AgentTextButton(
-                label = "[ save ]",
+                label = "[ ${Strings.aiKeySave.lowercase()} ]",
                 color = colors.accent,
                 enabled = true,
                 onClick = { onSave(selectedFile.key, text) },
             )
             AgentTextButton(
-                label = "[ rebuild index ]",
+                label = "[ ${Strings.aiAgentRebuildIndex} ]",
                 color = colors.textSecondary,
                 enabled = true,
                 onClick = onRebuildIndex,
             )
             AgentTextButton(
-                label = "[ done ]",
+                label = "[ ${Strings.done.lowercase()} ]",
                 color = colors.textSecondary,
                 enabled = true,
                 onClick = onDismiss,
@@ -137,7 +138,7 @@ fun AgentWorkingMemoryDialog(
     var text by remember(content) { mutableStateOf(content) }
 
     AgentTerminalBottomSheet(
-        title = "WORKING MEMORY",
+        title = Strings.aiAgentWorkingMemoryTitle,
         onDismiss = onDismiss,
     ) {
         Text(
@@ -156,13 +157,13 @@ fun AgentWorkingMemoryDialog(
 
         AgentSheetActions {
             AgentTextButton(
-                label = "[ save ]",
+                label = "[ ${Strings.aiKeySave.lowercase()} ]",
                 color = colors.accent,
                 enabled = true,
                 onClick = { onSave(text) },
             )
             AgentTextButton(
-                label = "[ clear ]",
+                label = "[ ${Strings.aiKeyClear.lowercase()} ]",
                 color = colors.error,
                 enabled = true,
                 onClick = {
@@ -171,7 +172,7 @@ fun AgentWorkingMemoryDialog(
                 },
             )
             AgentTextButton(
-                label = "[ done ]",
+                label = "[ ${Strings.done.lowercase()} ]",
                 color = colors.textSecondary,
                 enabled = true,
                 onClick = onDismiss,

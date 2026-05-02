@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.theme.JetBrainsMono
 
 @Composable
@@ -62,7 +63,7 @@ private fun YoloModeConfirmBlock(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            text = if (previouslyConfirmed) "\u26A0 Re-enable YOLO mode?" else "\u26A0 YOLO MODE - READ CAREFULLY",
+            text = if (previouslyConfirmed) "\u26A0 ${Strings.aiAgentYoloMode}?" else "\u26A0 ${Strings.aiAgentYoloReadCarefully}",
             color = colors.warning,
             fontFamily = JetBrainsMono,
             fontWeight = FontWeight.Bold,
@@ -70,42 +71,42 @@ private fun YoloModeConfirmBlock(
             lineHeight = 1.3.em,
         )
         if (previouslyConfirmed) {
-            YoloBodyLine("You confirmed this before. Agent will skip")
-            YoloBodyLine("approval for most actions.")
+            YoloBodyLine(Strings.aiAgentYoloRememberedLine1)
+            YoloBodyLine(Strings.aiAgentYoloRememberedLine2)
         } else {
-            YoloSection("Agent will execute actions WITHOUT asking:")
-            YoloListLine("\u2713", "Read files", colors.accent)
-            YoloListLine("\u2713", "Edit existing files", colors.accent)
-            YoloListLine("\u2713", "Create new files", colors.accent)
-            YoloListLine("\u2713", "Commit to feature branches", colors.accent)
+            YoloSection(Strings.aiAgentYoloWillExecute)
+            YoloListLine("\u2713", Strings.aiAgentYoloReadFiles, colors.accent)
+            YoloListLine("\u2713", Strings.aiAgentYoloEditFiles, colors.accent)
+            YoloListLine("\u2713", Strings.aiAgentYoloCreateFiles, colors.accent)
+            YoloListLine("\u2713", Strings.aiAgentYoloFeatureCommits, colors.accent)
             Spacer(Modifier.height(2.dp))
-            YoloSection("Agent will STILL ask for:")
-            YoloListLine("\u2022", "Commits to main/master", colors.textSecondary)
-            YoloListLine("\u2022", "Destructive operations (delete, force-push, reset)", colors.textSecondary)
-            YoloListLine("\u2022", "Changes to protected files", colors.textSecondary)
+            YoloSection(Strings.aiAgentYoloStillAsk)
+            YoloListLine("\u2022", Strings.aiAgentYoloMainCommits, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloDestructiveOps, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloProtectedFiles, colors.textSecondary)
             Spacer(Modifier.height(2.dp))
-            YoloSection("Risks:")
-            YoloListLine("\u2022", "Agent may modify files you didn't expect", colors.textSecondary)
-            YoloListLine("\u2022", "Cost can grow quickly with auto-execution", colors.textSecondary)
-            YoloListLine("\u2022", "Mistakes are harder to catch in real-time", colors.textSecondary)
-            YoloListLine("\u2022", "You should review all commits before pushing", colors.textSecondary)
+            YoloSection(Strings.aiAgentYoloRisks)
+            YoloListLine("\u2022", Strings.aiAgentYoloRiskUnexpected, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloRiskCost, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloRiskMistakes, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloRiskReview, colors.textSecondary)
             Spacer(Modifier.height(2.dp))
-            YoloSection("Recommended only if:")
-            YoloListLine("\u2022", "You have backups / can revert via git", colors.textSecondary)
-            YoloListLine("\u2022", "You understand what tools the agent uses", colors.textSecondary)
-            YoloListLine("\u2022", "You'll review the resulting changes", colors.textSecondary)
+            YoloSection(Strings.aiAgentYoloRecommended)
+            YoloListLine("\u2022", Strings.aiAgentYoloBackup, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloUnderstandTools, colors.textSecondary)
+            YoloListLine("\u2022", Strings.aiAgentYoloReviewChanges, colors.textSecondary)
         }
         Row(
             Modifier.fillMaxWidth().padding(top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             YoloDialogButton(
-                label = if (previouslyConfirmed) "[ yes ]" else "[ yes \u00B7 enable yolo ]",
+                label = if (previouslyConfirmed) "[ yes ]" else "[ yes \u00B7 ${Strings.aiAgentPermissionYolo} ]",
                 color = colors.warning,
                 onClick = onEnable,
             )
             YoloDialogButton(
-                label = "[ no \u00B7 cancel ]",
+                label = "[ no \u00B7 ${Strings.cancel.lowercase()} ]",
                 color = colors.textSecondary,
                 onClick = onDismiss,
             )

@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.theme.JetBrainsMono
 import java.util.Locale
 
@@ -181,7 +182,7 @@ fun TerminalSlashCommandHint(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
-            text = "[slash commands]",
+            text = Strings.aiSlashCommands,
             color = colors.textMuted,
             fontFamily = JetBrainsMono,
             fontSize = AgentTerminal.type.label,

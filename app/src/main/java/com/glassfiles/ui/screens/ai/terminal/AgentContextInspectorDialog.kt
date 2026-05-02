@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.glassfiles.data.Strings
 import com.glassfiles.ui.theme.JetBrainsMono
 
 data class AgentContextInspectorState(
@@ -75,12 +76,12 @@ fun AgentContextInspectorDialog(
                     .padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                AgentContextHeader("CONTEXT INSPECTOR")
+                AgentContextHeader(Strings.aiAgentContextInspectorTitle)
                 state.sections.forEach { section ->
                     AgentContextSection(section)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    AgentContextCommand("[ done ]", colors.accent, onDismiss)
+                    AgentContextCommand("[ ${Strings.done.lowercase()} ]", colors.accent, onDismiss)
                 }
                 Spacer(Modifier.height(8.dp))
             }
