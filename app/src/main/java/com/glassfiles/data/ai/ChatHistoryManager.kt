@@ -39,7 +39,12 @@ class ChatHistoryManager(context: Context) {
             put("updatedAt", session.updatedAt)
             put("messages", JSONArray().apply {
                 session.messages.forEach { msg ->
-                    put(JSONObject().put("role", msg.role).put("content", msg.content))
+                    put(JSONObject().apply {
+                        put("role", msg.role)
+                        put("content", msg.content)
+                        if (msg.imageBase64 != null) put("imageBase64", msg.imageBase64)
+                        if (msg.fileContent != null) put("fileContent", msg.fileContent)
+                    })
                 }
             })
         }
@@ -84,7 +89,12 @@ class ChatHistoryManager(context: Context) {
                 provider = json.optString("provider", "AUTO"),
                 messages = (0 until msgs.length()).map { i ->
                     val m = msgs.getJSONObject(i)
-                    ChatMessage(m.getString("role"), m.getString("content"))
+                    ChatMessage(
+                        role = m.getString("role"),
+                        content = m.getString("content"),
+                        imageBase64 = m.optString("imageBase64", "").takeIf { it.isNotBlank() },
+                        fileContent = m.optString("fileContent", "").takeIf { it.isNotBlank() },
+                    )
                 },
                 createdAt = json.optLong("createdAt", 0),
                 updatedAt = json.optLong("updatedAt", 0)

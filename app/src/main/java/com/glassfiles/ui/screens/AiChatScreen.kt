@@ -98,8 +98,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.ai.AiCostPreviewPrefs
+import com.glassfiles.data.ai.AiAttachmentProcessor
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.AiManager
+import com.glassfiles.data.ai.AiPreparedAttachment
 import com.glassfiles.data.ai.ChatHistoryManager
 import com.glassfiles.data.ai.ChatMessage
 import com.glassfiles.data.ai.ChatSession
@@ -472,8 +474,7 @@ private fun ChatView(
     var keyRefreshTick by remember { mutableIntStateOf(0) }
     var showModelPicker by remember { mutableStateOf(false) }
     var attachedImage by remember { mutableStateOf<String?>(null) }
-    var attachedFile by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var attachedZip by remember { mutableStateOf<String?>(null) }
+    var attachedFile by remember { mutableStateOf<AiPreparedAttachment?>(null) }
     val listState = rememberLazyListState()
     var showSettings by remember { mutableStateOf(false) }
     var autoSent by remember { mutableStateOf(false) }
@@ -483,11 +484,14 @@ private fun ChatView(
     val colors = AiModuleTheme.colors
     val configuredProviders = remember(keyRefreshTick) { AiKeyStore.configuredProviders(context) }
     val currentModel = chatModels.firstOrNull { it.providerId == selectedProvider && it.id == modelId }
-    val usageEstimate = remember(messages, currentResponse, selectedProvider, modelId) {
+    val pendingInputChars = input.length +
+        (attachedFile?.promptContent?.length ?: 0) +
+        ((attachedImage?.length ?: 0) / 8)
+    val usageEstimate = remember(messages, currentResponse, selectedProvider, modelId, pendingInputChars) {
         AiUsageAccounting.estimate(
             providerId = selectedProvider?.name.orEmpty(),
             modelId = modelId,
-            inputChars = chatInputChars(messages),
+            inputChars = chatInputChars(messages) + pendingInputChars,
             outputChars = chatOutputChars(messages) + currentResponse.length,
         )
     }
@@ -511,7 +515,10 @@ private fun ChatView(
     val cameraFile = remember { File(context.cacheDir, "ai_camera_${System.currentTimeMillis()}.jpg") }
     val cameraUri = remember { androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cameraFile) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success) attachedImage = AiManager.encodeImage(cameraFile)
+        if (success) {
+            attachedImage = AiManager.encodeImage(cameraFile)
+            attachedFile = null
+        }
     }
     // File picker
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
@@ -525,29 +532,32 @@ private fun ChatView(
                     if (idx >= 0) c.getString(idx) else null
                 } else null
             } ?: uri.lastPathSegment ?: "file"
-            val ext = name.substringAfterLast(".", "").lowercase()
             when {
-                mime.startsWith("image/") -> {
+                AiAttachmentProcessor.isImage(mime, name) -> {
                     context.contentResolver.openInputStream(uri)?.use { s ->
                         val f = File(context.cacheDir, "ai_img.jpg")
                         f.outputStream().use { o -> s.copyTo(o) }
                         attachedImage = AiManager.encodeImage(f)
+                        attachedFile = null
                     }
-                }
-                ext in listOf("zip", "jar") -> {
-                    val tmp = File(context.cacheDir, "ai_zip_${System.currentTimeMillis()}.$ext")
-                    context.contentResolver.openInputStream(uri)?.use { s ->
-                        tmp.outputStream().use { o -> s.copyTo(o) }
-                    }
-                    val entries = AiManager.extractZipForAi(tmp.absolutePath, context)
-                    attachedZip = AiManager.formatZipContents(entries)
-                    attachedFile = Pair(name, "${entries.size} files extracted")
-                    tmp.delete()
                 }
                 else -> {
-                    context.contentResolver.openInputStream(uri)?.use { s ->
-                        val t = s.bufferedReader().readText()
-                        attachedFile = Pair(name, if (t.length > 10000) t.take(10000) + "\n...[truncated]" else t)
+                    scope.launch {
+                        val prepared = runCatching { AiAttachmentProcessor.prepare(context, uri) }
+                            .getOrElse { error ->
+                                AiPreparedAttachment(
+                                    name = name,
+                                    mimeType = mime,
+                                    extension = AiAttachmentProcessor.extensionFor(name),
+                                    tempPath = "",
+                                    isArchive = false,
+                                    promptContent = "Attached file: $name\n[read error: ${error.message ?: error.javaClass.simpleName}]",
+                                    previewContent = null,
+                                    summary = "$name · read error",
+                                )
+                            }
+                        attachedFile = prepared
+                        attachedImage = null
                     }
                 }
             }
@@ -756,20 +766,16 @@ private fun ChatView(
     }
     fun send() {
         var t = input.trim()
-        if (t.isEmpty() && attachedImage == null && attachedFile == null && attachedZip == null) return
-        val fc = when {
-            attachedZip != null -> attachedZip
-            attachedFile != null -> "File: ${attachedFile!!.first}\n```\n${attachedFile!!.second}\n```"
-            else -> null
-        }
+        if (t.isEmpty() && attachedImage == null && attachedFile == null) return
+        val file = attachedFile
+        val fc = file?.promptContent
         if (t.isEmpty() && attachedImage != null) t = "What is in this image?"
-        if (t.isEmpty() && fc != null) t = "Analyze this file"
+        if (t.isEmpty() && fc != null) t = if (file?.isArchive == true) "Analyze this archive" else "Analyze this file"
         input = ""
         val img = attachedImage
         val fcc = fc
         attachedImage = null
         attachedFile = null
-        attachedZip = null
         doSend(t, img, fcc)
     }
     fun regenerate() {
@@ -1102,36 +1108,42 @@ private fun ChatView(
                 }
                 if (attachedFile != null) {
                     AiModuleIcon(
-                        if (attachedZip != null) Icons.Rounded.FolderZip else Icons.Rounded.Description,
+                        if (attachedFile!!.isArchive) Icons.Rounded.FolderZip else Icons.Rounded.Description,
                         null,
                         Modifier.size(14.dp),
-                        tint = if (attachedZip != null) colors.warning else colors.accent,
+                        tint = if (attachedFile!!.isArchive) colors.warning else colors.accent,
                     )
                     Column(Modifier.weight(1f)) {
                         AiModuleText(
-                            attachedFile!!.first,
+                            attachedFile!!.name,
                             color = colors.textSecondary,
                             fontFamily = JetBrainsMono,
                             fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (attachedZip != null) {
-                            AiModuleText(
-                                attachedFile!!.second,
-                                color = colors.textMuted,
-                                fontFamily = JetBrainsMono,
-                                fontSize = 10.sp,
-                            )
-                        }
+                        AiModuleText(
+                            attachedFile!!.summary,
+                            color = colors.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            maxLines = 2,
+                        )
                     }
                     AiModuleIconButton(
-                        onClick = { attachedFile = null; attachedZip = null },
+                        onClick = { attachedFile = null },
                         modifier = Modifier.size(20.dp),
                     ) {
                         AiModuleIcon(Icons.Rounded.Close, null, Modifier.size(12.dp), tint = colors.textMuted)
                     }
                 }
+            }
+            attachedFile?.takeIf { !it.isArchive && !it.previewContent.isNullOrBlank() }?.let { file ->
+                AiModuleCodeBlock(
+                    text = file.previewContent.orEmpty(),
+                    lang = file.extension,
+                    context = context,
+                )
             }
         }
 
@@ -1559,8 +1571,9 @@ private fun TerminalChatMessage(
             } else {
                 AiModuleText(
                     text = content,
-                    color = colors.textPrimary,
+                    color = colors.accent,
                     fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
                     lineHeight = 1.45.em,
                 )
@@ -1794,7 +1807,7 @@ private fun TerminalChatInput(
                             value = value,
                             onValueChange = onValueChange,
                             textStyle = TextStyle(
-                                color = colors.textPrimary,
+                                color = colors.accent,
                                 fontFamily = JetBrainsMono,
                                 fontSize = 14.sp,
                                 lineHeight = 1.4.em,

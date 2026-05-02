@@ -38,7 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -75,11 +75,13 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiChatSessionStore
+import com.glassfiles.data.ai.AiAttachmentProcessor
 import com.glassfiles.data.ai.AiCostPreviewPrefs
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.AiSettingsStore
 import com.glassfiles.data.ai.ChatHistoryStore
 import com.glassfiles.data.ai.ModelRegistry
+import com.glassfiles.data.ai.AiPreparedAttachment
 import com.glassfiles.data.ai.SystemPrompts
 import com.glassfiles.data.ai.models.AiCapability
 import com.glassfiles.data.ai.models.AiMessage
@@ -478,6 +480,7 @@ private fun CodingChatView(
                         role = it.role,
                         content = it.content,
                         imageBase64 = it.imageBase64,
+                        fileContent = it.fileContent,
                         isError = it.isError,
                     )
                 },
@@ -486,9 +489,12 @@ private fun CodingChatView(
     }
     var draft by remember { mutableStateOf(TextFieldValue("")) }
     var pendingImage by remember { mutableStateOf<String?>(null) }
+    var pendingFile by remember { mutableStateOf<AiPreparedAttachment?>(null) }
     var streaming by remember { mutableStateOf(false) }
     var streamJob by remember { mutableStateOf<Job?>(null) }
-    val usageFingerprint = transcript.joinToString("|") { "${it.role}:${it.content.length}:${it.imageBase64?.length ?: 0}:${it.isError}" }
+    val usageFingerprint = transcript.joinToString("|") {
+        "${it.role}:${it.content.length}:${it.fileContent?.length ?: 0}:${it.imageBase64?.length ?: 0}:${it.isError}"
+    }
     val usageEstimate = remember(usageFingerprint, provider, modelId) {
         AiUsageAccounting.estimate(
             providerId = provider?.name.orEmpty(),
@@ -546,6 +552,7 @@ private fun CodingChatView(
                 role = it.role,
                 content = it.content,
                 imageBase64 = it.imageBase64,
+                fileContent = it.fileContent,
                 isError = it.isError,
             )
         }
@@ -564,13 +571,31 @@ private fun CodingChatView(
         )
     }
 
-    val photoPicker = rememberLauncherForActivityResult(
+    val attachmentPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                pendingImage = withContext(Dispatchers.IO) {
-                    encodeImage(context, uri)
+                val mime = context.contentResolver.getType(uri).orEmpty()
+                val name = uri.lastPathSegment.orEmpty()
+                if (AiAttachmentProcessor.isImage(mime, name)) {
+                    pendingImage = withContext(Dispatchers.IO) { encodeImage(context, uri) }
+                    pendingFile = null
+                } else {
+                    pendingFile = runCatching { AiAttachmentProcessor.prepare(context, uri) }
+                        .getOrElse { e ->
+                            AiPreparedAttachment(
+                                name = name.ifBlank { "attachment" },
+                                mimeType = mime,
+                                extension = "",
+                                tempPath = "",
+                                isArchive = false,
+                                promptContent = "[attachment error: ${e.message ?: e.javaClass.simpleName}]",
+                                previewContent = null,
+                                summary = "attachment error",
+                            )
+                        }
+                    pendingImage = null
                 }
             }
         }
@@ -646,10 +671,18 @@ private fun CodingChatView(
      */
     var pendingSend by remember { mutableStateOf<PendingCodingSend?>(null) }
 
-    fun actuallyDoSend(text: String, image: String?) {
-        transcript += CodingMessage("user", text, imageBase64 = image)
+    fun actuallyDoSend(text: String, image: String?, file: AiPreparedAttachment?) {
+        val displayText = text.ifBlank {
+            when {
+                file != null -> "Analyze ${file.name}"
+                image != null -> "Analyze this image"
+                else -> text
+            }
+        }
+        transcript += CodingMessage("user", displayText, imageBase64 = image, fileContent = file?.promptContent)
         draft = TextFieldValue("")
         pendingImage = null
+        pendingFile = null
         persist()
 
         val msgs = buildList {
@@ -657,7 +690,7 @@ private fun CodingChatView(
             addAll(
                 transcript
                     .filter { !it.isError && (it.role == "user" || it.role == "assistant") }
-                    .map { AiMessage(it.role, it.content, imageBase64 = it.imageBase64) },
+                    .map { AiMessage(it.role, it.content, imageBase64 = it.imageBase64, fileContent = it.fileContent) },
             )
         }
         sendInternal(msgs)
@@ -667,9 +700,10 @@ private fun CodingChatView(
         provider ?: return
         modelId.takeIf { it.isNotBlank() } ?: return
         val text = draft.text.trim()
-        if ((text.isBlank() && pendingImage == null) || streaming) return
+        if ((text.isBlank() && pendingImage == null && pendingFile == null) || streaming) return
 
         val image = pendingImage?.takeIf { visionAvailable }
+        val file = pendingFile
         // Pre-request cost preview: if the projected cost is over the
         // threshold (default $0.10) park the user's text + image and
         // let the confirm dialog decide. Same `usageEstimate` as the
@@ -680,12 +714,13 @@ private fun CodingChatView(
             pendingSend = PendingCodingSend(
                 text = text,
                 image = image,
+                file = file,
                 estimatedCostUsd = cost,
                 estimatedTokens = usageEstimate.totalTokens,
             )
             return
         }
-        actuallyDoSend(text, image)
+        actuallyDoSend(text, image, file)
     }
 
     fun stop() {
@@ -705,7 +740,7 @@ private fun CodingChatView(
             addAll(
                 transcript
                     .filter { !it.isError && (it.role == "user" || it.role == "assistant") }
-                    .map { AiMessage(it.role, it.content, imageBase64 = it.imageBase64) },
+                    .map { AiMessage(it.role, it.content, imageBase64 = it.imageBase64, fileContent = it.fileContent) },
             )
         }
         sendInternal(msgs)
@@ -812,6 +847,12 @@ private fun CodingChatView(
                 onRemove = { pendingImage = null },
             )
         }
+        pendingFile?.let { file ->
+            FileAttachmentPreview(
+                attachment = file,
+                onRemove = { pendingFile = null },
+            )
+        }
 
         // ── Input bar ───────────────────────────────────────────────────
         InputBar(
@@ -819,10 +860,10 @@ private fun CodingChatView(
             onValueChange = { draft = it },
             enabled = provider != null && modelId.isNotBlank(),
             streaming = streaming,
-            hasAttachment = pendingImage != null,
+            hasAttachment = pendingImage != null || pendingFile != null,
             onSend = ::send,
             onStop = ::stop,
-            onPickImage = { photoPicker.launch("image/*") },
+            onPickImage = { attachmentPicker.launch("*/*") },
             modifier = Modifier.imePadding().navigationBarsPadding(),
         )
     }
@@ -834,7 +875,7 @@ private fun CodingChatView(
             thresholdUsd = AiCostPreviewPrefs.getThresholdUsd(context),
             onConfirm = {
                 pendingSend = null
-                actuallyDoSend(pending.text, pending.image)
+                actuallyDoSend(pending.text, pending.image, pending.file)
             },
             onDismiss = { pendingSend = null },
         )
@@ -848,6 +889,7 @@ private fun CodingChatView(
 private data class PendingCodingSend(
     val text: String,
     val image: String?,
+    val file: AiPreparedAttachment?,
     val estimatedCostUsd: Double,
     val estimatedTokens: Int,
 )
@@ -930,6 +972,7 @@ private data class CodingMessage(
     val role: String,
     val content: String,
     val imageBase64: String? = null,
+    val fileContent: String? = null,
     val isError: Boolean = false,
 )
 
@@ -962,7 +1005,7 @@ private fun codingInputChars(messages: List<CodingMessage>): Int =
         if (message.role == "assistant" || message.isError) {
             0
         } else {
-            message.content.length + ((message.imageBase64?.length ?: 0) / 8)
+            message.content.length + (message.fileContent?.length ?: 0) + ((message.imageBase64?.length ?: 0) / 8)
         }
     }
 
@@ -984,6 +1027,9 @@ private fun CodingMessageRow(message: CodingMessage, context: Context) {
     ) {
         if (message.imageBase64 != null) {
             MessageImage(message.imageBase64)
+        }
+        if (message.fileContent != null && isUser) {
+            FileContentSummary(message.fileContent)
         }
         if (message.content.isNotBlank()) {
             renderMessageBody(
@@ -1013,6 +1059,32 @@ private fun MessageImage(base64: String) {
                 .heightIn(max = 200.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .border(1.dp, colors.border, RoundedCornerShape(8.dp)),
+        )
+    }
+}
+
+@Composable
+private fun FileContentSummary(fileContent: String) {
+    val colors = AgentTerminal.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.border, RoundedCornerShape(6.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.AttachFile, null, Modifier.size(14.dp), tint = colors.textSecondary)
+        Spacer(Modifier.size(8.dp))
+        Text(
+            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { "Attached file" },
+            color = colors.textSecondary,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            maxLines = 2,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -1124,6 +1196,54 @@ private fun AttachmentPreview(base64: String, visionAvailable: Boolean, onRemove
     }
 }
 
+@Composable
+private fun FileAttachmentPreview(attachment: AiPreparedAttachment, onRemove: () -> Unit) {
+    val colors = AgentTerminal.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.surface)
+            .border(1.dp, colors.border, RoundedCornerShape(6.dp))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AttachFile, null, Modifier.size(18.dp), tint = colors.textSecondary)
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    attachment.name,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    maxLines = 1,
+                )
+                Text(
+                    attachment.summary,
+                    fontSize = 10.sp,
+                    color = colors.textMuted,
+                    fontFamily = JetBrainsMono,
+                    maxLines = 2,
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = colors.textMuted)
+            }
+        }
+        if (!attachment.isArchive && !attachment.previewContent.isNullOrBlank()) {
+            AgentTerminalCodeBlock(
+                text = attachment.previewContent,
+                lang = attachment.extension,
+                filePath = attachment.name,
+                context = LocalContext.current,
+            )
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Input bar
 // ─────────────────────────────────────────────────────────────────────────
@@ -1152,7 +1272,7 @@ private fun InputBar(
                 enabled = enabled && !streaming,
             ) {
                 Icon(
-                    Icons.Rounded.AddPhotoAlternate,
+                    Icons.Rounded.AttachFile,
                     null,
                     Modifier.size(22.dp),
                     tint = if (enabled && !streaming) colors.textSecondary else colors.textMuted,
@@ -1172,7 +1292,7 @@ private fun InputBar(
                     enabled = enabled,
                     modifier = Modifier.fillMaxWidth().widthIn(min = 0.dp),
                     textStyle = TextStyle(
-                            color = colors.textPrimary,
+                            color = colors.accent,
                             fontSize = 14.sp,
                             fontFamily = JetBrainsMono,
                         ),

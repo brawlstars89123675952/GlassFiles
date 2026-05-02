@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.Check
@@ -72,9 +73,12 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
+import com.glassfiles.data.ai.AiAttachmentProcessor
 import com.glassfiles.data.ai.AiChatSessionStore
 import com.glassfiles.data.ai.AiKeyStore
+import com.glassfiles.data.ai.AiPreparedAttachment
 import com.glassfiles.data.ai.ModelRegistry
+import com.glassfiles.data.ai.SystemPrompts
 import com.glassfiles.data.ai.agent.AgentTools
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.data.ai.agent.AiToolResult
@@ -205,6 +209,8 @@ fun AiAgentScreen(
     val transcript = remember { mutableStateListOf<AgentEntry>() }
     var input by remember { mutableStateOf(TextFieldValue(initialPrompt.orEmpty())) }
     var pendingImage by remember { mutableStateOf<String?>(null) }
+    var pendingFile by remember { mutableStateOf<AiPreparedAttachment?>(null) }
+    var chatOnlyMode by remember { mutableStateOf(false) }
     // Approval prefs are owned by AiAgentApprovalPrefs (DataStore-backed). The agent
     // loop reads them via [snapshotApprovalSettings] at run start so YOLO / write
     // limit / per-category toggles set anywhere in the app actually take effect.
@@ -241,7 +247,7 @@ fun AiAgentScreen(
     var pendingWarning by remember {
         mutableStateOf<com.glassfiles.ui.screens.ai.ExpensiveActionWarning?>(null)
     }
-    var pendingWarningInput by remember { mutableStateOf<Pair<String, String?>?>(null) }
+    var pendingWarningInput by remember { mutableStateOf<PendingAgentSend?>(null) }
 
     // ID of the session whose repo / branch / model we still want to
     // re-apply once the async repo + model lists finish loading. Cleared
@@ -298,9 +304,10 @@ fun AiAgentScreen(
             sessionCreatedAt = session.createdAt
             transcript.clear()
             transcript.addAll(session.messages.toAgentEntries())
+            chatOnlyMode = session.repoFullName == CHAT_ONLY_REPO_KEY
             // Pre-seed the desired branch so the branch-loading effect
             // can honour it once the repo is picked.
-            if (session.branch.isNotBlank()) selectedBranch = session.branch
+            if (!chatOnlyMode && session.branch.isNotBlank()) selectedBranch = session.branch
         }
     }
 
@@ -332,7 +339,11 @@ fun AiAgentScreen(
             pendingRestoreSessionId = null
             return@LaunchedEffect
         }
-        if (selectedRepo == null && session.repoFullName.isNotBlank()) {
+        if (session.repoFullName == CHAT_ONLY_REPO_KEY) {
+            chatOnlyMode = true
+            selectedRepo = null
+            selectedBranch = null
+        } else if (selectedRepo == null && session.repoFullName.isNotBlank()) {
             repos.firstOrNull { it.fullName == session.repoFullName }
                 ?.let { selectedRepo = it }
         }
@@ -355,7 +366,8 @@ fun AiAgentScreen(
         }
         // Stop watching once we've done what we can. The pickers happily
         // honor any manual changes the user makes from here on.
-        val repoDone = session.repoFullName.isBlank() ||
+        val repoDone = session.repoFullName == CHAT_ONLY_REPO_KEY ||
+            session.repoFullName.isBlank() ||
             selectedRepo?.fullName == session.repoFullName ||
             (repos.isNotEmpty() && repos.none { it.fullName == session.repoFullName })
         val modelDone = selectedModel != null ||
@@ -425,6 +437,7 @@ fun AiAgentScreen(
                 role = "user",
                 content = entry.text,
                 imageBase64 = entry.imageBase64,
+                fileContent = entry.fileContent,
             )
             is AgentEntry.Assistant -> if (entry.text.isBlank()) null else AiChatSessionStore.Message(
                 role = "assistant",
@@ -449,8 +462,8 @@ fun AiAgentScreen(
                 messages = messages,
                 createdAt = sessionCreatedAt,
                 updatedAt = System.currentTimeMillis(),
-                repoFullName = selectedRepo?.fullName.orEmpty(),
-                branch = selectedBranch.orEmpty(),
+                repoFullName = if (chatOnlyMode) CHAT_ONLY_REPO_KEY else selectedRepo?.fullName.orEmpty(),
+                branch = if (chatOnlyMode) "" else selectedBranch.orEmpty(),
             ),
         )
         refreshSessions()
@@ -463,6 +476,7 @@ fun AiAgentScreen(
         error = null
         input = TextFieldValue("")
         pendingImage = null
+        pendingFile = null
         activeSessionId = session.id
         sessionCreatedAt = session.createdAt
         transcript.clear()
@@ -472,6 +486,7 @@ fun AiAgentScreen(
         // repo / branch / model. The branch is pre-seeded so the
         // branches-loading effect can honour it.
         selectedRepo = null
+        chatOnlyMode = session.repoFullName == CHAT_ONLY_REPO_KEY
         selectedBranch = session.branch.takeIf { it.isNotBlank() }
         selectedModel = null
         pendingRestoreSessionId = session.id
@@ -485,6 +500,7 @@ fun AiAgentScreen(
         error = null
         input = TextFieldValue("")
         pendingImage = null
+        pendingFile = null
         activeSessionId = newAgentSessionId()
         sessionCreatedAt = System.currentTimeMillis()
         transcript.clear()
@@ -495,13 +511,31 @@ fun AiAgentScreen(
         showHistory = false
     }
 
-    val photoPicker = rememberLauncherForActivityResult(
+    val attachmentPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                pendingImage = withContext(Dispatchers.IO) {
-                    encodeAgentImage(context, uri)
+                val mime = context.contentResolver.getType(uri).orEmpty()
+                val name = uri.lastPathSegment.orEmpty()
+                if (AiAttachmentProcessor.isImage(mime, name)) {
+                    pendingImage = withContext(Dispatchers.IO) { encodeAgentImage(context, uri) }
+                    pendingFile = null
+                } else {
+                    pendingFile = runCatching { AiAttachmentProcessor.prepare(context, uri) }
+                        .getOrElse { e ->
+                            AiPreparedAttachment(
+                                name = name.ifBlank { "attachment" },
+                                mimeType = mime,
+                                extension = "",
+                                tempPath = "",
+                                isArchive = false,
+                                promptContent = "[attachment error: ${e.message ?: e.javaClass.simpleName}]",
+                                previewContent = null,
+                                summary = "attachment error",
+                            )
+                        }
+                    pendingImage = null
                 }
             }
         }
@@ -515,26 +549,95 @@ fun AiAgentScreen(
         approvals.clear()
     }
 
+    fun runChatOnlyInternal(text: String, image: String?, file: AiPreparedAttachment?, model: AiModel, key: String) {
+        error = null
+        fallbackNotice = null
+        input = TextFieldValue("")
+        pendingImage = null
+        pendingFile = null
+        transcript += AgentEntry.User(text, image, file?.promptContent)
+        transcript += AgentEntry.Assistant(text = "")
+        persistSession()
+        running = true
+        runJob = scope.launch {
+            try {
+                val messages = buildList {
+                    add(AiMessage("system", SystemPrompts.DEFAULT))
+                    addAll(transcript.dropLast(1).toAiMessages())
+                }
+                val full = AiProviders.get(model.providerId).chat(
+                    context = context,
+                    modelId = model.id,
+                    messages = messages,
+                    apiKey = key,
+                    onChunk = { chunk ->
+                        val last = transcript.lastIndex
+                        if (last >= 0) {
+                            val current = transcript[last]
+                            if (current is AgentEntry.Assistant) {
+                                transcript[last] = current.copy(text = current.text + chunk)
+                            }
+                        }
+                    },
+                )
+                val last = transcript.lastIndex
+                if (last >= 0) {
+                    val current = transcript[last]
+                    if (current is AgentEntry.Assistant && current.text.isBlank()) {
+                        transcript[last] = current.copy(text = full)
+                    }
+                }
+                com.glassfiles.data.ai.usage.AiUsageAccounting.appendEstimated(
+                    context = context,
+                    providerId = model.providerId.name,
+                    modelId = model.id,
+                    mode = com.glassfiles.data.ai.usage.AiUsageMode.CHAT,
+                    messages = messages,
+                    output = full,
+                )
+            } catch (e: Exception) {
+                val last = transcript.lastIndex
+                val message = "${e.javaClass.simpleName}: ${e.message ?: ""}"
+                if (last >= 0 && transcript[last] is AgentEntry.Assistant) {
+                    transcript[last] = (transcript[last] as AgentEntry.Assistant).copy(text = message)
+                } else {
+                    transcript += AgentEntry.Assistant(message)
+                }
+                error = e.message ?: e.javaClass.simpleName
+            } finally {
+                persistSession()
+                running = false
+                runJob = null
+            }
+        }
+    }
+
     /**
      * Internal: actually start the agent loop. Assumes input has been
      * sanitised and (if applicable) the warning dialog has been
      * resolved by the user. Always called from `submit` directly or
      * from the warning dialog's "Continue" button.
      */
-    fun runTaskInternal(text: String, image: String?) {
-        val repo = selectedRepo ?: return
-        val branch = selectedBranch ?: return
+    fun runTaskInternal(text: String, image: String?, file: AiPreparedAttachment?) {
         val model = selectedModel ?: return
         val key = AiKeyStore.getKey(context, model.providerId)
         if (key.isBlank()) {
             error = Strings.aiAgentNoModels
             return
         }
+        val displayText = attachmentDisplayText(text, file)
+        if (chatOnlyMode) {
+            runChatOnlyInternal(displayText, image, file, model, key)
+            return
+        }
+        val repo = selectedRepo ?: return
+        val branch = selectedBranch ?: return
         error = null
         fallbackNotice = null
         input = TextFieldValue("")
         pendingImage = null
-        transcript += AgentEntry.User(text, image)
+        pendingFile = null
+        transcript += AgentEntry.User(displayText, image, file?.promptContent)
         persistSession()
         // D2: persist a "task started, not finished" pointer so a
         // process kill mid-run leaves a recoverable trail. Cleared in
@@ -838,13 +941,14 @@ fun AiAgentScreen(
      * AiCostModeStore — if the user has previously dismissed for this
      * pair the warning is skipped silently.
      */
-    fun submit(userText: String, imageBase64: String?) {
+    fun submit(userText: String, imageBase64: String?, file: AiPreparedAttachment?) {
         val text = userText.trim()
         val image = imageBase64?.takeIf { selectedModel?.let { m -> AiCapability.VISION in m.capabilities } == true }
-        if (text.isEmpty() && image == null) return
-        val repo = selectedRepo ?: return
-        val branch = selectedBranch ?: return
+        if (text.isEmpty() && image == null && file == null) return
         val model = selectedModel ?: return
+        val repo = selectedRepo
+        val branch = selectedBranch
+        if (!chatOnlyMode && (repo == null || branch == null)) return
         // Manual working-memory chat commands (BUGS_FIX.md Section 3
         // "Manual control"). We handle them here, BEFORE the message
         // hits the model, so they never burn tokens. The user sees
@@ -854,20 +958,24 @@ fun AiAgentScreen(
         when (command) {
             "clear working memory" -> {
                 transcript += AgentEntry.User(text = userText, imageBase64 = image)
-                com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(context, repo.fullName)
+                if (repo != null) com.glassfiles.data.ai.AiAgentMemoryStore.clearWorkingMemory(context, repo.fullName)
                 transcript += AgentEntry.Assistant(text = "[system] working_memory.md cleared.")
                 input = TextFieldValue("")
                 pendingImage = null
+                pendingFile = null
                 return
             }
             "show working memory", "what are you working on", "what are you working on?" -> {
                 transcript += AgentEntry.User(text = userText, imageBase64 = image)
-                val blob = com.glassfiles.data.ai.AiAgentMemoryStore
-                    .readWorkingMemory(context, repo.fullName)
-                    .ifBlank { "[system] working_memory.md is empty." }
+                val blob = repo?.let {
+                    com.glassfiles.data.ai.AiAgentMemoryStore
+                        .readWorkingMemory(context, it.fullName)
+                        .ifBlank { "[system] working_memory.md is empty." }
+                } ?: "[system] chat mode has no repo working memory."
                 transcript += AgentEntry.Assistant(text = blob)
                 input = TextFieldValue("")
                 pendingImage = null
+                pendingFile = null
                 return
             }
         }
@@ -875,9 +983,9 @@ fun AiAgentScreen(
         // pending user text. This is what gets shipped to the provider
         // on the very next call, so it's the most honest number we
         // can show to the user without a real token-counter.
-        val approxContext: Int = text.length + transcript.sumOf { entry ->
+        val approxContext: Int = text.length + (file?.promptContent?.length ?: 0) + transcript.sumOf { entry ->
             when (entry) {
-                is AgentEntry.User -> entry.text.length
+                is AgentEntry.User -> entry.text.length + (entry.fileContent?.length ?: 0)
                 is AgentEntry.Assistant -> entry.text.length
                 is AgentEntry.ToolCall -> entry.call.argsJson.length
                 is AgentEntry.ToolResult -> entry.result.output.length
@@ -885,14 +993,15 @@ fun AiAgentScreen(
             }
         }
         val limits = com.glassfiles.data.ai.cost.AiCostPolicy.limitsFor(costMode)
+        val warningScope = repo?.fullName ?: CHAT_ONLY_REPO_KEY
         val remembered = com.glassfiles.data.ai.cost.AiCostModeStore.isRemembered(
-            context, repo.fullName, model.providerId.name,
+            context, warningScope, model.providerId.name,
         )
         val warningReason: com.glassfiles.ui.screens.ai.ExpensiveActionReason? = when {
             // Private repo + no remembered exception → always warn.
             // The flag is per (repo, provider) so a "remember" for the
             // current provider doesn't leak to a different one.
-            repo.isPrivate && !remembered ->
+            repo?.isPrivate == true && !remembered ->
                 com.glassfiles.ui.screens.ai.ExpensiveActionReason.PrivateRepo
             // MaxQuality is opt-in expensive — surface that.
             costMode == com.glassfiles.data.ai.cost.AiCostMode.MaxQuality && !remembered ->
@@ -906,19 +1015,19 @@ fun AiAgentScreen(
         }
         if (warningReason != null) {
             pendingWarning = com.glassfiles.ui.screens.ai.ExpensiveActionWarning(
-                repoFullName = repo.fullName,
-                branch = branch,
+                repoFullName = repo?.fullName ?: "chat",
+                branch = branch ?: "",
                 providerLabel = model.providerId.displayName,
                 modelLabel = model.displayName,
                 approxFiles = transcript.count { it is AgentEntry.ToolResult },
                 approxContextChars = approxContext,
-                isPrivate = repo.isPrivate,
+                isPrivate = repo?.isPrivate == true,
                 reason = warningReason,
             )
-            pendingWarningInput = text to image
+            pendingWarningInput = PendingAgentSend(text, image, file)
             return
         }
-        runTaskInternal(text, image)
+        runTaskInternal(text, image, file)
     }
 
     // ─── UI (terminal mode) ───────────────────────────────────────────────
@@ -977,8 +1086,8 @@ fun AiAgentScreen(
             }
         } else null
         val subtitle = listOfNotNull(
-            selectedRepo?.fullName,
-            selectedBranch?.takeIf { it.isNotBlank() }?.let { "@$it" },
+            if (chatOnlyMode) "chat" else selectedRepo?.fullName,
+            if (chatOnlyMode) null else selectedBranch?.takeIf { it.isNotBlank() }?.let { "@$it" },
         ).joinToString("").ifBlank { null }
         val approvalIndicator = remember(autoApproveReads, workspaceMode, selectedRepo?.fullName) {
             val yolo = com.glassfiles.data.ai.AiAgentApprovalPrefs.getYoloMode(context)
@@ -1034,7 +1143,7 @@ fun AiAgentScreen(
             if (entries.isNotEmpty()) listState.animateScrollToItem(entries.size - 1)
         }
 
-        if (selectedRepo == null && repos.isEmpty() && !GitHubManager.isLoggedIn(context)) {
+        if (!chatOnlyMode && selectedRepo == null && repos.isEmpty() && !GitHubManager.isLoggedIn(context)) {
             EmptyAgentState(message = Strings.aiAgentNoRepos)
         } else if (models.isEmpty()) {
             EmptyAgentState(message = Strings.aiAgentNoModels)
@@ -1079,7 +1188,7 @@ fun AiAgentScreen(
                         )
                     }
                 }
-                if (selectedRepo == null || selectedBranch.isNullOrBlank()) {
+                if (!chatOnlyMode && (selectedRepo == null || selectedBranch.isNullOrBlank())) {
                     item("banner-pick-repo") {
                         AgentBanner(
                             icon = Icons.Rounded.Build,
@@ -1200,7 +1309,7 @@ fun AiAgentScreen(
                     pendingResume = null
                     com.glassfiles.data.ai.AiAgentResumeStore
                         .clear(context, activeSessionId)
-                    submit(resume.prompt, resume.imageBase64)
+                    submit(resume.prompt, resume.imageBase64, null)
                 }
                 AgentTextButton(
                     label = "[ ${Strings.aiAgentResumeBannerDiscard} ]",
@@ -1252,6 +1361,12 @@ fun AiAgentScreen(
                 onRemove = { pendingImage = null },
             )
         }
+        pendingFile?.let { file ->
+            AgentFileAttachmentPreview(
+                attachment = file,
+                onRemove = { pendingFile = null },
+            )
+        }
 
         // Input bar — terminal-style. The `>` glyph is fixed inside
         // [AgentInput], the field stays editable as long as the agent
@@ -1259,14 +1374,15 @@ fun AiAgentScreen(
         // the user can pre-draft) and Send is gated on the full set
         // being present + an API key being available.
         val canSend = !running &&
-            (input.text.isNotBlank() || pendingImage != null) &&
-            selectedRepo != null && selectedBranch != null && selectedModel != null &&
+            (input.text.isNotBlank() || pendingImage != null || pendingFile != null) &&
+            (chatOnlyMode || (selectedRepo != null && selectedBranch != null)) &&
+            selectedModel != null &&
             activeApiKey.isNotBlank()
         com.glassfiles.ui.screens.ai.terminal.AgentInput(
             value = input,
             onValueChange = { input = it },
-            onSend = { submit(input.text, pendingImage) },
-            onPickImage = { photoPicker.launch("image/*") },
+            onSend = { submit(input.text, pendingImage, pendingFile) },
+            onPickImage = { attachmentPicker.launch("*/*") },
             canSend = canSend,
             enabled = !running,
             placeholder = Strings.aiAgentInputHint,
@@ -1369,19 +1485,20 @@ fun AiAgentScreen(
                 onContinueOnce = {
                     pendingWarning = null
                     pendingWarningInput = null
-                    runTaskInternal(pendingInput.first, pendingInput.second)
+                    runTaskInternal(pendingInput.text, pendingInput.image, pendingInput.file)
                 },
                 onContinueAndRemember = {
-                    selectedRepo?.let { r ->
-                        selectedModel?.let { m ->
-                            com.glassfiles.data.ai.cost.AiCostModeStore.setRemembered(
-                                context, r.fullName, m.providerId.name, true,
-                            )
-                        }
+                    selectedModel?.let { m ->
+                        com.glassfiles.data.ai.cost.AiCostModeStore.setRemembered(
+                            context,
+                            selectedRepo?.fullName ?: CHAT_ONLY_REPO_KEY,
+                            m.providerId.name,
+                            true,
+                        )
                     }
                     pendingWarning = null
                     pendingWarningInput = null
-                    runTaskInternal(pendingInput.first, pendingInput.second)
+                    runTaskInternal(pendingInput.text, pendingInput.image, pendingInput.file)
                 },
             )
         }
@@ -1441,8 +1558,8 @@ fun AiAgentScreen(
             }
             val protectedPathsText = remember(protectedPaths) { protectedPaths.joinToString("\n") }
             val state = com.glassfiles.ui.screens.ai.terminal.AgentSettingsState(
-                repoLabel = selectedRepo?.fullName ?: "—",
-                branchLabel = selectedBranch ?: "—",
+                repoLabel = if (chatOnlyMode) "chat only" else selectedRepo?.fullName ?: "—",
+                branchLabel = if (chatOnlyMode) "—" else selectedBranch ?: "—",
                 modelLabel = selectedModel?.let { "${it.providerId.displayName} · ${it.displayName}" } ?: "—",
                 mode = mode,
                 modeHint = modeHint,
@@ -1467,15 +1584,20 @@ fun AiAgentScreen(
                 workingMemoryReminders = com.glassfiles.data.ai.AiWorkingMemoryPrefs.getReminders(context),
                 instantRender = instantRender,
             )
+            val chatRepoDisplay = com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
+                key = CHAT_ONLY_REPO_KEY,
+                title = "chat only",
+                subtitle = "no repository tools",
+            )
             val repoOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
-                items = repos.map {
+                items = listOf(chatRepoDisplay) + repos.map {
                     com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
                         key = it.fullName,
                         title = it.fullName,
                         subtitle = it.description.takeIf { d -> d.isNotBlank() },
                     )
                 },
-                selected = selectedRepo?.let {
+                selected = if (chatOnlyMode) chatRepoDisplay else selectedRepo?.let {
                     com.glassfiles.ui.screens.ai.terminal.RepoDisplay(
                         key = it.fullName,
                         title = it.fullName,
@@ -1490,7 +1612,7 @@ fun AiAgentScreen(
                 items = branches.toList(),
                 selected = selectedBranch,
                 label = { it },
-                enabled = !running && branches.isNotEmpty(),
+                enabled = !chatOnlyMode && !running && branches.isNotEmpty(),
             )
             val modelOptions = com.glassfiles.ui.screens.ai.terminal.AgentSettingsOptions(
                 items = models.map {
@@ -1517,7 +1639,14 @@ fun AiAgentScreen(
                 branches = branchOptions,
                 models = modelOptions,
                 onRepoSelected = { picked ->
-                    selectedRepo = repos.firstOrNull { it.fullName == picked.key }
+                    if (picked.key == CHAT_ONLY_REPO_KEY) {
+                        chatOnlyMode = true
+                        selectedRepo = null
+                        selectedBranch = null
+                    } else {
+                        chatOnlyMode = false
+                        selectedRepo = repos.firstOrNull { it.fullName == picked.key }
+                    }
                 },
                 onBranchSelected = { picked -> selectedBranch = picked },
                 onModelSelected = { picked ->
@@ -2015,6 +2144,79 @@ private fun AgentAttachmentPreview(base64: String, visionAvailable: Boolean, onR
 }
 
 @Composable
+private fun AgentFileAttachmentPreview(attachment: AiPreparedAttachment, onRemove: () -> Unit) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.AttachFile, null, Modifier.size(18.dp), tint = colors.textSecondary)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    attachment.name,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+                Text(
+                    attachment.summary,
+                    fontSize = 10.sp,
+                    color = colors.textMuted,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 2,
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = colors.textSecondary)
+            }
+        }
+        if (!attachment.isArchive && !attachment.previewContent.isNullOrBlank()) {
+            com.glassfiles.ui.screens.ai.terminal.AgentTerminalCodeBlock(
+                text = attachment.previewContent,
+                lang = attachment.extension,
+                filePath = attachment.name,
+                context = LocalContext.current,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AgentFileContentSummary(fileContent: String) {
+    val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.AttachFile, null, Modifier.size(14.dp), tint = colors.textSecondary)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            fileContent.lineSequence().firstOrNull().orEmpty().ifBlank { "Attached file" },
+            fontSize = 11.sp,
+            color = colors.textSecondary,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 2,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
 private fun AgentMessageImage(base64: String) {
     val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     val bitmap = remember(base64) { decodeAgentBitmap(base64) }
@@ -2215,7 +2417,7 @@ private fun computeSessionStats(
     var output = 0
     transcript.forEach { entry ->
         when (entry) {
-            is AgentEntry.User -> input += entry.text.length + (entry.imageBase64?.length ?: 0) / 8
+            is AgentEntry.User -> input += entry.text.length + (entry.fileContent?.length ?: 0) + (entry.imageBase64?.length ?: 0) / 8
             is AgentEntry.Assistant -> output += entry.text.length
             is AgentEntry.ToolCall -> output += entry.call.argsJson.length
             is AgentEntry.ToolResult -> input += entry.result.output.length
@@ -2340,6 +2542,10 @@ private fun TranscriptEntry(
             ) {
                 if (entry.imageBase64 != null) {
                     AgentMessageImage(entry.imageBase64)
+                    Spacer(Modifier.height(6.dp))
+                }
+                if (entry.fileContent != null) {
+                    AgentFileContentSummary(entry.fileContent)
                     Spacer(Modifier.height(6.dp))
                 }
                 if (entry.text.isNotBlank()) {
@@ -3545,7 +3751,12 @@ private fun decodeAgentBitmap(base64: String): Bitmap? = runCatching {
 private fun List<AgentEntry>.toAiMessages(): List<AiMessage> =
     mapNotNull {
         when (it) {
-            is AgentEntry.User -> AiMessage(role = "user", content = it.text, imageBase64 = it.imageBase64)
+            is AgentEntry.User -> AiMessage(
+                role = "user",
+                content = it.text,
+                imageBase64 = it.imageBase64,
+                fileContent = it.fileContent,
+            )
             is AgentEntry.Assistant ->
                 if (it.text.isBlank()) null else AiMessage(role = "assistant", content = it.text)
             is AgentEntry.ToolCall, is AgentEntry.ToolResult, is AgentEntry.Pending -> null
@@ -3555,14 +3766,25 @@ private fun List<AgentEntry>.toAiMessages(): List<AiMessage> =
 private fun List<AiChatSessionStore.Message>.toAgentEntries(): List<AgentEntry> =
     mapNotNull { message ->
         when (message.role) {
-            "user" -> AgentEntry.User(message.content, message.imageBase64)
+            "user" -> AgentEntry.User(message.content, message.imageBase64, message.fileContent)
             "assistant" -> AgentEntry.Assistant(message.content)
             else -> null
         }
     }
 
+private const val CHAT_ONLY_REPO_KEY = "__chat_only__"
+
+private data class PendingAgentSend(
+    val text: String,
+    val image: String?,
+    val file: AiPreparedAttachment?,
+)
+
+private fun attachmentDisplayText(text: String, file: AiPreparedAttachment?): String =
+    text.ifBlank { file?.let { "Analyze ${it.name}" }.orEmpty() }
+
 private fun AgentEntry.stableKey(): String = when (this) {
-    is AgentEntry.User -> "u:${text.hashCode()}:${imageBase64?.hashCode() ?: 0}:${System.identityHashCode(this)}"
+    is AgentEntry.User -> "u:${text.hashCode()}:${imageBase64?.hashCode() ?: 0}:${fileContent?.hashCode() ?: 0}:${System.identityHashCode(this)}"
     is AgentEntry.Assistant -> "a:$id"
     is AgentEntry.ToolCall -> "tc:${call.id}"
     is AgentEntry.ToolResult -> "tr:${result.callId}"
@@ -3570,7 +3792,11 @@ private fun AgentEntry.stableKey(): String = when (this) {
 }
 
 private sealed class AgentEntry {
-    data class User(val text: String, val imageBase64: String? = null) : AgentEntry()
+    data class User(
+        val text: String,
+        val imageBase64: String? = null,
+        val fileContent: String? = null,
+    ) : AgentEntry()
     /** [id] keeps the LazyList key stable across streaming text updates;
      * each replacement keeps the same id via `copy(text = ...)`. */
     data class Assistant(val text: String, val id: String = newAssistantId()) : AgentEntry()

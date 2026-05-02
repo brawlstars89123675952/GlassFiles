@@ -30,6 +30,7 @@ object AiChatSessionStore {
         val role: String,
         val content: String,
         val imageBase64: String? = null,
+        val fileContent: String? = null,
         val isError: Boolean = false,
     )
 
@@ -116,6 +117,7 @@ object AiChatSessionStore {
                         role = m.optString("role", "assistant"),
                         content = m.optString("content", ""),
                         imageBase64 = m.optString("imageBase64", "").takeIf { it.isNotBlank() },
+                        fileContent = m.optString("fileContent", "").takeIf { it.isNotBlank() },
                         isError = m.optBoolean("isError", false),
                     ),
                 )
@@ -145,6 +147,7 @@ object AiChatSessionStore {
                     .put("content", m.content)
                     .put("isError", m.isError)
                 if (m.imageBase64 != null) mObj.put("imageBase64", m.imageBase64)
+                if (m.fileContent != null) mObj.put("fileContent", m.fileContent)
                 msgsArr.put(mObj)
             }
             arr.put(
