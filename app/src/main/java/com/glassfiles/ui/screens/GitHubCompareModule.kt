@@ -4,48 +4,28 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.Description
-import androidx.compose.material.icons.rounded.MergeType
-import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.SwapHoriz
-import androidx.compose.material.icons.rounded.Visibility
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,9 +48,12 @@ import com.glassfiles.data.github.GHCommit
 import com.glassfiles.data.github.GHCompareResult
 import com.glassfiles.data.github.GHDiffFile
 import com.glassfiles.data.github.GitHubManager
-import com.glassfiles.ui.components.AiModulePageBar
-import com.glassfiles.ui.components.AiModuleHairline
-import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModuleIcon as Icon
+import com.glassfiles.ui.components.AiModulePillButton
+import com.glassfiles.ui.components.AiModuleText as Text
+import com.glassfiles.ui.components.AiModuleTextAction
+import com.glassfiles.ui.components.AiModuleTextField
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -221,20 +204,13 @@ private fun CompareSelectorCard(
             Icon(Icons.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textMuted)
         }
         BranchSelectorDropdown(branches, headBranch, onHeadChange, "Compare")
-        Button(
+        AiModulePillButton(
+            label = if (loading) "comparing" else "compare",
             onClick = onCompare,
             enabled = branches.isNotEmpty() && baseBranch.isNotBlank() && headBranch.isNotBlank() && baseBranch != headBranch && !loading,
             modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = AiModuleTheme.colors.accent, contentColor = Color.White),
-            shape = RoundedCornerShape(10.dp)
-        ) {
-            if (loading) CircularProgressIndicator(Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-            else {
-                Icon(Icons.Rounded.CompareArrows, null, Modifier.size(17.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Compare")
-            }
-        }
+            leadingIcon = Icons.Rounded.CompareArrows,
+        )
     }
 }
 
@@ -276,21 +252,9 @@ private fun CompareResultPanel(
                 lineHeight = 16.sp
             )
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onOpenDiff, enabled = result.files.isNotEmpty()) {
-                    Icon(Icons.Rounded.Visibility, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
-                    Spacer(Modifier.width(4.dp))
-                    Text("View diff", color = AiModuleTheme.colors.accent, fontSize = 12.sp)
-                }
-                TextButton(onClick = onCreatePr, enabled = result.aheadBy > 0) {
-                    Icon(Icons.Rounded.MergeType, null, Modifier.size(16.dp), tint = Color(0xFF34C759))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Create PR", color = Color(0xFF34C759), fontSize = 12.sp)
-                }
-                TextButton(onClick = onOpenWeb, enabled = result.htmlUrl.isNotBlank()) {
-                    Icon(Icons.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textSecondary)
-                    Spacer(Modifier.width(4.dp))
-                    Text("GitHub", color = AiModuleTheme.colors.textSecondary, fontSize = 12.sp)
-                }
+                GitHubTerminalButton("view diff", onClick = onOpenDiff, enabled = result.files.isNotEmpty(), color = AiModuleTheme.colors.accent)
+                GitHubTerminalButton("create pr", onClick = onCreatePr, enabled = result.aheadBy > 0, color = Color(0xFF34C759))
+                GitHubTerminalButton("github", onClick = onOpenWeb, enabled = result.htmlUrl.isNotBlank(), color = AiModuleTheme.colors.textSecondary)
             }
         }
 
@@ -399,18 +363,19 @@ private fun CreateComparePRDialog(
     }
     var creating by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = { if (!creating) onDismiss() },
-        title = { Text("Create pull request") },
-        text = {
+        title = "Create pull request",
+        content = {
             Column(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("$headBranch -> $baseBranch", fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
-                OutlinedTextField(title, { title = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(body, { body = it }, label = { Text("Description") }, minLines = 6, maxLines = 10, modifier = Modifier.fillMaxWidth())
+                AiModuleTextField(title, { title = it }, label = "Title", singleLine = true, modifier = Modifier.fillMaxWidth())
+                AiModuleTextField(body, { body = it }, label = "Description", minLines = 6, maxLines = 10, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
-            TextButton(
+            AiModuleTextAction(
+                label = if (creating) "creating" else "create",
                 enabled = !creating && title.isNotBlank(),
                 onClick = {
                     creating = true
@@ -419,23 +384,15 @@ private fun CreateComparePRDialog(
                         creating = false
                         if (ok) onCreated() else Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
                     }
-                }
-            ) {
-                if (creating) CircularProgressIndicator(Modifier.size(16.dp), color = AiModuleTheme.colors.accent, strokeWidth = 2.dp)
-                else {
-                    Icon(Icons.Rounded.Add, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
-                    Spacer(Modifier.width(4.dp))
-                    Text("Create", color = AiModuleTheme.colors.accent)
-                }
-            }
+                },
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !creating) { Text(Strings.cancel) }
+            AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = onDismiss, enabled = !creating, tint = AiModuleTheme.colors.textSecondary)
         }
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BranchSelectorDropdown(
     branches: List<String>,
@@ -443,26 +400,26 @@ private fun BranchSelectorDropdown(
     onSelect: (String) -> Unit,
     placeholder: String
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = selected,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(placeholder) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.fillMaxWidth().menuAnchor(),
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AiModuleTheme.colors.accent, unfocusedBorderColor = AiModuleTheme.colors.border)
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }, modifier = Modifier.background(AiModuleTheme.colors.surface)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(placeholder, fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             branches.forEach { branch ->
-                DropdownMenuItem(
-                    text = { Text(branch, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    onClick = {
-                        onSelect(branch)
-                        expanded = false
-                    }
-                )
+                val active = branch == selected
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(if (active) AiModuleTheme.colors.accent.copy(alpha = 0.15f) else AiModuleTheme.colors.background)
+                        .clickable { onSelect(branch) }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        branch,
+                        fontSize = 12.sp,
+                        color = if (active) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

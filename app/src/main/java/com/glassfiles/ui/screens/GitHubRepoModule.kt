@@ -56,10 +56,13 @@ import com.glassfiles.notifications.GitHubNotificationTarget
 import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModuleGlyph
 import com.glassfiles.ui.components.AiModuleGlyphAction
+import com.glassfiles.ui.components.AiModuleIcon
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModuleSearchField
+import com.glassfiles.ui.components.AiModuleSpinner
+import com.glassfiles.ui.components.AiModuleText
 import com.glassfiles.ui.components.AiModuleTextAction
 import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.theme.*
@@ -1078,32 +1081,32 @@ private fun fileTint(name: String): Color = when (name.substringAfterLast(".", "
     "java" -> Color(0xFFB07219)
     "js", "jsx" -> Color(0xFFF1E05A)
     "ts", "tsx" -> Color(0xFF3178C6)
-    "md", "markdown" -> MaterialTheme.colorScheme.primary
-    "png", "jpg", "jpeg", "gif", "webp", "svg" -> MaterialTheme.colorScheme.primary
+    "md", "markdown" -> Blue
+    "png", "jpg", "jpeg", "gif", "webp", "svg" -> Blue
     else -> TextSecondary
 }
 
 @Composable
 internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHCommit) -> Unit) { LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) { items(commits) { c ->
-    val colors = MaterialTheme.colorScheme
+    val palette = AiModuleTheme.colors
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).ghGlassCard(14.dp).clickable { onClick(c) }.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
         if (c.avatarUrl.isNotBlank()) AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
-        else Box(Modifier.size(34.dp).clip(CircleShape).background(colors.primary.copy(0.12f)), contentAlignment = Alignment.Center) { Text(c.sha.take(2).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = colors.primary, letterSpacing = 0.6.sp) }
+        else Box(Modifier.size(34.dp).clip(CircleShape).background(palette.accent.copy(0.12f)), contentAlignment = Alignment.Center) { AiModuleText(c.sha.take(2).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = palette.accent, letterSpacing = 0.6.sp) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(c.message.lines().firstOrNull().orEmpty(), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
+            AiModuleText(c.message.lines().firstOrNull().orEmpty(), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                Text(c.author.ifBlank { "unknown" }, fontSize = 11.sp, color = colors.primary, fontWeight = FontWeight.Medium)
-                Text(c.sha.take(7), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextTertiary, letterSpacing = 0.5.sp)
-                Text(c.date.take(10), fontSize = 11.sp, color = TextTertiary)
+                AiModuleText(c.author.ifBlank { "unknown" }, fontSize = 11.sp, color = palette.accent, fontWeight = FontWeight.Medium)
+                AiModuleText(c.sha.take(7), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = TextTertiary, letterSpacing = 0.5.sp)
+                AiModuleText(c.date.take(10), fontSize = 11.sp, color = TextTertiary)
             }
         }
-        Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
+        AiModuleIcon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = TextTertiary)
     }
-}; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF21262D)).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = Blue, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
+}; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { GitHubTerminalButton("load more", onClick = onLoadMore, color = Blue) } } } }
 
 @Composable
 internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHIssue) -> Unit) { LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) { items(issues) { issue ->
-    val colors = MaterialTheme.colorScheme
+    val palette = AiModuleTheme.colors
     val stateColor = if (issue.state == "open") GitHubSuccessGreen else GitHubErrorRed
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onClick(issue) }) {
         Box(Modifier.width(3.dp).fillMaxHeight().background(stateColor))
@@ -1112,18 +1115,18 @@ internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -
                 Box(Modifier.size(8.dp).clip(CircleShape).background(stateColor))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(issue.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = colors.onSurface, maxLines = 2, lineHeight = 18.sp)
+                AiModuleText(issue.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = palette.textPrimary, maxLines = 2, lineHeight = 18.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("#${issue.number}", fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                    Text(issue.author, fontSize = 11.sp, color = colors.onSurfaceVariant, fontWeight = FontWeight.Medium)
-                    Text(if (issue.isPR) "PR" else issue.state.uppercase(), fontSize = 10.sp, color = stateColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
-                    if (issue.comments > 0) Text("${formatGitHubNumber(issue.comments)} comments", fontSize = 11.sp, color = colors.onSurfaceVariant)
+                    AiModuleText("#${issue.number}", fontSize = 11.sp, color = palette.textSecondary, fontFamily = FontFamily.Monospace)
+                    AiModuleText(issue.author, fontSize = 11.sp, color = palette.textSecondary, fontWeight = FontWeight.Medium)
+                    AiModuleText(if (issue.isPR) "PR" else issue.state.uppercase(), fontSize = 10.sp, color = stateColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                    if (issue.comments > 0) AiModuleText("${formatGitHubNumber(issue.comments)} comments", fontSize = 11.sp, color = palette.textSecondary)
                 }
             }
-            Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
+            AiModuleIcon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = palette.textSecondary)
         }
     }
-}; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).clickable { onLoadMore() }.padding(12.dp), contentAlignment = Alignment.Center) { Text("Load more", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Medium) } } } }
+}; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { GitHubTerminalButton("load more", onClick = onLoadMore, color = Blue) } } } }
 
 @Composable
 internal fun PullsTab(
@@ -1141,32 +1144,32 @@ internal fun PullsTab(
 
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
         items(pulls) { pr ->
-            val colors = MaterialTheme.colorScheme
+            val palette = AiModuleTheme.colors
             val prColor = pullStateColor(pr)
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).height(IntrinsicSize.Min).ghGlassCard(14.dp).clickable { onOpenDetail(pr) }) {
                 Box(Modifier.width(3.dp).fillMaxHeight().background(prColor))
                 Column(Modifier.weight(1f).padding(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.size(28.dp).clip(CircleShape).background(prColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Rounded.CallMerge, null, Modifier.size(16.dp), tint = prColor)
+                            AiModuleIcon(Icons.Rounded.CallMerge, null, Modifier.size(16.dp), tint = prColor)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Text(pr.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = colors.onSurface, lineHeight = 18.sp, maxLines = 2)
+                            AiModuleText(pr.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = palette.textPrimary, lineHeight = 18.sp, maxLines = 2)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
-                                Text("#${pr.number}", fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                                Text("${pr.head} → ${pr.base}", fontSize = 11.sp, color = colors.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                                Text(pr.author, fontSize = 11.sp, color = colors.onSurfaceVariant)
-                                Text(if (pr.merged) "MERGED" else pr.state.uppercase(), fontSize = 10.sp, color = prColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
-                                if (pr.draft) Text("DRAFT", fontSize = 10.sp, color = colors.onSurfaceVariant, letterSpacing = 0.6.sp)
-                                if (pr.reviewComments > 0) Text("${formatGitHubNumber(pr.reviewComments)} review comments", fontSize = 11.sp, color = colors.onSurfaceVariant)
+                                AiModuleText("#${pr.number}", fontSize = 11.sp, color = palette.textSecondary, fontFamily = FontFamily.Monospace)
+                                AiModuleText("${pr.head} -> ${pr.base}", fontSize = 11.sp, color = palette.textSecondary, fontFamily = FontFamily.Monospace)
+                                AiModuleText(pr.author, fontSize = 11.sp, color = palette.textSecondary)
+                                AiModuleText(if (pr.merged) "MERGED" else pr.state.uppercase(), fontSize = 10.sp, color = prColor, fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp)
+                                if (pr.draft) AiModuleText("DRAFT", fontSize = 10.sp, color = palette.textSecondary, letterSpacing = 0.6.sp)
+                                if (pr.reviewComments > 0) AiModuleText("${formatGitHubNumber(pr.reviewComments)} review comments", fontSize = 11.sp, color = palette.textSecondary)
                             }
                         }
                     }
                     if (pr.body.isNotBlank()) {
-                        Text(
+                        AiModuleText(
                             pr.body.replace("\n", " ").take(140),
                             fontSize = 11.sp,
-                            color = colors.onSurfaceVariant,
+                            color = palette.textSecondary,
                             maxLines = 2,
                             lineHeight = 16.sp,
                             modifier = Modifier.padding(top = 8.dp, start = 38.dp)
@@ -1302,7 +1305,7 @@ private fun PullRequestDetailScreen(
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading…")
             }
             return@Column
         }
@@ -1568,50 +1571,47 @@ private fun AiPullSummaryDialog(
     onRegenerate: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
-    AlertDialog(
+    val palette = AiModuleTheme.colors
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        title = {
+        title = Strings.aiSummary,
+        content = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = colors.primary)
+                AiModuleIcon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = palette.accent)
                 Spacer(Modifier.width(8.dp))
-                Text(Strings.aiSummary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-        },
-        text = {
-            Box(
-                Modifier
-                    .heightIn(min = 80.dp, max = 360.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                when {
-                    loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text(Strings.aiSummaryLoading, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                Box(
+                    Modifier
+                        .heightIn(min = 80.dp, max = 360.dp)
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    when {
+                        loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                            AiModuleSpinner()
+                            Spacer(Modifier.width(10.dp))
+                            AiModuleText(Strings.aiSummaryLoading, fontSize = 13.sp, color = palette.textSecondary)
+                        }
+                        error != null -> AiModuleText(
+                            error,
+                            fontSize = 13.sp,
+                            color = palette.error,
+                        )
+                        summary != null -> AiModuleText(
+                            summary,
+                            fontSize = 13.sp,
+                            color = palette.textPrimary,
+                            lineHeight = 18.sp,
+                        )
+                        else -> AiModuleText(Strings.aiSummaryEmpty, fontSize = 13.sp, color = palette.textSecondary)
                     }
-                    error != null -> Text(
-                        error,
-                        fontSize = 13.sp,
-                        color = colors.error,
-                    )
-                    summary != null -> Text(
-                        summary,
-                        fontSize = 13.sp,
-                        color = colors.onSurface,
-                        lineHeight = 18.sp,
-                    )
-                    else -> Text(Strings.aiSummaryEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text(Strings.close) }
+            AiModuleTextAction(label = Strings.close.lowercase(), onClick = onDismiss)
         },
         dismissButton = {
-            TextButton(onClick = onRegenerate, enabled = !loading) {
-                Text(Strings.aiSummaryRegenerate)
-            }
+            AiModuleTextAction(label = Strings.aiSummaryRegenerate.lowercase(), onClick = onRegenerate, enabled = !loading)
         },
     )
 }
@@ -2855,7 +2855,7 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = Blue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                AiModuleSpinner(label = "loading…")
             }
         } else {
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -3154,15 +3154,14 @@ private fun IssueLockDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
     var reason by remember(detail.number) { mutableStateOf(detail.activeLockReason.ifBlank { "resolved" }) }
     var saving by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = SurfaceWhite,
-        title = { Text(if (detail.locked) "Unlock issue" else "Lock issue", fontWeight = FontWeight.Bold, color = TextPrimary) },
-        text = {
+        title = if (detail.locked) "Unlock issue" else "Lock issue",
+        content = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(detail.title, fontSize = 13.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                AiModuleText(detail.title, fontSize = 13.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (!detail.locked) {
-                    Text("Reason", fontSize = 12.sp, color = TextSecondary)
+                    AiModuleText("Reason", fontSize = 12.sp, color = TextSecondary)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("resolved", "off-topic", "too heated", "spam").forEach { value ->
                             val selected = reason == value
@@ -3172,7 +3171,7 @@ private fun IssueLockDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
                                     .clickable { reason = value }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Text(value, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
+                                AiModuleText(value, fontSize = 12.sp, color = if (selected) Blue else TextSecondary)
                             }
                         }
                     }
@@ -3182,7 +3181,8 @@ private fun IssueLockDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
             }
         },
         confirmButton = {
-            TextButton(
+            AiModuleTextAction(
+                label = if (saving) "saving" else if (detail.locked) "unlock" else "lock",
                 enabled = !saving,
                 onClick = {
                     saving = true
@@ -3196,16 +3196,11 @@ private fun IssueLockDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
                         Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                         if (ok) onDone()
                     }
-                }
-            ) {
-                if (saving) {
-                    CircularProgressIndicator(Modifier.size(14.dp), color = Blue, strokeWidth = 2.dp)
-                } else {
-                    Text(if (detail.locked) "Unlock" else "Lock", color = if (detail.locked) Color(0xFF34C759) else Color(0xFFFF9500))
-                }
-            }
+                },
+                tint = if (detail.locked) Color(0xFF34C759) else Color(0xFFFF9500),
+            )
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(Strings.cancel, color = TextSecondary) } }
+        dismissButton = { AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = onDismiss, tint = TextSecondary) }
     )
 }
 
