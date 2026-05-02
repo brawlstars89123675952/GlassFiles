@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 import com.glassfiles.ui.theme.toCodeColors
@@ -55,14 +57,18 @@ fun AiModuleCodeBlock(
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     if (fullscreen) {
-        AiModuleFullscreenCodeView(
-            text = text,
-            lang = lang,
-            filePath = filePath,
-            context = context,
-            onClose = { fullscreen = false },
-        )
-        return
+        Dialog(
+            onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            AiModuleFullscreenCodeView(
+                text = text,
+                lang = lang,
+                filePath = filePath,
+                context = context,
+                onClose = { fullscreen = false },
+            )
+        }
     }
     val colors = AiModuleTheme.colors
     val highlighted: AnnotatedString = remember(text, lang, colors) {

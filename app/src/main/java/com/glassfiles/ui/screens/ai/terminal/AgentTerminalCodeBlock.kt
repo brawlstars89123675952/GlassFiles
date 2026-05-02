@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.glassfiles.ui.components.highlightCode
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -53,14 +55,18 @@ fun AgentTerminalCodeBlock(
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     if (fullscreen) {
-        AgentFullscreenCodeView(
-            text = text,
-            lang = lang,
-            filePath = filePath,
-            context = context,
-            onClose = { fullscreen = false },
-        )
-        return
+        Dialog(
+            onDismissRequest = { fullscreen = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            AgentFullscreenCodeView(
+                text = text,
+                lang = lang,
+                filePath = filePath,
+                context = context,
+                onClose = { fullscreen = false },
+            )
+        }
     }
     val colors = AgentTerminal.colors
     val highlighted: AnnotatedString = remember(text, lang, colors) {
