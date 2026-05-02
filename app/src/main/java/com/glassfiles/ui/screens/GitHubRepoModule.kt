@@ -257,6 +257,7 @@ internal fun RepoDetailScreen(
             readmeBlocks = null
             languages = emptyMap()
             contributors = emptyList()
+            releases = emptyList()
             val loadStart = System.currentTimeMillis()
             val loadResult = runCatching {
                 withTimeout(README_TOTAL_TIMEOUT_MS) readmeLoad@{
@@ -304,6 +305,11 @@ internal fun RepoDetailScreen(
                     scope.launch {
                         contributors = withTimeoutOrNull(3_000L) {
                             withContext(Dispatchers.IO) { GitHubManager.getContributors(context, repo.owner, repo.name) }
+                        }.orEmpty()
+                    }
+                    scope.launch {
+                        releases = withTimeoutOrNull(3_000L) {
+                            withContext(Dispatchers.IO) { GitHubManager.getReleases(context, repo.owner, repo.name) }
                         }.orEmpty()
                     }
                 }
@@ -848,7 +854,7 @@ internal fun RepoDetailScreen(
             }
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
-            RepoTab.README -> ReadmeTab(readme, readmeBlocks, readmeError, languages, contributors, repo) { readmeReloadNonce++ }
+            RepoTab.README -> ReadmeTab(readme, readmeBlocks, readmeError, languages, contributors, releases, repo) { readmeReloadNonce++ }
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
     }
@@ -1796,10 +1802,18 @@ private fun String.encodeGithubPathPart(): String =
     URLEncoder.encode(this, Charsets.UTF_8.name()).replace("+", "%20")
 
 @Composable
-private fun ReadmeTab(readme: String?, blocks: List<ReadmeRenderBlock>?, error: String?, languages: Map<String, Long>, contributors: List<GHContributor>, repo: GHRepo, onRetry: () -> Unit) {
+private fun ReadmeTab(
+    readme: String?,
+    blocks: List<ReadmeRenderBlock>?,
+    error: String?,
+    languages: Map<String, Long>,
+    contributors: List<GHContributor>,
+    releases: List<GHRelease>,
+    repo: GHRepo,
+    onRetry: () -> Unit
+) {
     val readmeImageLoader = rememberReadmeImageLoader(LocalContext.current)
     val colors = AiModuleTheme.colors
-    val total = languages.values.sum().toFloat().coerceAtLeast(1f)
     var rawView by remember(readme) { mutableStateOf(false) }
     var visibleCount by remember(readme) { mutableIntStateOf(250) }
     var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
@@ -1818,44 +1832,47 @@ private fun ReadmeTab(readme: String?, blocks: List<ReadmeRenderBlock>?, error: 
         }
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-        if (languages.isNotEmpty()) item { Text(Strings.ghLanguages, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary); Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp))) { languages.forEach { (l, b) -> Box(Modifier.weight(b / total).fillMaxHeight().background(langColor(l))) } }; Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) { languages.forEach { (l, b) -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { Box(Modifier.size(8.dp).clip(CircleShape).background(langColor(l))); Text("$l ${"%.1f".format(b / total * 100)}%", fontSize = 11.sp, color = colors.textMuted) } } }; Spacer(Modifier.height(16.dp)) }
-        if (contributors.isNotEmpty()) item { Text(Strings.ghContributors, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary); Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) { contributors.forEach { c -> Column(horizontalAlignment = Alignment.CenterHorizontally) { AsyncImage(c.avatarUrl, c.login, Modifier.size(36.dp).clip(CircleShape)); Text(c.login, fontSize = 10.sp, color = colors.textMuted, maxLines = 1); Text(formatGitHubNumber(c.contributions), fontSize = 9.sp, color = colors.textMuted) } } }; Spacer(Modifier.height(16.dp)) }
+    LazyColumn(
+        Modifier.fillMaxSize().background(colors.background),
+        contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
+    ) {
         item {
-            Text(Strings.ghReadme, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary)
-            Spacer(Modifier.height(8.dp))
+            ReadmeMobileTopBar(
+                rawView = rawView,
+                hasRaw = !readme.isNullOrBlank(),
+                repo = repo,
+                onToggleRaw = { rawView = !rawView },
+            )
+            Spacer(Modifier.height(14.dp))
         }
         when {
             error != null -> item {
                 ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
             }
             readme.isNullOrBlank() -> item {
-                Text(Strings.ghNoReadme, fontSize = 14.sp, color = colors.textMuted)
+                Text(Strings.ghNoReadme, fontSize = 15.sp, color = colors.textMuted, lineHeight = 22.sp)
             }
             rawView -> item {
-                Box(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) { ReadmeRawBlock(readme.orEmpty()) }
+                ReadmeRawBlock(readme.orEmpty())
             }
             shownBlocks.isEmpty() -> item {
                 ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
             }
             else -> {
                 item(key = "readme_doc_top_${repo.owner}_${repo.name}") {
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(2.dp))
                 }
                 items(shownBlocks, key = { it.stableId }) { block ->
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 2.dp, vertical = 4.dp)
+                            .padding(vertical = 5.dp)
                     ) {
                         ReadmeBlockView(block, readmeImageLoader)
                     }
                 }
                 item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(16.dp))
                 }
                 if (visibleCount < safeBlocks.size) {
                     item {
@@ -1868,7 +1885,207 @@ private fun ReadmeTab(readme: String?, blocks: List<ReadmeRenderBlock>?, error: 
                 }
             }
         }
+        item {
+            ReadmeRepositoryFooter(repo, releases, contributors, languages)
+        }
     }
+}
+
+@Composable
+private fun ReadmeMobileTopBar(
+    rawView: Boolean,
+    hasRaw: Boolean,
+    repo: GHRepo,
+    onToggleRaw: () -> Unit,
+) {
+    val context = LocalContext.current
+    val colors = AiModuleTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, colors.border.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(Icons.Rounded.MenuBook, null, Modifier.size(19.dp), tint = colors.textSecondary)
+        Text("README", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary, modifier = Modifier.weight(1f))
+        if (hasRaw) {
+            ReadmeTinyAction(if (rawView) "rendered" else "raw", onToggleRaw)
+        }
+        ReadmeTinyAction("browser") { context.openReadmeUrl(readmeBrowserUrl(repo)) }
+    }
+}
+
+@Composable
+private fun ReadmeTinyAction(label: String, onClick: () -> Unit) {
+    val colors = AiModuleTheme.colors
+    Text(
+        "[$label]",
+        fontSize = 11.sp,
+        color = colors.accent,
+        fontFamily = JetBrainsMono,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 3.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun ReadmeRepositoryFooter(
+    repo: GHRepo,
+    releases: List<GHRelease>,
+    contributors: List<GHContributor>,
+    languages: Map<String, Long>,
+) {
+    Spacer(Modifier.height(20.dp))
+    if (releases.isNotEmpty()) {
+        ReadmeFooterDivider()
+        ReadmeReleasesSummary(releases)
+    }
+    if (contributors.isNotEmpty()) {
+        ReadmeFooterDivider()
+        ReadmeContributorsSummary(contributors)
+    }
+    if (languages.isNotEmpty()) {
+        ReadmeFooterDivider()
+        ReadmeLanguagesSummary(languages)
+    } else if (repo.language.isNotBlank()) {
+        ReadmeFooterDivider()
+        ReadmeSingleLanguageSummary(repo.language)
+    }
+}
+
+@Composable
+private fun ReadmeFooterDivider() {
+    Box(Modifier.fillMaxWidth().padding(vertical = 18.dp).height(1.dp).background(AiModuleTheme.colors.border.copy(alpha = 0.55f)))
+}
+
+@Composable
+private fun ReadmeFooterHeading(title: String, count: Int? = null) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, fontSize = 25.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary, lineHeight = 30.sp)
+        if (count != null) {
+            Text(
+                formatGitHubNumber(count),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = AiModuleTheme.colors.textSecondary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(AiModuleTheme.colors.surface)
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadmeReleasesSummary(releases: List<GHRelease>) {
+    val latest = releases.firstOrNull()
+    ReadmeFooterHeading("Releases", releases.size)
+    Spacer(Modifier.height(14.dp))
+    if (latest != null) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.Label, null, Modifier.size(22.dp), tint = GitHubSuccessGreen)
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(latest.tag.ifBlank { latest.name.ifBlank { "latest" } }, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
+                    ReadmeStatusPill("Latest", GitHubSuccessGreen)
+                }
+                latest.createdAt.takeIf { it.isNotBlank() }?.let {
+                    Text(it.take(10), fontSize = 13.sp, color = AiModuleTheme.colors.textMuted)
+                }
+            }
+        }
+        if (releases.size > 1) {
+            Spacer(Modifier.height(13.dp))
+            Text("+ ${formatGitHubNumber(releases.size - 1)} releases", fontSize = 16.sp, color = AiModuleTheme.colors.accent)
+        }
+    }
+}
+
+@Composable
+private fun ReadmeContributorsSummary(contributors: List<GHContributor>) {
+    ReadmeFooterHeading("Contributors", contributors.size)
+    Spacer(Modifier.height(14.dp))
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy((-6).dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        contributors.take(14).forEach { contributor ->
+            AsyncImage(
+                contributor.avatarUrl,
+                contributor.login,
+                Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .border(1.5.dp, AiModuleTheme.colors.background, CircleShape),
+            )
+        }
+    }
+    if (contributors.size > 14) {
+        Spacer(Modifier.height(12.dp))
+        Text("+ ${formatGitHubNumber(contributors.size - 14)} contributors", fontSize = 16.sp, color = AiModuleTheme.colors.accent)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ReadmeLanguagesSummary(languages: Map<String, Long>) {
+    val total = languages.values.sum().toFloat().coerceAtLeast(1f)
+    ReadmeFooterHeading(Strings.ghLanguages)
+    Spacer(Modifier.height(14.dp))
+    Row(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(999.dp))) {
+        languages.forEach { (language, bytes) ->
+            Box(Modifier.weight(bytes / total).fillMaxHeight().background(langColor(language)))
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        languages.forEach { (language, bytes) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Box(Modifier.size(11.dp).clip(CircleShape).background(langColor(language)))
+                Text(language, fontSize = 15.sp, color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold)
+                Text("${"%.1f".format(bytes / total * 100)}%", fontSize = 15.sp, color = AiModuleTheme.colors.textMuted)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadmeSingleLanguageSummary(language: String) {
+    ReadmeFooterHeading(Strings.ghLanguages)
+    Spacer(Modifier.height(14.dp))
+    Row(Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(999.dp))) {
+        Box(Modifier.fillMaxSize().background(langColor(language)))
+    }
+    Spacer(Modifier.height(12.dp))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(Modifier.size(11.dp).clip(CircleShape).background(langColor(language)))
+        Text(language, fontSize = 15.sp, color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold)
+        Text("100.0%", fontSize = 15.sp, color = AiModuleTheme.colors.textMuted)
+    }
+}
+
+@Composable
+private fun ReadmeStatusPill(text: String, color: Color) {
+    Text(
+        text,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .border(1.dp, color.copy(alpha = 0.8f), RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
 }
 
 @Composable
@@ -1902,11 +2119,11 @@ internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader)
         is ReadmeRenderBlock.Heading -> ReadmeHeading(block)
         is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text)
         is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level)
-        is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.width(3.dp).heightIn(min = 20.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(2.dp)))
+        is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.width(4.dp).heightIn(min = 28.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(2.dp)))
             ReadmeText(block.text, modifier = Modifier.weight(1f))
         }
-        is ReadmeRenderBlock.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 4.dp).height(0.8.dp).background(AiModuleTheme.colors.border.copy(alpha = 0.45f)))
+        is ReadmeRenderBlock.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 18.dp).height(1.dp).background(AiModuleTheme.colors.border.copy(alpha = 0.62f)))
         is ReadmeRenderBlock.Image -> ReadmeImage(block, imageLoader)
         is ReadmeRenderBlock.ImageRow -> ReadmeImageRow(block.images, imageLoader)
         is ReadmeRenderBlock.Code -> ReadmeCodeBlock(block)
@@ -1918,28 +2135,39 @@ internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader)
 @Composable
 private fun ReadmeHeading(block: ReadmeRenderBlock.Heading) {
     val colors = AiModuleTheme.colors
-    Column(Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val topPadding = when (block.level) {
+        1 -> 18.dp
+        2 -> 28.dp
+        else -> 18.dp
+    }
+    Column(Modifier.fillMaxWidth().padding(top = topPadding, bottom = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (block.anchor.isNotBlank()) {
-                Icon(Icons.Outlined.Link, null, Modifier.size(14.dp), tint = colors.textMuted.copy(alpha = 0.4f))
+                Icon(
+                    Icons.Outlined.Link,
+                    null,
+                    Modifier.size(if (block.level <= 2) 20.dp else 16.dp),
+                    tint = colors.textMuted.copy(alpha = 0.78f),
+                )
             }
             val size = when (block.level) {
-                1 -> 22.sp
-                2 -> 18.sp
-                else -> 16.sp
+                1 -> 38.sp
+                2 -> 31.sp
+                3 -> 25.sp
+                else -> 20.sp
             }
             Text(
                 readmeInlineAnnotated(block.text),
                 fontSize = size,
-                fontWeight = if (block.level <= 2) FontWeight.Bold else FontWeight.SemiBold,
+                fontWeight = FontWeight.Bold,
                 color = colors.textPrimary,
-                lineHeight = (size.value + 5).sp,
+                lineHeight = (size.value + 6).sp,
                 modifier = Modifier.weight(1f)
             )
         }
-        if (block.level == 2) {
-            Spacer(Modifier.height(8.dp))
-            Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.border.copy(alpha = 0.3f)))
+        if (block.level <= 3) {
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.62f)))
         }
     }
 }
@@ -1964,13 +2192,20 @@ private fun ReadmeErrorCard(message: String, raw: String, repo: GHRepo, onViewRa
 @Composable
 private fun ReadmeRawBlock(markdown: String) {
     val preview = remember(markdown) { markdown.lineSequence().take(500).joinToString("\n") { it.take(README_MAX_LINE_CHARS) } }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(AiModuleTheme.colors.surface)
+            .border(1.dp, AiModuleTheme.colors.border.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+            .padding(12.dp)
+    ) {
         Text(
             preview,
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             fontFamily = FontFamily.Monospace,
             color = AiModuleTheme.colors.textPrimary,
-            lineHeight = 15.sp
+            lineHeight = 17.sp
         )
         if (markdown.lines().size > 500) {
             Spacer(Modifier.height(8.dp))
@@ -1989,29 +2224,33 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
         ClickableText(
             text = annotated,
             modifier = modifier,
-            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 20.sp),
+            style = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 25.sp),
             onClick = { offset ->
                 annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
             }
         )
     } else {
-        FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             segments.forEach { segment ->
                 when (segment) {
                     is ReadmeInlineSegment.Code -> {
                         Text(
                             segment.text,
-                            fontSize = 12.sp,
+                            fontSize = 15.sp,
                             fontFamily = FontFamily.Monospace,
                             color = AiModuleTheme.colors.textPrimary,
-                            modifier = Modifier.clip(RoundedCornerShape(4.dp)).background(AiModuleTheme.colors.background).padding(horizontal = 4.dp, vertical = 2.dp)
+                            lineHeight = 22.sp,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(AiModuleTheme.colors.surface)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
                         )
                     }
                     is ReadmeInlineSegment.Text -> {
                         val annotated = readmeInlineAnnotated(segment.text)
                         ClickableText(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 20.sp),
+                            style = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 25.sp),
                             onClick = { offset ->
                                 annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
                             }
@@ -2051,13 +2290,13 @@ private fun readmeInlineSegments(text: String): List<ReadmeInlineSegment> {
 
 @Composable
 private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null, level: Int = 0) {
-    Row(Modifier.fillMaxWidth().padding(start = (level * 16).dp, top = 1.dp, bottom = 1.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().padding(start = (level * 18).dp, top = 3.dp, bottom = 3.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         val marker = when (checked) {
             true -> "✓"
             false -> "□"
             null -> if (ordered) "1." else "•"
         }
-        Text(marker, fontSize = 13.sp, color = if (checked == true) GitHubSuccessGreen else AiModuleTheme.colors.textMuted, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 14.dp))
+        Text(marker, fontSize = 16.sp, color = if (checked == true) GitHubSuccessGreen else AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 18.dp))
         ReadmeText(text, modifier = Modifier.weight(1f))
     }
 }
@@ -2201,23 +2440,58 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
         if (expanded || allLines.size <= README_MAX_CODE_LINES) allLines else allLines.take(120)
     }
     val totalLines = remember(block.code) { block.code.lines().size }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).border(0.5.dp, AiModuleTheme.colors.border, RoundedCornerShape(10.dp))) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${block.language.ifBlank { "code" }} · $totalLines lines", fontSize = 11.sp, color = colors.textMuted, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-            IconButton(modifier = Modifier.size(30.dp), onClick = {
-                val clip = android.content.ClipData.newPlainText("readme-code", block.code)
-                (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
-                Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
-            }) {
-                Icon(Icons.Rounded.ContentCopy, null, Modifier.size(15.dp), tint = colors.textMuted)
-            }
+    val language = block.language.ifBlank { "text" }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFF111820))
+            .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF161B22))
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(language, fontSize = 13.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("$totalLines lines", fontSize = 12.sp, color = colors.textMuted, modifier = Modifier.padding(end = 12.dp))
+            Text(
+                "[ copy ]",
+                fontSize = 12.sp,
+                color = colors.textSecondary,
+                fontFamily = JetBrainsMono,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable {
+                        val clip = android.content.ClipData.newPlainText("readme-code", block.code)
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                        Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
         }
-        Column(Modifier.horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(
+            Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
             lines.forEach { line ->
-                Text(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = AiModuleTheme.colors.textPrimary, lineHeight = 17.sp)
+                Text(
+                    highlightLine(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, language),
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = colors.textPrimary,
+                    lineHeight = 20.sp,
+                    softWrap = false,
+                )
             }
             if (!expanded && totalLines > README_MAX_CODE_LINES) {
-                GitHubTerminalButton("expand large code block", onClick = { expanded = true }, color = AiModuleTheme.colors.accent)
+                Spacer(Modifier.height(8.dp))
+                GitHubTerminalButton("expand large code block", onClick = { expanded = true }, color = colors.accent)
             }
         }
     }
@@ -2229,28 +2503,35 @@ private fun ReadmeTable(rows: List<List<String>>) {
     var expanded by remember(rows) { mutableStateOf(false) }
     val colors = AiModuleTheme.colors
     val visibleRows = if (expanded || rows.size <= README_MAX_TABLE_ROWS) rows else rows.take(README_MAX_TABLE_ROWS)
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).clip(RoundedCornerShape(8.dp)).border(0.5.dp, colors.border.copy(alpha = 0.45f), RoundedCornerShape(8.dp))) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .horizontalScroll(rememberScrollState())
+            .clip(RoundedCornerShape(6.dp))
+            .border(1.dp, colors.border.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+    ) {
         Column {
             visibleRows.forEachIndexed { rowIndex, row ->
-                Row(Modifier.background(if (rowIndex == 0) colors.background else colors.surface)) {
+                Row(Modifier.background(if (rowIndex == 0) Color(0xFF161B22) else colors.surface)) {
                     row.forEachIndexed { cellIndex, cell ->
                         Box(
                             Modifier
-                                .widthIn(min = 96.dp, max = 210.dp)
-                                .then(if (cellIndex != 0) Modifier.border(0.5.dp, colors.border.copy(alpha = 0.25f)) else Modifier)
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .widthIn(min = 122.dp, max = 260.dp)
+                                .then(if (cellIndex != 0) Modifier.border(0.5.dp, colors.border.copy(alpha = 0.32f)) else Modifier)
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
                         ) {
                             Text(
                                 readmeInlineAnnotated(cell),
-                                fontSize = 12.sp,
+                                fontSize = 14.sp,
                                 color = colors.textPrimary,
-                                lineHeight = 17.sp,
+                                lineHeight = 20.sp,
                                 fontWeight = if (rowIndex == 0) FontWeight.SemiBold else FontWeight.Normal
                             )
                         }
                     }
                 }
-                if (rowIndex != visibleRows.lastIndex) Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.border.copy(alpha = 0.35f)))
+                if (rowIndex != visibleRows.lastIndex) Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.4f)))
             }
             if (!expanded && rows.size > README_MAX_TABLE_ROWS) {
                 GitHubTerminalButton(
@@ -2267,12 +2548,23 @@ private fun ReadmeTable(rows: List<List<String>>) {
 private fun ReadmeLinkCard(text: String, url: String) {
     val context = LocalContext.current
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).clickable { context.openReadmeUrl(url) }.padding(horizontal = 10.dp, vertical = 7.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(5.dp))
+            .clickable { context.openReadmeUrl(url) }
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(Icons.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
-        Text(text.ifBlank { url }, fontSize = 13.sp, color = AiModuleTheme.colors.accent, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("→", fontSize = 18.sp, color = AiModuleTheme.colors.textPrimary)
+        Text(
+            text.ifBlank { url },
+            fontSize = 17.sp,
+            color = AiModuleTheme.colors.accent,
+            fontWeight = FontWeight.Medium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
