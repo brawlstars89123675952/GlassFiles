@@ -472,6 +472,9 @@ fun AiAgentScreen(
         sessions = AiChatSessionStore.list(context, AGENT_SESSION_MODE)
     }
 
+    fun chatOnlyScopeFullName(): String =
+        "$CHAT_MEMORY_SCOPE_PREFIX$activeSessionId"
+
     fun activeAgentScopeFullName(): String {
         if (chatOnlyMode) return chatOnlyScopeFullName()
         selectedRepo?.fullName?.takeIf { it.isNotBlank() }?.let { return it }
@@ -485,9 +488,6 @@ fun AiAgentScreen(
 
     fun agentScopeLabel(scopeFullName: String): String =
         if (scopeFullName.startsWith(CHAT_MEMORY_SCOPE_PREFIX)) "chat only" else scopeFullName
-
-    fun chatOnlyScopeFullName(): String =
-        "$CHAT_MEMORY_SCOPE_PREFIX$activeSessionId"
 
     fun chatOnlyMemoryPrompt(scopeFullName: String): List<AiMessage> {
         val messages = mutableListOf<AiMessage>()
