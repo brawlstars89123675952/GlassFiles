@@ -3,6 +3,7 @@ package com.glassfiles.data.ai
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.glassfiles.data.ai.workspace.WorkspaceDatabase
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -303,9 +304,33 @@ object AiAgentMemoryIndex {
         context,
         File(AiAgentMemoryStore.memoryRootDir(context).apply { mkdirs() }, "memory_index.db").absolutePath,
         null,
-        2,
+        3,
     ) {
         override fun onCreate(db: SQLiteDatabase) {
+            createMemoryTables(db)
+            WorkspaceDatabase.createWorkspaceTables(db)
+        }
+
+        override fun onOpen(db: SQLiteDatabase) {
+            super.onOpen(db)
+            if (!db.isReadOnly) {
+                createMemoryTables(db)
+                WorkspaceDatabase.createWorkspaceTables(db)
+            }
+        }
+
+        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+            if (oldVersion < 2) {
+                db.execSQL("DROP TABLE IF EXISTS documents")
+                db.execSQL("DROP TABLE IF EXISTS memory_fts")
+                db.execSQL("DROP TABLE IF EXISTS facts")
+                db.execSQL("DROP TABLE IF EXISTS index_meta")
+            }
+            createMemoryTables(db)
+            if (oldVersion < 3) WorkspaceDatabase.createWorkspaceTables(db)
+        }
+
+        private fun createMemoryTables(db: SQLiteDatabase) {
             db.execSQL(
                 """
                     CREATE TABLE IF NOT EXISTS documents(
@@ -348,14 +373,6 @@ object AiAgentMemoryIndex {
             )
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_documents_repo ON documents(repo)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_facts_repo ON facts(repo)")
-        }
-
-        override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-            db.execSQL("DROP TABLE IF EXISTS documents")
-            db.execSQL("DROP TABLE IF EXISTS memory_fts")
-            db.execSQL("DROP TABLE IF EXISTS facts")
-            db.execSQL("DROP TABLE IF EXISTS index_meta")
-            onCreate(db)
         }
     }
 }
