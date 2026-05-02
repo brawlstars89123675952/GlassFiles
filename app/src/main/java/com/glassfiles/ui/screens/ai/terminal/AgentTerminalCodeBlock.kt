@@ -55,6 +55,7 @@ fun AgentTerminalCodeBlock(
     modifier: Modifier = Modifier,
     scrollBody: Boolean = false,
     fillBody: Boolean = false,
+    plainText: Boolean = false,
 ) {
     var fullscreen by remember { mutableStateOf(false) }
     if (fullscreen) {
@@ -67,13 +68,14 @@ fun AgentTerminalCodeBlock(
                 lang = lang,
                 filePath = filePath,
                 context = context,
+                plainText = plainText,
                 onClose = { fullscreen = false },
             )
         }
     }
     val colors = AgentTerminal.colors
-    val highlighted: AnnotatedString = remember(text, lang, colors) {
-        highlightCode(text, lang, colors.toCodeColors())
+    val highlighted: AnnotatedString = remember(text, lang, colors, plainText) {
+        if (plainText) AnnotatedString(text) else highlightCode(text, lang, colors.toCodeColors())
     }
     Column(
         modifier
@@ -157,12 +159,13 @@ private fun AgentFullscreenCodeView(
     lang: String,
     filePath: String?,
     context: Context,
+    plainText: Boolean,
     onClose: () -> Unit,
 ) {
     BackHandler(onBack = onClose)
     val colors = AgentTerminal.colors
-    val highlighted: AnnotatedString = remember(text, lang, colors) {
-        highlightCode(text, lang, colors.toCodeColors())
+    val highlighted: AnnotatedString = remember(text, lang, colors, plainText) {
+        if (plainText) AnnotatedString(text) else highlightCode(text, lang, colors.toCodeColors())
     }
     Column(
         Modifier

@@ -2527,6 +2527,7 @@ private fun AgentGeneratedFilePreviewSheet(
                         .weight(1f),
                     scrollBody = true,
                     fillBody = true,
+                    plainText = true,
                 )
             }
         }
