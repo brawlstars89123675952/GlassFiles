@@ -105,6 +105,7 @@ import com.glassfiles.ui.components.AiModuleTextField
 import com.glassfiles.ui.theme.AiModuleSurface
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.Blue
+import com.glassfiles.ui.theme.JetBrainsMono
 import com.glassfiles.ui.theme.SeparatorColor
 import com.glassfiles.ui.theme.TextSecondary
 import com.glassfiles.ui.theme.TextTertiary

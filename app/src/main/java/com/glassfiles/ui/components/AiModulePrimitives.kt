@@ -63,12 +63,14 @@ fun AiModuleText(
     textAlign: TextAlign = TextAlign.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    softWrap: Boolean = true,
 ) {
     BasicText(
         text = text,
         modifier = modifier,
         maxLines = maxLines,
         overflow = overflow,
+        softWrap = softWrap,
         style = TextStyle(
             color = color,
             fontSize = fontSize,
@@ -96,12 +98,14 @@ fun AiModuleText(
     textAlign: TextAlign = TextAlign.Unspecified,
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
+    softWrap: Boolean = true,
 ) {
     BasicText(
         text = text,
         modifier = modifier,
         maxLines = maxLines,
         overflow = overflow,
+        softWrap = softWrap,
         style = TextStyle(
             color = color,
             fontSize = fontSize,

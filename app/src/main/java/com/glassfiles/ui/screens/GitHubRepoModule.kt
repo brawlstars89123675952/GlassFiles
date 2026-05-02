@@ -1030,18 +1030,33 @@ internal fun FilesTab(
                     }
                 }
                 if (isDir && menuFor == item.path) {
-                    DropdownMenu(
-                        expanded = true,
-                        onDismissRequest = { menuFor = null },
-                        modifier = Modifier.background(palette.surface),
+                    Column(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .width(164.dp)
+                            .background(palette.surface, RoundedCornerShape(4.dp))
+                            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                            .padding(vertical = 4.dp),
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("> open in screen", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp) },
-                            onClick = { menuFor = null; onOpenDir(item) },
+                        Text(
+                            "> open in screen",
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { menuFor = null; onOpenDir(item) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                         )
-                        DropdownMenuItem(
-                            text = { Text("> copy path", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp) },
-                            onClick = { menuFor = null; onCopyPath(item) },
+                        Text(
+                            "> copy path",
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 13.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { menuFor = null; onCopyPath(item) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                         )
                     }
                 }
