@@ -759,7 +759,7 @@ object AgentTools {
 
     val LOCAL_COPY = AiTool(
         name = "local_copy",
-        description = "Copy a local file or directory to another local path.",
+        description = "Copy a local file or directory to another local path. File destinations under /storage/emulated/0/Download are exported through Android MediaStore.",
         parameters = obj {
             put("type", "object")
             put("properties", obj {
@@ -774,7 +774,7 @@ object AgentTools {
 
     val LOCAL_MOVE = AiTool(
         name = "local_move",
-        description = "Move a local file or directory to another local path.",
+        description = "Move a local file or directory to another local path. File destinations under /storage/emulated/0/Download are exported through Android MediaStore.",
         parameters = obj {
             put("type", "object")
             put("properties", obj {
@@ -889,7 +889,7 @@ object AgentTools {
 
     val ARCHIVE_CREATE = AiTool(
         name = "archive_create",
-        description = "Create a local archive from one or more files or directories. Supports zip, tar, tar.gz and 7z.",
+        description = "Create a local archive from one or more files or directories. Supports zip, tar, tar.gz and 7z. Destination can be /storage/emulated/0/Download/name.zip to save through Android MediaStore.",
         parameters = obj {
             put("type", "object")
             put("properties", obj {

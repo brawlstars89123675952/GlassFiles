@@ -1,14 +1,17 @@
 package com.glassfiles.data.ai.agent
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.util.Base64
 import android.util.Log
+import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import com.glassfiles.data.ArchiveHelper
 import com.glassfiles.data.TrashManager
@@ -536,6 +539,13 @@ class LocalToolExecutor(
 
     private fun copy(context: Context, source: String, destination: String, overwrite: Boolean): String {
         val src = resolve(context, source, mustExist = true)
+        downloadsTargetFor(destination, src.name)?.let { target ->
+            if (src.isDirectory) {
+                throw IllegalArgumentException("local_copy: export to Downloads supports files only; archive the directory first")
+            }
+            val exported = exportFileToDownloads(context, src, target, overwrite)
+            return "Copied ${displayPath(context, src)} -> $exported."
+        }
         val dst = destinationFor(context, destination, src)
         if (dst.exists() && !overwrite) throw IllegalArgumentException("local_copy: destination exists: ${dst.absolutePath}")
         if (src.isDirectory) src.copyRecursively(dst, overwrite) else {
@@ -548,6 +558,15 @@ class LocalToolExecutor(
 
     private fun move(context: Context, source: String, destination: String, overwrite: Boolean): String {
         val src = resolve(context, source, mustExist = true)
+        downloadsTargetFor(destination, src.name)?.let { target ->
+            if (src.isDirectory) {
+                throw IllegalArgumentException("local_move: export to Downloads supports files only; archive the directory first")
+            }
+            val exported = exportFileToDownloads(context, src, target, overwrite)
+            backupBeforeChange(context, src)
+            if (!src.delete()) throw IllegalStateException("local_move: exported to Downloads but failed to delete source")
+            return "Moved ${displayPath(context, src)} -> $exported."
+        }
         val dst = destinationFor(context, destination, src)
         if (dst.exists()) {
             if (!overwrite) throw IllegalArgumentException("local_move: destination exists: ${dst.absolutePath}")
@@ -829,9 +848,17 @@ class LocalToolExecutor(
     ): String {
         val arr = sourcePaths ?: throw IllegalArgumentException("archive_create: source_paths is required")
         if (arr.length() == 0) throw IllegalArgumentException("archive_create: source_paths must not be empty")
-        val dest = resolve(context, destination, mustExist = false)
+        val downloadsTarget = downloadsTargetFor(destination, sourceName = null)
+        val dest = if (downloadsTarget != null) {
+            File(workspaceRoot(context), downloadsTarget.displayName).canonicalFile.also { ensureAllowed(context, it) }
+        } else {
+            resolve(context, destination, mustExist = false)
+        }
         dest.parentFile?.mkdirs()
-        val archiveFormat = archiveFormatFor(dest, format)
+        val archiveFormat = archiveFormatFor(
+            if (downloadsTarget != null) File(downloadsTarget.displayName) else dest,
+            format,
+        )
         val tempRoot = File(workspaceRoot(context), "archive_create_${System.currentTimeMillis()}").canonicalFile
         tempRoot.mkdirs()
         var created: File? = null
@@ -849,7 +876,147 @@ class LocalToolExecutor(
             tempRoot.deleteRecursively()
             created?.delete()
         }
-        return "Created archive ${displayPath(context, dest)} (${formatBytes(dest.length())})."
+        val exported = downloadsTarget?.let { exportFileToDownloads(context, dest, it, overwrite = true) }
+        return if (exported != null) {
+            "Created archive ${displayPath(context, dest)} (${formatBytes(dest.length())}) and exported to $exported."
+        } else {
+            "Created archive ${displayPath(context, dest)} (${formatBytes(dest.length())})."
+        }
+    }
+
+    private data class DownloadsTarget(
+        val displayName: String,
+        val relativePath: String,
+    ) {
+        val label: String
+            get() = relativePath.trimEnd('/') + "/" + displayName
+    }
+
+    private fun downloadsTargetFor(destination: String, sourceName: String?): DownloadsTarget? {
+        val raw = destination.trim().replace('\\', '/')
+        if (raw.isBlank()) return null
+        val normalized = raw.trimEnd('/')
+        val roots = listOf(
+            runCatching { Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath.replace('\\', '/') }
+                .getOrDefault("/storage/emulated/0/Download"),
+            "/storage/emulated/0/Download",
+            "/storage/emulated/0/Downloads",
+            "/sdcard/Download",
+            "/sdcard/Downloads",
+        ).distinct()
+        val root = roots.firstOrNull { candidate ->
+            normalized == candidate || normalized.startsWith("$candidate/")
+        } ?: return null
+        val remainder = normalized.removePrefix(root).trim('/')
+        val targetPath = if (remainder.isBlank() || raw.endsWith("/")) {
+            sourceName?.takeIf { it.isNotBlank() }
+                ?: throw IllegalArgumentException("Downloads destination must include a file name")
+        } else {
+            remainder
+        }
+        val safeParts = targetPath.split('/').filter { it.isNotBlank() }
+        require(safeParts.isNotEmpty() && safeParts.none { it == "." || it == ".." }) {
+            "Invalid Downloads destination: $destination"
+        }
+        val displayName = safeDownloadName(safeParts.last())
+        val subdir = safeParts.dropLast(1).joinToString("/")
+        val relativePath = if (subdir.isBlank()) {
+            Environment.DIRECTORY_DOWNLOADS
+        } else {
+            Environment.DIRECTORY_DOWNLOADS + "/" + subdir
+        }
+        return DownloadsTarget(displayName = displayName, relativePath = relativePath)
+    }
+
+    private fun exportFileToDownloads(
+        context: Context,
+        source: File,
+        target: DownloadsTarget,
+        overwrite: Boolean,
+    ): String {
+        if (!source.isFile) throw IllegalArgumentException("Downloads export source is not a file: ${source.absolutePath}")
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                exportFileToDownloadsMediaStore(context, source, target, overwrite)
+            } else {
+                exportFileToDownloadsLegacy(source, target, overwrite)
+            }
+        } catch (e: SecurityException) {
+            throw IllegalStateException("Downloads export permission denied: ${e.message ?: e.javaClass.simpleName}")
+        } catch (e: Exception) {
+            throw IllegalStateException("Downloads export failed: ${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    private fun exportFileToDownloadsMediaStore(
+        context: Context,
+        source: File,
+        target: DownloadsTarget,
+        overwrite: Boolean,
+    ): String {
+        val resolver = context.contentResolver
+        if (overwrite) {
+            runCatching {
+                resolver.delete(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    "${MediaStore.MediaColumns.DISPLAY_NAME}=? AND ${MediaStore.MediaColumns.RELATIVE_PATH}=?",
+                    arrayOf(target.displayName, target.relativePath.trimEnd('/') + "/"),
+                )
+            }
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, target.displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeForFileName(target.displayName))
+            put(MediaStore.MediaColumns.RELATIVE_PATH, target.relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("MediaStore insert returned null")
+        resolver.openOutputStream(uri)?.use { output ->
+            FileInputStream(source).use { input -> input.copyTo(output) }
+        } ?: throw IllegalStateException("MediaStore openOutputStream returned null")
+        values.clear()
+        values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+        return target.label
+    }
+
+    private fun exportFileToDownloadsLegacy(
+        source: File,
+        target: DownloadsTarget,
+        overwrite: Boolean,
+    ): String {
+        val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val subdir = target.relativePath.removePrefix(Environment.DIRECTORY_DOWNLOADS).trim('/')
+        val dir = if (subdir.isBlank()) root else File(root, subdir)
+        dir.mkdirs()
+        val dst = File(dir, target.displayName).canonicalFile
+        if (dst.exists() && !overwrite) throw IllegalArgumentException("destination exists: ${dst.absolutePath}")
+        source.copyTo(dst, overwrite = overwrite)
+        return dst.absolutePath
+    }
+
+    private fun safeDownloadName(name: String): String =
+        name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+            .trim()
+            .trim('.')
+            .ifBlank { "agent_file" }
+
+    private fun mimeForFileName(name: String): String {
+        val ext = name.substringAfterLast('.', "").lowercase(Locale.US)
+        return when (ext) {
+            "zip", "gskill", "aar" -> "application/zip"
+            "jar" -> "application/java-archive"
+            "7z" -> "application/x-7z-compressed"
+            "tar" -> "application/x-tar"
+            "gz", "tgz" -> "application/gzip"
+            "rar" -> "application/vnd.rar"
+            "json" -> "application/json"
+            "xml" -> "application/xml"
+            "md", "markdown" -> "text/markdown"
+            "txt", "kt", "java", "dart", "py", "js", "ts", "html", "css" -> "text/plain"
+            else -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+        }
     }
 
     private fun archiveTest(context: Context, path: String): String {

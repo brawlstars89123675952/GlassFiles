@@ -5195,7 +5195,8 @@ private fun generatedArchiveFile(
     val archive = runCatching {
         val raw = File(destination)
         val file = if (raw.isAbsolute) {
-            raw
+            raw.takeIf { it.isFile }
+                ?: File(LocalToolExecutor.ensureSessionWorkspace(context, sessionId), raw.name)
         } else {
             File(LocalToolExecutor.ensureSessionWorkspace(context, sessionId), destination)
         }.canonicalFile
