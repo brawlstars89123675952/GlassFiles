@@ -1836,15 +1836,6 @@ private fun ReadmeTab(
         Modifier.fillMaxSize().background(colors.background),
         contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
     ) {
-        item {
-            ReadmeMobileTopBar(
-                rawView = rawView,
-                hasRaw = !readme.isNullOrBlank(),
-                repo = repo,
-                onToggleRaw = { rawView = !rawView },
-            )
-            Spacer(Modifier.height(14.dp))
-        }
         when {
             error != null -> item {
                 ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
@@ -1889,47 +1880,6 @@ private fun ReadmeTab(
             ReadmeRepositoryFooter(repo, releases, contributors, languages)
         }
     }
-}
-
-@Composable
-private fun ReadmeMobileTopBar(
-    rawView: Boolean,
-    hasRaw: Boolean,
-    repo: GHRepo,
-    onToggleRaw: () -> Unit,
-) {
-    val context = LocalContext.current
-    val colors = AiModuleTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .border(1.dp, colors.border.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Icon(Icons.Rounded.MenuBook, null, Modifier.size(19.dp), tint = colors.textSecondary)
-        Text("README", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = colors.textPrimary, modifier = Modifier.weight(1f))
-        if (hasRaw) {
-            ReadmeTinyAction(if (rawView) "rendered" else "raw", onToggleRaw)
-        }
-        ReadmeTinyAction("browser") { context.openReadmeUrl(readmeBrowserUrl(repo)) }
-    }
-}
-
-@Composable
-private fun ReadmeTinyAction(label: String, onClick: () -> Unit) {
-    val colors = AiModuleTheme.colors
-    Text(
-        "[$label]",
-        fontSize = 11.sp,
-        color = colors.accent,
-        fontFamily = JetBrainsMono,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 3.dp, vertical = 2.dp),
-    )
 }
 
 @Composable
@@ -2118,7 +2068,7 @@ internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader)
     when (block) {
         is ReadmeRenderBlock.Heading -> ReadmeHeading(block)
         is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text)
-        is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level)
+        is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level, block.marker)
         is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.width(4.dp).heightIn(min = 28.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(2.dp)))
             ReadmeText(block.text, modifier = Modifier.weight(1f))
@@ -2289,9 +2239,9 @@ private fun readmeInlineSegments(text: String): List<ReadmeInlineSegment> {
 }
 
 @Composable
-private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null, level: Int = 0) {
+private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null, level: Int = 0, markerText: String? = null) {
     Row(Modifier.fillMaxWidth().padding(start = (level * 18).dp, top = 3.dp, bottom = 3.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        val marker = when (checked) {
+        val marker = markerText ?: when (checked) {
             true -> "✓"
             false -> "□"
             null -> if (ordered) "1." else "•"
@@ -2441,51 +2391,27 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
     }
     val totalLines = remember(block.code) { block.code.lines().size }
     val language = block.language.ifBlank { "text" }
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(0xFF111820))
+            .background(Color(0xFF161B22))
             .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
     ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(Color(0xFF161B22))
-                .padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(language, fontSize = 13.sp, color = colors.textSecondary, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            Text("$totalLines lines", fontSize = 12.sp, color = colors.textMuted, modifier = Modifier.padding(end = 12.dp))
-            Text(
-                "[ copy ]",
-                fontSize = 12.sp,
-                color = colors.textSecondary,
-                fontFamily = JetBrainsMono,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable {
-                        val clip = android.content.ClipData.newPlainText("readme-code", block.code)
-                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
-                        Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
-                    }
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            )
-        }
         Column(
             Modifier
                 .horizontalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
+                .padding(start = 14.dp, end = 52.dp, top = 18.dp, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             lines.forEach { line ->
                 Text(
                     highlightLine(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, language),
-                    fontSize = 13.sp,
+                    fontSize = 15.sp,
                     fontFamily = FontFamily.Monospace,
                     color = colors.textPrimary,
-                    lineHeight = 20.sp,
+                    lineHeight = 24.sp,
                     softWrap = false,
                 )
             }
@@ -2493,6 +2419,16 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
                 Spacer(Modifier.height(8.dp))
                 GitHubTerminalButton("expand large code block", onClick = { expanded = true }, color = colors.accent)
             }
+        }
+        IconButton(
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(34.dp),
+            onClick = {
+                val clip = android.content.ClipData.newPlainText("readme-code", block.code)
+                (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
+            }
+        ) {
+            Icon(Icons.Rounded.ContentCopy, null, Modifier.size(20.dp), tint = colors.textMuted)
         }
     }
 }
@@ -2640,7 +2576,7 @@ internal sealed class ReadmeRenderBlock {
     abstract val stableId: String
     data class Heading(val level: Int, val text: String, val anchor: String = "", override val stableId: String = "") : ReadmeRenderBlock()
     data class Paragraph(val text: String, override val stableId: String = "") : ReadmeRenderBlock()
-    data class Bullet(val text: String, val ordered: Boolean, val checked: Boolean? = null, val level: Int = 0, override val stableId: String = "") : ReadmeRenderBlock()
+    data class Bullet(val text: String, val ordered: Boolean, val checked: Boolean? = null, val level: Int = 0, val marker: String? = null, override val stableId: String = "") : ReadmeRenderBlock()
     data class Quote(val text: String, override val stableId: String = "") : ReadmeRenderBlock()
     data class Rule(override val stableId: String = "") : ReadmeRenderBlock()
     data class Image(val url: String, val alt: String, val aspectRatio: Float = README_DEFAULT_IMAGE_ASPECT_RATIO, val inline: Boolean = false, val heightHintDp: Int? = null, override val stableId: String = "") : ReadmeRenderBlock()
@@ -2664,6 +2600,12 @@ internal suspend fun parseReadmeBlocks(markdown: String, repo: GHRepo, readmePat
         val line = rawLine.trim()
         when {
             line.isBlank() -> i++
+            readmeIsSetextHeading(lines, i) -> {
+                val cleanText = stripReadmeHtml(line)
+                val level = if (lines[i + 1].trim().firstOrNull() == '=') 1 else 2
+                blocks += ReadmeRenderBlock.Heading(level, cleanText, readmeHeadingAnchor(cleanText))
+                i += 2
+            }
             line.startsWith("```") || line.startsWith("~~~") -> {
                 val fence = line.take(3)
                 val language = line.drop(3).trim().take(24)
@@ -2697,6 +2639,11 @@ internal suspend fun parseReadmeBlocks(markdown: String, repo: GHRepo, readmePat
                 readmeTextWithoutImages(line).takeIf { it.isNotBlank() }?.let { blocks += ReadmeRenderBlock.Paragraph(stripReadmeHtml(it)) }
                 blocks += readmeImageBlocks(images)
                 i++
+            }
+            readmeHtmlAnchorImageBlock(lines, i, repo, readmePath) != null -> {
+                val anchorBlock = readmeHtmlAnchorImageBlock(lines, i, repo, readmePath)!!
+                blocks += anchorBlock.blocks
+                i = anchorBlock.nextIndex
             }
             line.equals("</a>", ignoreCase = true) || line.startsWith("<br", ignoreCase = true) -> i++
             line.startsWith("<a ", ignoreCase = true) -> {
@@ -2743,7 +2690,8 @@ internal suspend fun parseReadmeBlocks(markdown: String, repo: GHRepo, readmePat
                 i++
             }
             Regex("^\\d+[.)]\\s+.*").matches(line) -> {
-                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.replaceFirst(Regex("^\\d+[.)]\\s+"), "")), ordered = true, level = readmeListLevel(rawLine))
+                val orderedMarker = Regex("^(\\d+[.)])\\s+").find(line)?.groupValues?.getOrNull(1)
+                blocks += ReadmeRenderBlock.Bullet(stripReadmeHtml(line.replaceFirst(Regex("^\\d+[.)]\\s+"), "")), ordered = true, level = readmeListLevel(rawLine), marker = orderedMarker)
                 i++
             }
             readmeStandaloneMarkdownLink(line) != null -> {
@@ -2809,7 +2757,7 @@ private fun ReadmeRenderBlock.readmeBlockType(): String = when (this) {
 private fun ReadmeRenderBlock.readmeKeyContent(): String = when (this) {
     is ReadmeRenderBlock.Heading -> "$level|$text|$anchor"
     is ReadmeRenderBlock.Paragraph -> text
-    is ReadmeRenderBlock.Bullet -> "$ordered|$checked|$level|$text"
+    is ReadmeRenderBlock.Bullet -> "$ordered|$checked|$level|$marker|$text"
     is ReadmeRenderBlock.Quote -> text
     is ReadmeRenderBlock.Rule -> "rule"
     is ReadmeRenderBlock.Image -> "$url|$alt|$aspectRatio|$inline|$heightHintDp"
@@ -2864,8 +2812,12 @@ private fun readmeMarkdownImageLinkBlocks(line: String, repo: GHRepo, readmePath
             )
         } else {
             flushInlineImages()
-            if (rawTargetUrl.isNotBlank()) {
-                blocks += ReadmeRenderBlock.Link(alt.ifBlank { "Open" }, readmeResolveUrl(rawTargetUrl, repo, readmePath))
+            if (rawImageUrl.isNotBlank()) {
+                blocks += ReadmeRenderBlock.Image(
+                    url = imageUrl,
+                    alt = alt.ifBlank { rawTargetUrl },
+                    inline = false
+                )
             }
         }
     }
@@ -2904,13 +2856,53 @@ private fun readmeHtmlImageLinkBlocks(line: String, repo: GHRepo, readmePath: St
             )
         } else {
             flushInlineImages()
-            if (href.isNotBlank()) {
-                blocks += ReadmeRenderBlock.Link(alt.ifBlank { href }, readmeResolveUrl(href, repo, readmePath))
+            if (rawImageUrl.isNotBlank()) {
+                blocks += ReadmeRenderBlock.Image(
+                    url = imageUrl,
+                    alt = alt.ifBlank { href },
+                    aspectRatio = readmeHtmlImageAspectRatio(imageTag),
+                    inline = readmeIsInlineImage(imageUrl, alt, heightHint),
+                    heightHintDp = heightHint
+                )
             }
         }
     }
     flushInlineImages()
     return blocks
+}
+
+private data class ReadmeHtmlAnchorImageParseResult(
+    val blocks: List<ReadmeRenderBlock>,
+    val nextIndex: Int,
+)
+
+private fun readmeHtmlAnchorImageBlock(
+    lines: List<String>,
+    index: Int,
+    repo: GHRepo,
+    readmePath: String,
+): ReadmeHtmlAnchorImageParseResult? {
+    val first = lines.getOrNull(index)?.trim().orEmpty()
+    if (!first.startsWith("<a ", ignoreCase = true)) return null
+
+    val collected = mutableListOf<String>()
+    var i = index
+    while (i < lines.size && collected.size < 12) {
+        val current = lines[i].trim()
+        collected += current
+        i++
+        if (current.contains("</a>", ignoreCase = true)) break
+        if (i > index && current.startsWith("<a ", ignoreCase = true)) break
+    }
+
+    val joined = collected.joinToString(" ")
+    if (!joined.contains("<img", ignoreCase = true)) return null
+    val blocks = readmeHtmlImageLinkBlocks(joined, repo, readmePath)
+    return if (blocks.isNotEmpty()) {
+        ReadmeHtmlAnchorImageParseResult(blocks, i)
+    } else {
+        null
+    }
 }
 
 private fun readmeHtmlImages(line: String, repo: GHRepo, readmePath: String): List<ReadmeRenderBlock.Image> {
@@ -2979,6 +2971,14 @@ private fun readmeHtmlImageHeightDp(tag: String): Int? =
 
 private fun readmeListLevel(rawLine: String): Int =
     (rawLine.takeWhile { it == ' ' }.length / 2).coerceIn(0, 6)
+
+private fun readmeIsSetextHeading(lines: List<String>, index: Int): Boolean {
+    val current = lines.getOrNull(index)?.trim().orEmpty()
+    val next = lines.getOrNull(index + 1)?.trim().orEmpty()
+    if (current.isBlank() || current.startsWith("#") || current.startsWith("|")) return false
+    if (current.startsWith("<") || current.startsWith("- ") || current.startsWith("* ")) return false
+    return next.length >= 3 && next.all { it == '=' || it == '-' }
+}
 
 private fun readmeHeadingAnchor(text: String): String =
     text.lowercase()
