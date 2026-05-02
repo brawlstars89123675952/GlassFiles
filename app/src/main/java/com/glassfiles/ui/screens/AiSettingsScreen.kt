@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,13 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,6 +38,7 @@ import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleScreenScaffold
 import com.glassfiles.ui.components.AiModuleSectionLabel
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.Dispatchers
@@ -117,59 +112,29 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             item {
                 Column(Modifier.padding(horizontal = 12.dp)) {
                     SettingsSectionHeader(Strings.aiSettingsCodeFontSize, withPadding = false)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Slider(
-                            value = codeFontSize.toFloat(),
-                            onValueChange = {
-                                codeFontSize = it.toInt().coerceIn(10, 18)
-                                AiSettingsStore.setCodeFontSize(context, codeFontSize)
-                            },
-                            valueRange = 10f..18f,
-                            steps = 7,
-                            modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = colors.accent,
-                                activeTrackColor = colors.accent,
-                                inactiveTrackColor = colors.border,
-                            ),
-                        )
-                        Text(
-                            "$codeFontSize sp",
-                            modifier = Modifier.padding(start = 12.dp).width(48.dp),
-                            fontSize = 12.sp,
-                            fontFamily = JetBrainsMono,
-                            color = colors.textPrimary,
-                        )
-                    }
+                    TerminalStepper(
+                        value = codeFontSize,
+                        min = 10,
+                        max = 18,
+                        onChange = {
+                            codeFontSize = it
+                            AiSettingsStore.setCodeFontSize(context, codeFontSize)
+                        },
+                    )
                 }
             }
             item {
                 Column(Modifier.padding(horizontal = 12.dp)) {
                     SettingsSectionHeader(Strings.aiSettingsChatFontSize, withPadding = false)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Slider(
-                            value = chatFontSize.toFloat(),
-                            onValueChange = {
-                                chatFontSize = it.toInt().coerceIn(12, 20)
-                                AiSettingsStore.setChatFontSize(context, chatFontSize)
-                            },
-                            valueRange = 12f..20f,
-                            steps = 7,
-                            modifier = Modifier.weight(1f),
-                            colors = SliderDefaults.colors(
-                                thumbColor = colors.accent,
-                                activeTrackColor = colors.accent,
-                                inactiveTrackColor = colors.border,
-                            ),
-                        )
-                        Text(
-                            "$chatFontSize sp",
-                            modifier = Modifier.padding(start = 12.dp).width(48.dp),
-                            fontSize = 12.sp,
-                            fontFamily = JetBrainsMono,
-                            color = colors.textPrimary,
-                        )
-                    }
+                    TerminalStepper(
+                        value = chatFontSize,
+                        min = 12,
+                        max = 20,
+                        onChange = {
+                            chatFontSize = it
+                            AiSettingsStore.setChatFontSize(context, chatFontSize)
+                        },
+                    )
                 }
             }
 
@@ -233,6 +198,54 @@ fun AiSettingsScreen(onBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun TerminalStepper(
+    value: Int,
+    min: Int,
+    max: Int,
+    onChange: (Int) -> Unit,
+) {
+    val colors = AiModuleTheme.colors
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StepperCell("-", enabled = value > min) {
+            onChange((value - 1).coerceIn(min, max))
+        }
+        Text(
+            "$value sp",
+            modifier = Modifier.weight(1f),
+            fontSize = 13.sp,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Medium,
+            color = colors.textPrimary,
+        )
+        StepperCell("+", enabled = value < max) {
+            onChange((value + 1).coerceIn(min, max))
+        }
+    }
+}
+
+@Composable
+private fun StepperCell(label: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = AiModuleTheme.colors
+    Text(
+        label,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.surface)
+            .border(1.dp, if (enabled) colors.accent else colors.border, RoundedCornerShape(6.dp))
+            .clickable(enabled = enabled) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        color = if (enabled) colors.accent else colors.textMuted,
+        fontFamily = JetBrainsMono,
+        fontWeight = FontWeight.Bold,
+        fontSize = 13.sp,
+    )
 }
 
 @Composable

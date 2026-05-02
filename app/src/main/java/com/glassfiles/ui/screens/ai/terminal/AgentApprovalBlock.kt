@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,8 +23,8 @@ import androidx.compose.ui.unit.em
 import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
- * Inline approval prompt rendered straight in the chat — never a Material
- * AlertDialog. The "ascii frame" look is faked with a 1dp warning-coloured
+ * Inline approval prompt rendered straight in the chat. The "ascii frame"
+ * look is faked with a 1dp warning-coloured
  * border on a flat surface so the block reads as part of the transcript
  * rather than a system overlay.
  *

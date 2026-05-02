@@ -46,11 +46,6 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -100,9 +95,12 @@ import com.glassfiles.ui.screens.ai.terminal.AgentMessageRow
 import com.glassfiles.ui.screens.ai.terminal.AgentRole
 import com.glassfiles.ui.screens.ai.terminal.AgentTerminal
 import com.glassfiles.ui.screens.ai.terminal.AgentTerminalCodeBlock
+import com.glassfiles.ui.screens.ai.terminal.Icon
+import com.glassfiles.ui.screens.ai.terminal.IconButton
 import com.glassfiles.ui.screens.ai.terminal.TerminalHairline
 import com.glassfiles.ui.screens.ai.terminal.TerminalPageBar
 import com.glassfiles.ui.screens.ai.terminal.TerminalPillButton
+import com.glassfiles.ui.screens.ai.terminal.Text
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -134,7 +132,7 @@ private const val SESSION_MODE = AiChatSessionStore.MODE_CODING
 @Composable
 fun AiCodingScreen(onBack: () -> Unit) {
     com.glassfiles.ui.screens.ai.terminal.AgentTerminalSurface {
-        com.glassfiles.ui.screens.ai.terminal.AiTerminalMaterialBridge {
+        com.glassfiles.ui.screens.ai.terminal.AiTerminalContentBridge {
             AiCodingScreenInner(onBack)
         }
     }
@@ -251,7 +249,7 @@ private fun CodingSessionsList(
     onDeleteAll: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = AgentTerminal.colors
     val sdf = remember { SimpleDateFormat("dd.MM.yy HH:mm", Locale.getDefault()) }
     var query by remember { mutableStateOf("") }
     val filtered = remember(query, sessions) {
@@ -277,7 +275,7 @@ private fun CodingSessionsList(
                     Icons.AutoMirrored.Rounded.ArrowBack,
                     null,
                     Modifier.size(20.dp),
-                    tint = colors.onSurface,
+                    tint = colors.textPrimary,
                 )
             }
             Column(Modifier.weight(1f)) {
@@ -286,13 +284,13 @@ private fun CodingSessionsList(
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp,
-                    color = colors.onSurface,
+                    color = colors.textPrimary,
                     fontFamily = JetBrainsMono,
                 )
                 Text(
                     "${sessions.size} sessions",
                     fontSize = 10.sp,
-                    color = colors.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             if (sessions.isNotEmpty()) {
@@ -301,13 +299,13 @@ private fun CodingSessionsList(
                         Icons.Rounded.DeleteSweep,
                         null,
                         Modifier.size(20.dp),
-                        tint = colors.onSurfaceVariant,
+                        tint = colors.textSecondary,
                     )
                 }
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outlineVariant.copy(alpha = 0.12f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.12f)))
 
         if (sessions.size > 2) {
             Row(
@@ -315,7 +313,7 @@ private fun CodingSessionsList(
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                    .background(colors.surfaceElevated.copy(alpha = 0.5f))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -323,25 +321,25 @@ private fun CodingSessionsList(
                     Icons.Rounded.Search,
                     null,
                     Modifier.size(16.dp),
-                    tint = colors.onSurfaceVariant,
+                    tint = colors.textSecondary,
                 )
                 Spacer(Modifier.size(8.dp))
                 Box(Modifier.weight(1f)) {
                     if (query.isEmpty()) {
                         Text(
                             "Search…",
-                            color = colors.onSurfaceVariant,
+                            color = colors.textSecondary,
                             fontSize = 13.sp,
                         )
                     }
                     BasicTextField(
                         value = query,
                         onValueChange = { query = it },
-                        textStyle = LocalTextStyle.current.copy(
-                            color = colors.onSurface,
+                        textStyle = TextStyle(
+                            color = colors.textPrimary,
                             fontSize = 13.sp,
                         ),
-                        cursorBrush = SolidColor(colors.primary),
+                        cursorBrush = SolidColor(colors.accent),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -356,7 +354,7 @@ private fun CodingSessionsList(
             ) {
                 Text(
                     if (sessions.isEmpty()) "No chats yet" else "Nothing found",
-                    color = colors.onSurfaceVariant,
+                    color = colors.textSecondary,
                     fontSize = 13.sp,
                 )
             }
@@ -371,7 +369,7 @@ private fun CodingSessionsList(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                            .background(colors.surfaceElevated.copy(alpha = 0.5f))
                             .clickable { onOpen(s) }
                             .padding(horizontal = 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -381,12 +379,12 @@ private fun CodingSessionsList(
                             Icons.Rounded.Chat,
                             null,
                             Modifier.size(20.dp),
-                            tint = colors.onSurfaceVariant,
+                            tint = colors.textSecondary,
                         )
                         Column(Modifier.weight(1f)) {
                             Text(
                                 s.title,
-                                color = colors.onSurface,
+                                color = colors.textPrimary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -394,7 +392,7 @@ private fun CodingSessionsList(
                             Spacer(Modifier.size(2.dp))
                             Text(
                                 "${sdf.format(Date(s.updatedAt))} · ${s.messages.size} msgs",
-                                color = colors.onSurfaceVariant,
+                                color = colors.textSecondary,
                                 fontSize = 11.sp,
                                 fontFamily = JetBrainsMono,
                                 maxLines = 1,
@@ -408,7 +406,7 @@ private fun CodingSessionsList(
                                 Icons.Rounded.Close,
                                 null,
                                 Modifier.size(16.dp),
-                                tint = colors.onSurfaceVariant,
+                                tint = colors.textSecondary,
                             )
                         }
                     }
@@ -416,14 +414,14 @@ private fun CodingSessionsList(
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.outlineVariant.copy(alpha = 0.12f)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.12f)))
 
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(12.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(colors.primary)
+                .background(colors.accent)
                 .clickable { onNew() }
                 .padding(vertical = 14.dp),
             horizontalArrangement = Arrangement.Center,
@@ -433,12 +431,12 @@ private fun CodingSessionsList(
                 Icons.Rounded.Add,
                 null,
                 Modifier.size(20.dp),
-                tint = colors.onPrimary,
+                tint = colors.background,
             )
             Spacer(Modifier.size(8.dp))
             Text(
                 "New chat",
-                color = colors.onPrimary,
+                color = colors.background,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -562,7 +560,6 @@ private fun CodingChatView(
                 messages = msgs,
                 createdAt = sessionCreatedAt,
                 updatedAt = System.currentTimeMillis(),
-            ),
         )
     }
 
@@ -869,7 +866,7 @@ private fun ModelPickerBar(
     loadingModels: Boolean,
     modelLoadError: String?,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = AgentTerminal.colors
 
     if (configured.isEmpty()) {
         Box(
@@ -1173,13 +1170,11 @@ private fun InputBar(
                     onValueChange = onValueChange,
                     enabled = enabled,
                     modifier = Modifier.fillMaxWidth().widthIn(min = 0.dp),
-                    textStyle = LocalTextStyle.current.merge(
-                        TextStyle(
+                    textStyle = TextStyle(
                             color = colors.textPrimary,
                             fontSize = 14.sp,
                             fontFamily = JetBrainsMono,
                         ),
-                    ),
                     cursorBrush = SolidColor(colors.accent),
                     decorationBox = { inner ->
                         if (value.text.isEmpty()) {

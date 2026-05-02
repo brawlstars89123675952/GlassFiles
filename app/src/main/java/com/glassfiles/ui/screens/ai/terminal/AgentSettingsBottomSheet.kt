@@ -19,14 +19,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetState
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,7 +37,6 @@ import androidx.compose.ui.unit.em
 import com.glassfiles.ui.components.AiPickerSheet
 import com.glassfiles.ui.theme.JetBrainsMono
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AgentSettingsBottomSheet(
     state: AgentSettingsState,
@@ -82,29 +73,15 @@ fun AgentSettingsBottomSheet(
     onExportChat: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val colors = AgentTerminal.colors
     var showProtectedPaths by remember { mutableStateOf(false) }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = colors.surfaceElevated,
-        contentColor = colors.textPrimary,
-        scrimColor = Color.Black.copy(alpha = 0.6f),
-        dragHandle = {
-            Spacer(
-                Modifier
-                    .padding(top = 8.dp, bottom = 4.dp)
-                    .height(3.dp)
-                    .width(36.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(colors.border),
-            )
-        },
-    ) {
+    Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.surfaceElevated)
+                .border(1.dp, colors.border, RoundedCornerShape(8.dp))
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -540,11 +517,12 @@ private fun <T> AgentTerminalPickerRow(
                 maxLines = 1,
             )
         }
-        Icon(
-            Icons.Rounded.ExpandMore,
-            null,
-            Modifier.size(16.dp),
-            tint = colors.textSecondary,
+        Text(
+            "\u25BE",
+            color = colors.textSecondary,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Medium,
+            fontSize = AgentTerminal.type.message,
         )
     }
     if (open) {

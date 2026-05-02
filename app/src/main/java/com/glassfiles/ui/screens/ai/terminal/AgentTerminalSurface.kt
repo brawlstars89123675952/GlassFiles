@@ -8,10 +8,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 
 /**
- * Wraps the entire AI Agent screen in the terminal theme without
- * touching the global [androidx.compose.material3.MaterialTheme]. Any
- * descendant can access the palette via [AgentTerminal.colors] and the
- * typography via [AgentTerminal.type].
+ * Wraps the entire AI Agent screen in the terminal theme. Any descendant
+ * can access the palette via [AgentTerminal.colors] and the typography
+ * via [AgentTerminal.type].
  */
 @Composable
 fun AgentTerminalSurface(

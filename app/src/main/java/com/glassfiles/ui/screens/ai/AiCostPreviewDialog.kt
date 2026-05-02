@@ -2,7 +2,6 @@ package com.glassfiles.ui.screens.ai
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -12,6 +11,7 @@ import androidx.compose.ui.unit.sp
 import com.glassfiles.data.ai.usage.AiUsageAccounting
 import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModulePillButton
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 

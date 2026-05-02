@@ -22,10 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -52,6 +48,9 @@ import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.ui.components.AiModuleChip
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModulePageBar
+import com.glassfiles.ui.components.Icon
+import com.glassfiles.ui.components.IconButton
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleSurface
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
@@ -221,7 +220,12 @@ private fun ModelsBody(
             Modifier.fillMaxSize().padding(32.dp),
             contentAlignment = Alignment.Center,
         ) {
-            CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp)
+            Text(
+                "loading...",
+                color = colors.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp,
+            )
         }
         error != null -> Box(
             Modifier.fillMaxSize().padding(32.dp),

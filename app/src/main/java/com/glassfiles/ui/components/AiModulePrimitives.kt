@@ -3,6 +3,7 @@ package com.glassfiles.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,15 +30,117 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.glassfiles.ui.theme.AiModuleSurface
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
+
+@Composable
+fun Text(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontFamily: FontFamily? = null,
+    fontStyle: FontStyle? = null,
+    fontWeight: FontWeight? = null,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    BasicText(
+        text = text,
+        modifier = modifier,
+        maxLines = maxLines,
+        overflow = overflow,
+        style = TextStyle(
+            color = color,
+            fontSize = fontSize,
+            fontFamily = fontFamily,
+            fontStyle = fontStyle,
+            fontWeight = fontWeight,
+            lineHeight = lineHeight,
+            letterSpacing = letterSpacing,
+        ),
+    )
+}
+
+@Composable
+fun Text(
+    text: AnnotatedString,
+    modifier: Modifier = Modifier,
+    color: Color = Color.Unspecified,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    fontFamily: FontFamily? = null,
+    fontStyle: FontStyle? = null,
+    fontWeight: FontWeight? = null,
+    lineHeight: TextUnit = TextUnit.Unspecified,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+) {
+    BasicText(
+        text = text,
+        modifier = modifier,
+        maxLines = maxLines,
+        overflow = overflow,
+        style = TextStyle(
+            color = color,
+            fontSize = fontSize,
+            fontFamily = fontFamily,
+            fontStyle = fontStyle,
+            fontWeight = fontWeight,
+            lineHeight = lineHeight,
+            letterSpacing = letterSpacing,
+        ),
+    )
+}
+
+@Composable
+fun Icon(
+    imageVector: ImageVector,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = Color.Unspecified,
+) {
+    Image(
+        painter = rememberVectorPainter(imageVector),
+        contentDescription = contentDescription,
+        modifier = modifier,
+        colorFilter = if (tint == Color.Unspecified) null else ColorFilter.tint(tint),
+    )
+}
+
+@Composable
+fun IconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(4.dp))
+            .clickable(enabled = enabled) { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
 
 @Composable
 fun AiModulePageBar(
@@ -59,7 +158,7 @@ fun AiModulePageBar(
             .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            // Back glyph — JetBrainsMono "←" instead of Material icon to match the rest of the bar.
+            // Back glyph in JetBrainsMono to match the rest of the bar.
             AiModuleGlyphAction(
                 glyph = "\u2190",
                 onClick = onBack,
@@ -108,7 +207,7 @@ fun AiModulePageBar(
  * Square 36dp clickable cell rendering a single JetBrainsMono glyph.
  * Use this in place of `IconButton { Icon(Icons.Rounded.X, …) }` so the
  * AiModule chrome stays purely typographic and never bleeds in
- * Material-icon visuals.
+ * icon-button visuals.
  */
 @Composable
 fun AiModuleGlyphAction(
@@ -141,7 +240,7 @@ fun AiModuleGlyphAction(
 
 /**
  * Inline JetBrainsMono glyph with no click target — for status badges
- * in lists / cards where Material `Icon(...)` would be used otherwise.
+ * in lists / cards where a vector icon would be too heavy.
  */
 @Composable
 fun AiModuleGlyph(

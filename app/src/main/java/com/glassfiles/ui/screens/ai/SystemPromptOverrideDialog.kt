@@ -13,11 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +27,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModulePillButton
+import com.glassfiles.ui.components.AiModuleTextField
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleDarkColors
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -51,29 +50,32 @@ fun SystemPromptOverrideDialog(
     val colors = AiModuleDarkColors
     var text by remember { mutableStateOf(initialPrompt) }
     var planFirst by remember { mutableStateOf(initialPlanFirst) }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surfaceElevated,
-        title = {
+        title = Strings.aiAgentSystemPromptTitle.lowercase(),
+        confirmButton = {
+            AiModulePillButton(
+                label = Strings.aiAgentSystemPromptSave.lowercase(),
+                onClick = { onSave(text.trim(), planFirst) },
+                accent = true,
+            )
+        },
+        dismissButton = {
+            AiModulePillButton(
+                label = Strings.aiAgentSystemPromptCancel.lowercase(),
+                onClick = onDismiss,
+                accent = false,
+            )
+        },
+    ) {
             Column {
-                Text(
-                    "> ${Strings.aiAgentSystemPromptTitle.lowercase()}",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.accent,
-                    fontFamily = JetBrainsMono,
-                )
-                Spacer(Modifier.height(2.dp))
                 Text(
                     repoFullName,
                     fontSize = 11.sp,
                     color = colors.textMuted,
                     fontFamily = JetBrainsMono,
                 )
-            }
-        },
-        text = {
-            Column {
+                Spacer(Modifier.height(8.dp))
                 Text(
                     Strings.aiAgentSystemPromptHint,
                     fontSize = 12.sp,
@@ -82,35 +84,15 @@ fun SystemPromptOverrideDialog(
                     lineHeight = 1.4.em,
                 )
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
+                AiModuleTextField(
                     value = text,
                     onValueChange = { text = it },
-                    placeholder = {
-                        Text(
-                            Strings.aiAgentSystemPromptPlaceholder,
-                            fontSize = 13.sp,
-                            color = colors.textMuted,
-                            fontFamily = JetBrainsMono,
-                        )
-                    },
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontFamily = JetBrainsMono,
-                        fontSize = 13.sp,
-                        color = colors.textPrimary,
-                    ),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.accent,
-                        unfocusedBorderColor = colors.border,
-                        focusedContainerColor = colors.surface,
-                        unfocusedContainerColor = colors.surface,
-                        cursorColor = colors.accent,
-                        focusedTextColor = colors.textPrimary,
-                        unfocusedTextColor = colors.textPrimary,
-                    ),
+                    placeholder = Strings.aiAgentSystemPromptPlaceholder,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 120.dp, max = 240.dp),
                     minLines = 5,
+                    maxLines = 10,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(
@@ -146,26 +128,5 @@ fun SystemPromptOverrideDialog(
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(text.trim(), planFirst) }) {
-                Text(
-                    "[ ${Strings.aiAgentSystemPromptSave.lowercase()} ]",
-                    color = colors.accent,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 13.sp,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(
-                    "[ ${Strings.aiAgentSystemPromptCancel.lowercase()} ]",
-                    color = colors.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 13.sp,
-                )
-            }
-        },
-    )
+    }
 }

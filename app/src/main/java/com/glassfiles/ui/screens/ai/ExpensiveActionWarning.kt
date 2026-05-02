@@ -11,9 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.Strings
+import com.glassfiles.ui.components.AiModuleAlertDialog
+import com.glassfiles.ui.components.AiModulePillButton
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleDarkColors
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -65,19 +65,31 @@ fun ExpensiveActionWarningDialog(
     val colors = AiModuleDarkColors
     var rememberChecked by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onCancel,
-        containerColor = colors.surfaceElevated,
-        title = {
-            Text(
-                "! ${Strings.aiCostWarningTitle.lowercase()}",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = colors.warning,
-                fontFamily = JetBrainsMono,
+        title = "! ${Strings.aiCostWarningTitle.lowercase()}",
+        confirmButton = {
+            AiModulePillButton(
+                label = if (allowRemember && rememberChecked) {
+                    Strings.aiCostWarningContinueRemember.lowercase()
+                } else {
+                    Strings.aiCostWarningContinueOnce.lowercase()
+                },
+                onClick = {
+                    if (allowRemember && rememberChecked) onContinueAndRemember()
+                    else onContinueOnce()
+                },
+                accent = true,
             )
         },
-        text = {
+        dismissButton = {
+            AiModulePillButton(
+                label = Strings.cancel.lowercase(),
+                onClick = onCancel,
+                accent = false,
+            )
+        },
+    ) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(
                     when (warning.reason) {
@@ -131,32 +143,7 @@ fun ExpensiveActionWarningDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                if (allowRemember && rememberChecked) onContinueAndRemember()
-                else onContinueOnce()
-            }) {
-                Text(
-                    "[ " + (if (allowRemember && rememberChecked) Strings.aiCostWarningContinueRemember
-                    else Strings.aiCostWarningContinueOnce).lowercase() + " ]",
-                    color = colors.accent,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 13.sp,
-                )
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onCancel) {
-                Text(
-                    "[ ${Strings.cancel.lowercase()} ]",
-                    color = colors.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 13.sp,
-                )
-            }
-        },
-    )
+    }
 }
 
 @Composable

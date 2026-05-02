@@ -67,11 +67,6 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material.icons.rounded.Terminal
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -113,15 +108,19 @@ import com.glassfiles.data.ai.usage.AiUsageEstimate
 import com.glassfiles.data.ai.usage.AiUsageMode
 import com.glassfiles.ui.screens.ai.AiCostPreviewDialog
 import com.glassfiles.ui.components.AiModuleBlinkingCursor
+import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModuleCard
 import com.glassfiles.ui.components.AiModuleChip
 import com.glassfiles.ui.components.AiModuleCodeBlock
 import com.glassfiles.ui.components.AiModuleHairline
+import com.glassfiles.ui.components.Icon
+import com.glassfiles.ui.components.IconButton
 import com.glassfiles.ui.components.AiModuleListRow
 import com.glassfiles.ui.components.AiModulePageBar
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleScreenScaffold
 import com.glassfiles.ui.components.AiModuleSectionLabel
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleSurface
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
@@ -137,7 +136,7 @@ import java.util.Locale
  *
  * Wrapped in [AiModuleSurface] so every descendant reads the
  * same palette as the agent / hub / models screens. Outside the AI
- * module the global Material theme remains untouched — the override
+ * module the app-level theme remains untouched — the override
  * is scoped via the surface's CompositionLocal.
  */
 @Composable
@@ -780,18 +779,16 @@ private fun ChatView(
     }
 
     if (editIdx >= 0) {
-        AlertDialog(
+        AiModuleAlertDialog(
             onDismissRequest = { editIdx = -1 },
-            containerColor = colors.surfaceElevated,
-            title = {
-                Text(
-                    "edit message",
-                    color = colors.textPrimary,
-                    fontFamily = JetBrainsMono,
-                    fontWeight = FontWeight.Medium,
-                )
+            title = "edit message",
+            confirmButton = {
+                AiModulePillButton(label = "send", onClick = { confirmEdit() }, accent = true)
             },
-            text = {
+            dismissButton = {
+                AiModulePillButton(label = "cancel", onClick = { editIdx = -1 }, accent = false)
+            },
+        ) {
                 TerminalMonoField(
                     value = editTxt,
                     onValueChange = { editTxt = it },
@@ -799,18 +796,7 @@ private fun ChatView(
                     singleLine = false,
                     minHeight = 90.dp,
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = { confirmEdit() }) {
-                    Text("[ send ]", color = colors.accent, fontFamily = JetBrainsMono)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { editIdx = -1 }) {
-                    Text("[ cancel ]", color = colors.textSecondary, fontFamily = JetBrainsMono)
-                }
-            },
-        )
+        }
     }
 
     Column(
@@ -1617,19 +1603,13 @@ private fun TerminalModelPicker(
     onDismiss: () -> Unit,
 ) {
     val colors = AiModuleTheme.colors
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surfaceElevated,
-        title = {
-            Text(
-                "select model",
-                color = colors.textPrimary,
-                fontFamily = JetBrainsMono,
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp,
-            )
+        title = "select model",
+        confirmButton = {
+            AiModulePillButton(label = "close", onClick = onDismiss, accent = false)
         },
-        text = {
+    ) {
             LazyColumn(
                 Modifier.heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -1694,13 +1674,7 @@ private fun TerminalModelPicker(
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("[ close ]", color = colors.textSecondary, fontFamily = JetBrainsMono)
-            }
-        },
-    )
+    }
 }
 
 // ═══════════════════════════════════
@@ -1720,19 +1694,16 @@ private fun TerminalKeysDialog(
     var pU by remember { mutableStateOf(initialProxy) }
     var qK by remember { mutableStateOf(initialQwen) }
     var rI by remember { mutableStateOf(initialRegion) }
-    AlertDialog(
+    AiModuleAlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surfaceElevated,
-        title = {
-            Text(
-                "ai · keys",
-                color = colors.textPrimary,
-                fontFamily = JetBrainsMono,
-                fontWeight = FontWeight.Medium,
-                fontSize = 16.sp,
-            )
+        title = "ai · keys",
+        confirmButton = {
+            AiModulePillButton(label = "save", onClick = { onSave(gK, pU, qK, rI) }, accent = true)
         },
-        text = {
+        dismissButton = {
+            AiModulePillButton(label = "cancel", onClick = onDismiss, accent = false)
+        },
+    ) {
             Column(
                 Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1755,18 +1726,7 @@ private fun TerminalKeysDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onSave(gK, pU, qK, rI) }) {
-                Text("[ save ]", color = colors.accent, fontFamily = JetBrainsMono)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("[ cancel ]", color = colors.textSecondary, fontFamily = JetBrainsMono)
-            }
-        },
-    )
+    }
 }
 
 // ═══════════════════════════════════

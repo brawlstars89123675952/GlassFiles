@@ -19,12 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.rounded.AddPhotoAlternate
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -78,11 +72,12 @@ fun AgentInput(
             enabled = enabled,
             modifier = Modifier.size(40.dp),
         ) {
-            Icon(
-                Icons.Rounded.AddPhotoAlternate,
-                contentDescription = "attach image",
-                modifier = Modifier.size(18.dp),
-                tint = if (enabled) colors.textSecondary else colors.textMuted,
+            Text(
+                "\u25A7",
+                color = if (enabled) colors.textSecondary else colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = AgentTerminal.type.topBarTitle,
             )
         }
         Box(
@@ -144,11 +139,12 @@ fun AgentInput(
             enabled = canSend,
             modifier = Modifier.size(40.dp),
         ) {
-            Icon(
-                Icons.AutoMirrored.Rounded.Send,
-                contentDescription = "send",
-                modifier = Modifier.size(18.dp),
-                tint = if (canSend) colors.accent else colors.textMuted,
+            Text(
+                "\u23CE",
+                color = if (canSend) colors.accent else colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = AgentTerminal.type.topBarTitle,
             )
         }
     }

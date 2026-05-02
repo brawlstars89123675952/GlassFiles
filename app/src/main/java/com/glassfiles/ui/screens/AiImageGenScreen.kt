@@ -32,12 +32,6 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Share
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -53,7 +47,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -75,7 +68,11 @@ import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.data.ai.providers.AiProviders
 import com.glassfiles.ui.components.AiImageViewer
 import com.glassfiles.ui.components.AiPickerChip
+import com.glassfiles.ui.components.Icon
+import com.glassfiles.ui.components.IconButton
+import com.glassfiles.ui.components.Text
 import com.glassfiles.ui.theme.AiModuleSurface
+import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 import java.io.File
@@ -100,7 +97,7 @@ fun AiImageGenScreen(onBack: () -> Unit) {
 @Composable
 private fun AiImageGenScreenInner(onBack: () -> Unit) {
     val context = LocalContext.current
-    val colors = MaterialTheme.colorScheme
+    val colors = AiModuleTheme.colors
     val scope = rememberCoroutineScope()
 
     val configured by remember { derivedStateOf { AiKeyStore.configuredProviders(context) } }
@@ -276,13 +273,13 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = colors.onSurface)
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, null, Modifier.size(20.dp), tint = colors.textPrimary)
             }
             Text(
                 Strings.aiImageGen,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = colors.onSurface,
+                color = colors.textPrimary,
             )
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { showHistory = true }) {
@@ -290,7 +287,7 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                     Icons.Rounded.History,
                     null,
                     Modifier.size(20.dp),
-                    tint = colors.onSurfaceVariant,
+                    tint = colors.textSecondary,
                 )
             }
         }
@@ -303,7 +300,7 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                 Text(
                     Strings.aiImageNoModels,
                     fontSize = 13.sp,
-                    color = colors.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
             return@Column
@@ -357,7 +354,7 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                    .background(colors.surfaceElevated.copy(alpha = 0.5f))
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -366,22 +363,20 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.6.sp,
-                    color = colors.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
                 BasicTextField(
                     value = prompt,
                     onValueChange = { prompt = it },
                     modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                    textStyle = LocalTextStyle.current.merge(
-                        TextStyle(color = colors.onSurface, fontSize = 14.sp),
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                    textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent),
                     decorationBox = { inner ->
                         if (prompt.text.isEmpty()) {
                             Text(
                                 Strings.aiImagePromptHint,
                                 fontSize = 14.sp,
-                                color = colors.onSurfaceVariant,
+                                color = colors.textSecondary,
                             )
                         }
                         inner()
@@ -429,7 +424,7 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                 Text(
                     Strings.aiImageEmpty,
                     fontSize = 13.sp,
-                    color = colors.onSurfaceVariant,
+                    color = colors.textSecondary,
                 )
             }
         } else {
@@ -444,16 +439,12 @@ private fun AiImageGenScreenInner(onBack: () -> Unit) {
                             Modifier.fillMaxWidth().padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                color = colors.primary,
-                                strokeWidth = 1.5.dp,
-                            )
+                            Text("...", color = colors.accent, fontFamily = JetBrainsMono, fontSize = 13.sp)
                             Spacer(Modifier.size(8.dp))
                             Text(
                                 Strings.aiImageGenerating,
                                 fontSize = 13.sp,
-                                color = colors.onSurfaceVariant,
+                                color = colors.textSecondary,
                             )
                         }
                     }
@@ -527,7 +518,7 @@ private fun ImageHistorySheet(
     onClearAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = AiModuleTheme.colors
     val sdf = remember { java.text.SimpleDateFormat("dd.MM.yy HH:mm", java.util.Locale.getDefault()) }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -546,27 +537,27 @@ private fun ImageHistorySheet(
                         Strings.aiHistoryImageTitle,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = colors.onSurface,
+                        color = colors.textPrimary,
                     )
                     Text(
                         "${items.size} ${Strings.aiHistoryCount}",
                         fontSize = 11.sp,
-                        color = colors.onSurfaceVariant,
+                        color = colors.textSecondary,
                     )
                 }
                 if (items.isNotEmpty()) {
                     IconButton(onClick = onClearAll) {
-                        Icon(Icons.Rounded.DeleteSweep, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                        Icon(Icons.Rounded.DeleteSweep, null, Modifier.size(20.dp), tint = colors.textSecondary)
                     }
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                    Icon(Icons.Rounded.Close, null, Modifier.size(20.dp), tint = colors.textSecondary)
                 }
             }
             Spacer(Modifier.height(8.dp))
             if (items.isEmpty()) {
                 Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                    Text(Strings.aiHistoryEmpty, fontSize = 13.sp, color = colors.onSurfaceVariant)
+                    Text(Strings.aiHistoryEmpty, fontSize = 13.sp, color = colors.textSecondary)
                 }
             } else {
                 LazyColumn(
@@ -579,7 +570,7 @@ private fun ImageHistorySheet(
                             Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(colors.surfaceVariant.copy(alpha = 0.5f))
+                                .background(colors.surfaceElevated.copy(alpha = 0.5f))
                                 .clickable { onOpen(item.cacheFile) }
                                 .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -599,19 +590,19 @@ private fun ImageHistorySheet(
                                     item.prompt.takeIf { it.isNotBlank() } ?: item.model.displayName,
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = colors.onSurface,
+                                    color = colors.textPrimary,
                                     maxLines = 2,
                                 )
                                 Text(
                                     item.model.displayName,
                                     fontSize = 11.sp,
-                                    color = colors.onSurfaceVariant,
+                                    color = colors.textSecondary,
                                     maxLines = 1,
                                 )
                                 Text(
                                     sdf.format(java.util.Date(item.historyId)),
                                     fontSize = 10.sp,
-                                    color = colors.onSurfaceVariant,
+                                    color = colors.textSecondary,
                                     fontFamily = JetBrainsMono,
                                     maxLines = 1,
                                 )
@@ -620,7 +611,7 @@ private fun ImageHistorySheet(
                                 onClick = { onDelete(item.historyId) },
                                 modifier = Modifier.size(28.dp),
                             ) {
-                                Icon(Icons.Rounded.Close, null, Modifier.size(16.dp), tint = colors.onSurfaceVariant)
+                                Icon(Icons.Rounded.Close, null, Modifier.size(16.dp), tint = colors.textSecondary)
                             }
                         }
                     }
@@ -638,13 +629,13 @@ private fun CollapsedPromptBar(
     onExpand: () -> Unit,
     onGenerate: () -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = AiModuleTheme.colors
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(colors.surfaceVariant.copy(alpha = 0.5f))
+            .background(colors.surfaceElevated.copy(alpha = 0.5f))
             .clickable(enabled = !generating) { onExpand() }
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -653,13 +644,13 @@ private fun CollapsedPromptBar(
             Icons.Rounded.Edit,
             null,
             Modifier.size(14.dp),
-            tint = colors.onSurfaceVariant,
+            tint = colors.textSecondary,
         )
         Spacer(Modifier.size(8.dp))
         Text(
             text = prompt.ifBlank { Strings.aiImagePromptHint },
             fontSize = 13.sp,
-            color = if (prompt.isBlank()) colors.onSurfaceVariant else colors.onSurface,
+            color = if (prompt.isBlank()) colors.textSecondary else colors.textPrimary,
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )
@@ -674,9 +665,9 @@ private fun CollapsedPromptBar(
 
 @Composable
 private fun GenerateButton(enabled: Boolean, generating: Boolean, onClick: () -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    val bg = if (enabled) colors.primary else colors.surfaceVariant.copy(alpha = 0.5f)
-    val fg = if (enabled) colors.onPrimary else colors.onSurfaceVariant
+    val colors = AiModuleTheme.colors
+    val bg = if (enabled) colors.accent else colors.surfaceElevated.copy(alpha = 0.5f)
+    val fg = if (enabled) colors.background else colors.textSecondary
     Row(
         Modifier
             .clip(RoundedCornerShape(10.dp))
@@ -686,11 +677,7 @@ private fun GenerateButton(enabled: Boolean, generating: Boolean, onClick: () ->
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (generating) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(12.dp),
-                color = fg,
-                strokeWidth = 1.dp,
-            )
+            Text("...", color = fg, fontFamily = JetBrainsMono, fontSize = 12.sp)
             Spacer(Modifier.size(8.dp))
         }
         Text(
@@ -718,7 +705,7 @@ private fun ImageResultCard(
     onDelete: () -> Unit,
     onSavedToGallery: (String) -> Unit,
 ) {
-    val colors = MaterialTheme.colorScheme
+    val colors = AiModuleTheme.colors
     val scope = rememberCoroutineScope()
     var saved by remember(item.historyId) { mutableStateOf(item.savedTo != null) }
     var savingError by remember(item.historyId) { mutableStateOf<String?>(null) }
@@ -727,7 +714,7 @@ private fun ImageResultCard(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(colors.surfaceVariant.copy(alpha = 0.5f))
+            .background(colors.surfaceElevated.copy(alpha = 0.5f))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -746,13 +733,13 @@ private fun ImageResultCard(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Rounded.Image, null, Modifier.size(14.dp), tint = colors.onSurfaceVariant)
+            Icon(Icons.Rounded.Image, null, Modifier.size(14.dp), tint = colors.textSecondary)
             Spacer(Modifier.size(6.dp))
             Text(
                 item.model.displayName,
                 fontSize = 11.sp,
                 fontFamily = JetBrainsMono,
-                color = colors.onSurfaceVariant,
+                color = colors.textSecondary,
                 modifier = Modifier.weight(1f),
             )
             if (savingError != null) {
@@ -811,7 +798,7 @@ private fun ImageResultCard(
             Text(
                 item.prompt,
                 fontSize = 11.sp,
-                color = colors.onSurfaceVariant,
+                color = colors.textSecondary,
                 maxLines = 2,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
@@ -827,9 +814,9 @@ private fun ActionPill(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MaterialTheme.colorScheme
-    val bg = if (primary) colors.primary else colors.surface
-    val fg = if (primary) colors.onPrimary else colors.onSurface
+    val colors = AiModuleTheme.colors
+    val bg = if (primary) colors.accent else colors.surface
+    val fg = if (primary) colors.background else colors.textPrimary
     Row(
         modifier
             .clip(RoundedCornerShape(8.dp))

@@ -45,12 +45,6 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Warning
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -94,6 +88,10 @@ import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.data.github.canWrite
 import com.glassfiles.ui.screens.ai.ExpensiveActionWarningDialog
+import com.glassfiles.ui.screens.ai.terminal.AgentTextButton
+import com.glassfiles.ui.screens.ai.terminal.Icon
+import com.glassfiles.ui.screens.ai.terminal.IconButton
+import com.glassfiles.ui.screens.ai.terminal.Text
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -166,14 +164,14 @@ fun AiAgentScreen(
         mutableStateOf(sessions.firstOrNull { it.id == activeSessionId }?.createdAt ?: System.currentTimeMillis())
     }
     var showHistory by remember { mutableStateOf(false) }
-    // Per-repo system-prompt override editor visibility. Opens an
-    // AlertDialog with a multi-line text field; saves to AiAgentPrefs
+    // Per-repo system-prompt override editor visibility. Opens a
+    // terminal dialog with a multi-line text field; saves to AiAgentPrefs
     // on confirm so subsequent runs in this repo prepend it as a
     // `system` message.
     var showSystemPrompt by remember { mutableStateOf(false) }
     // Terminal-style settings sheet (REPO / BRANCH / MODEL / mode /
     // approval toggles / write limit / protected paths / memory / etc.).
-    // Replaces the inline Material picker chips + Switch + FilterChip row
+    // Replaces the inline picker chips + switch row
     // that previously lived under the topbar; opens via the gear icon in
     // [AgentTopBar].
     var showSettings by remember { mutableStateOf(false) }
@@ -906,8 +904,8 @@ fun AiAgentScreen(
     // ─── UI (terminal mode) ───────────────────────────────────────────────
     // The whole agent screen lives inside an [AgentTerminalSurface] so
     // descendants (AgentTopBar, AgentSettingsBottomSheet, AgentInput,
-    // banners…) read their palette/typography from the terminal theme
-    // instead of MaterialTheme. Repo / branch / model pickers, the
+    // banners…) read their palette/typography from the terminal theme.
+    // Repo / branch / model pickers, the
     // cost-mode selector and the auto-approve switch live in the
     // bottom-sheet now (opened via the gear icon in the topbar) — the
     // chat takes the full screen height and the topbar stays a single
@@ -918,7 +916,7 @@ fun AiAgentScreen(
     ) {
     // Re-bind `colors` to the terminal palette inside the surface so
     // every legacy `colors.surface` / `colors.accent` / etc. reference
-    // resolves to terminal HEX instead of Material colours. This must
+    // resolves to terminal HEX colors. This must
     // live INSIDE the surface composition because [AgentTerminal.colors]
     // reads from a CompositionLocal that is only provided here.
     val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
@@ -1003,7 +1001,6 @@ fun AiAgentScreen(
             onBack = onBack,
             onSettings = { showSettings = true },
             onHistory = { showHistory = true },
-            onNewChat = ::startNewSession,
             onSystemPrompt = {
                 if (selectedRepo != null) showSystemPrompt = true else showSettings = true
             },
@@ -1098,7 +1095,7 @@ fun AiAgentScreen(
                 if (running && approvals.isEmpty()) {
                     item {
                         // Terminal-style running line: `■ [running…]` +
-                        // blinking cursor instead of a Material spinner.
+                        // blinking cursor instead of a spinner.
                         com.glassfiles.ui.screens.ai.terminal.AgentMessageRow(
                             role = com.glassfiles.ui.screens.ai.terminal.AgentRole.ASSISTANT,
                             streaming = true,
@@ -1178,29 +1175,25 @@ fun AiAgentScreen(
                     modifier = Modifier.weight(1f),
                 )
                 Spacer(Modifier.width(8.dp))
-                TextButton(onClick = {
+                AgentTextButton(
+                    label = "[ ${Strings.aiAgentResumeBannerAction} ]",
+                    color = colors.accent,
+                    enabled = true,
+                ) {
                     val resume = pending
                     pendingResume = null
                     com.glassfiles.data.ai.AiAgentResumeStore
                         .clear(context, activeSessionId)
                     submit(resume.prompt, resume.imageBase64)
-                }) {
-                    Text(
-                        Strings.aiAgentResumeBannerAction,
-                        color = colors.accent,
-                        fontSize = 12.sp,
-                    )
                 }
-                TextButton(onClick = {
+                AgentTextButton(
+                    label = "[ ${Strings.aiAgentResumeBannerDiscard} ]",
+                    color = colors.textSecondary,
+                    enabled = true,
+                ) {
                     pendingResume = null
                     com.glassfiles.data.ai.AiAgentResumeStore
                         .clear(context, activeSessionId)
-                }) {
-                    Text(
-                        Strings.aiAgentResumeBannerDiscard,
-                        color = colors.textSecondary,
-                        fontSize = 12.sp,
-                    )
                 }
             }
         }
@@ -1632,7 +1625,7 @@ private fun AgentBanner(
 @Composable
 private fun EmptyAgentState(message: String) {
     // Terminal-style empty hint: `$` prompt + monospace message, no
-    // Material icons / cards. Centred in the empty transcript area.
+    // Large terminal glyph centered in the empty transcript area.
     val colors = com.glassfiles.ui.screens.ai.terminal.AgentTerminal.colors
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
@@ -2285,15 +2278,20 @@ private fun ProtectedBranchWarning(
             color = colors.error,
         )
         Spacer(Modifier.height(6.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = colors.error,
-                    uncheckedColor = colors.error.copy(alpha = 0.5f),
-                ),
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable { onCheckedChange(!checked) }
+                .padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                if (checked) "[✓]" else "[ ]",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.error,
             )
+            Spacer(Modifier.width(8.dp))
             Text(
                 Strings.aiAgentProtectedBranchConfirm,
                 fontSize = 12.sp,

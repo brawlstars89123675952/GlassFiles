@@ -28,10 +28,6 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +54,9 @@ import com.glassfiles.data.ai.models.AiProviderId
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleScreenScaffold
+import com.glassfiles.ui.screens.ai.terminal.Icon
+import com.glassfiles.ui.screens.ai.terminal.IconButton
+import com.glassfiles.ui.screens.ai.terminal.Text
 import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 
@@ -227,12 +226,10 @@ private fun ProviderRow(
                         onValueChange = onValueChange,
                         modifier = Modifier.weight(1f),
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.merge(
-                            TextStyle(
-                                color = colors.textPrimary,
-                                fontSize = 13.sp,
-                                fontFamily = JetBrainsMono,
-                            ),
+                        textStyle = TextStyle(
+                            color = colors.textPrimary,
+                            fontSize = 13.sp,
+                            fontFamily = JetBrainsMono,
                         ),
                         cursorBrush = SolidColor(colors.accent),
                         visualTransformation =

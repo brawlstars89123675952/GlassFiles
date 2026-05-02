@@ -42,10 +42,8 @@ import com.glassfiles.ui.theme.JetBrainsMono
 
 /**
  * Terminal-style modal dialog rendered with the AiModule palette.
- * Replaces Material3 `AlertDialog`. The frame is a 1px hairline on
- * `surface` and the chrome inside is purely typographic — title prefixed
- * with `> `, content in [JetBrainsMono], confirm/dismiss rendered as
- * AiModule pill buttons.
+ * The frame is a 1px hairline on `surface`, the title is prefixed
+ * with `> `, and confirm/dismiss actions use AiModule pill buttons.
  */
 @Composable
 fun AiModuleAlertDialog(
@@ -67,7 +65,7 @@ fun AiModuleAlertDialog(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             if (!title.isNullOrBlank()) {
-                androidx.compose.material3.Text(
+                Text(
                     text = "> $title",
                     color = palette.textPrimary,
                     fontFamily = JetBrainsMono,
@@ -104,7 +102,7 @@ fun AiModuleAlertDialog(
 
 /**
  * AiModule text input. Replaces `OutlinedTextField` / `TextField` while
- * keeping the field cheap (no Material decoration overhead).
+ * keeping the field cheap with no decorated text-field chrome.
  *
  * Renders a 1px hairline frame on [AiModuleTheme.colors.surface], with
  * a leading slot for prompt glyph (e.g. `?`, `/`, `>`) and a trailing
@@ -130,7 +128,7 @@ fun AiModuleTextField(
     val palette = AiModuleTheme.colors
     Column(modifier.fillMaxWidth()) {
         if (!label.isNullOrBlank()) {
-            androidx.compose.material3.Text(
+            Text(
                 text = label,
                 color = palette.textSecondary,
                 fontFamily = JetBrainsMono,
@@ -155,7 +153,7 @@ fun AiModuleTextField(
             }
             Box(Modifier.weight(1f)) {
                 if (value.isEmpty() && !placeholder.isNullOrBlank()) {
-                    androidx.compose.material3.Text(
+                    Text(
                         text = placeholder,
                         color = palette.textMuted,
                         fontFamily = JetBrainsMono,
@@ -246,7 +244,7 @@ fun AiModuleTextAction(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
-        androidx.compose.material3.Text(
+        Text(
             text = label,
             color = effective,
             fontFamily = JetBrainsMono,

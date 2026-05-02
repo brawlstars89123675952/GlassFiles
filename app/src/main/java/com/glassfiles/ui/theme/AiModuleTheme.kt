@@ -3,14 +3,11 @@ package com.glassfiles.ui.theme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.TextUnit
@@ -113,7 +110,7 @@ fun AiModuleSurface(
         LocalAiModuleColors provides colors,
         LocalAiModuleTypography provides typography,
     ) {
-        AiModuleMaterialBridge(colors = colors) {
+        AiModuleContentBridge {
             Box(modifier.fillMaxSize().background(colors.background)) {
                 content()
             }
@@ -122,60 +119,8 @@ fun AiModuleSurface(
 }
 
 @Composable
-fun AiModuleMaterialBridge(
-    colors: AiModuleColors = AiModuleTheme.colors,
-    content: @Composable () -> Unit,
-) {
-    val terminalScheme = darkColorScheme(
-        primary = colors.accent,
-        onPrimary = colors.background,
-        primaryContainer = colors.surfaceElevated,
-        onPrimaryContainer = colors.accent,
-        secondary = colors.accentDim,
-        onSecondary = colors.background,
-        tertiary = colors.accent,
-        onTertiary = colors.background,
-        background = colors.background,
-        onBackground = colors.textPrimary,
-        surface = colors.background,
-        onSurface = colors.textPrimary,
-        surfaceVariant = colors.surface,
-        onSurfaceVariant = colors.textSecondary,
-        surfaceContainer = colors.surface,
-        surfaceContainerHigh = colors.surfaceElevated,
-        surfaceContainerHighest = colors.surfaceElevated,
-        outline = colors.border,
-        outlineVariant = colors.border,
-        error = colors.error,
-        onError = colors.background,
-        errorContainer = colors.surface,
-        onErrorContainer = colors.error,
-    )
-    val baseTypography = MaterialTheme.typography
-    val terminalTypography = remember(baseTypography) {
-        baseTypography.copy(
-            displayLarge = baseTypography.displayLarge.copy(fontFamily = JetBrainsMono),
-            displayMedium = baseTypography.displayMedium.copy(fontFamily = JetBrainsMono),
-            displaySmall = baseTypography.displaySmall.copy(fontFamily = JetBrainsMono),
-            headlineLarge = baseTypography.headlineLarge.copy(fontFamily = JetBrainsMono),
-            headlineMedium = baseTypography.headlineMedium.copy(fontFamily = JetBrainsMono),
-            headlineSmall = baseTypography.headlineSmall.copy(fontFamily = JetBrainsMono),
-            titleLarge = baseTypography.titleLarge.copy(fontFamily = JetBrainsMono),
-            titleMedium = baseTypography.titleMedium.copy(fontFamily = JetBrainsMono),
-            titleSmall = baseTypography.titleSmall.copy(fontFamily = JetBrainsMono),
-            bodyLarge = baseTypography.bodyLarge.copy(fontFamily = JetBrainsMono),
-            bodyMedium = baseTypography.bodyMedium.copy(fontFamily = JetBrainsMono),
-            bodySmall = baseTypography.bodySmall.copy(fontFamily = JetBrainsMono),
-            labelLarge = baseTypography.labelLarge.copy(fontFamily = JetBrainsMono),
-            labelMedium = baseTypography.labelMedium.copy(fontFamily = JetBrainsMono),
-            labelSmall = baseTypography.labelSmall.copy(fontFamily = JetBrainsMono),
-        )
-    }
-    MaterialTheme(
-        colorScheme = terminalScheme,
-        typography = terminalTypography,
-        content = content,
-    )
+fun AiModuleContentBridge(content: @Composable () -> Unit) {
+    content()
 }
 
 fun AiModuleColors.toCodeColors(): CodeColors = CodeColors(

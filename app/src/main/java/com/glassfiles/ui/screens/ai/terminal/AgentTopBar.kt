@@ -12,15 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Stop
-import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +24,7 @@ import com.glassfiles.ui.theme.JetBrainsMono
 /**
  * Compact terminal-style topbar:
  *
- *   ←   AI Agent           $0.00 / 0.00k tok   ⚙ + ⌬
+ *   ←   AI Agent           $0.00 / 0.00k tok   ⚙ ⌬
  *       repo@branch (subtitle, optional)
  *
  * Stays in a single row at the top and surfaces a tiny subtitle for
@@ -60,7 +51,6 @@ fun AgentTopBar(
     onBack: () -> Unit,
     onSettings: () -> Unit,
     onHistory: () -> Unit,
-    onNewChat: () -> Unit,
     onSystemPrompt: () -> Unit,
     onStop: () -> Unit,
     onClose: (() -> Unit)? = null,
@@ -83,11 +73,12 @@ fun AgentTopBar(
         ) {
             if (!embedded) {
                 IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "back",
-                        modifier = Modifier.size(18.dp),
-                        tint = colors.textPrimary,
+                    Text(
+                        "\u2190",
+                        color = colors.textPrimary,
+                        fontFamily = JetBrainsMono,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = AgentTerminal.type.topBarTitle,
                     )
                 }
                 Spacer(Modifier.width(4.dp))
@@ -123,11 +114,12 @@ fun AgentTopBar(
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onSettings, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Rounded.Settings,
-                    contentDescription = "settings",
-                    modifier = Modifier.size(18.dp),
-                    tint = colors.textSecondary,
+                Text(
+                    "\u2699",
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = AgentTerminal.type.topBarTitle,
                 )
             }
             IconButton(onClick = onHistory, modifier = Modifier.size(36.dp)) {
@@ -139,40 +131,34 @@ fun AgentTopBar(
                     fontSize = AgentTerminal.type.topBarTitle,
                 )
             }
-            IconButton(onClick = onNewChat, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = onSystemPrompt, modifier = Modifier.size(36.dp)) {
                 Text(
-                    "+",
+                    "\u232C",
                     color = colors.textSecondary,
                     fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Medium,
                     fontSize = AgentTerminal.type.topBarTitle,
                 )
             }
-            IconButton(onClick = onSystemPrompt, modifier = Modifier.size(36.dp)) {
-                Icon(
-                    Icons.Rounded.Tune,
-                    contentDescription = "system prompt",
-                    modifier = Modifier.size(18.dp),
-                    tint = colors.textSecondary,
-                )
-            }
             if (running) {
                 IconButton(onClick = onStop, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.Rounded.Stop,
-                        contentDescription = "stop",
-                        modifier = Modifier.size(18.dp),
-                        tint = colors.error,
+                    Text(
+                        "\u25A0",
+                        color = colors.error,
+                        fontFamily = JetBrainsMono,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = AgentTerminal.type.topBarTitle,
                     )
                 }
             }
             if (onClose != null) {
                 IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        Icons.Rounded.Close,
-                        contentDescription = "close",
-                        modifier = Modifier.size(18.dp),
-                        tint = colors.textSecondary,
+                    Text(
+                        "\u00D7",
+                        color = colors.textSecondary,
+                        fontFamily = JetBrainsMono,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = AgentTerminal.type.topBarTitle,
                     )
                 }
             }

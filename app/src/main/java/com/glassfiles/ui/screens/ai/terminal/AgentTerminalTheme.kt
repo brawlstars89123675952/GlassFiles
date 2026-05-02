@@ -27,11 +27,10 @@ import com.glassfiles.ui.theme.JetBrainsMono
  *    `com.glassfiles.ui.theme` (e.g. [com.glassfiles.ui.components.AiModuleBlinkingCursor],
  *    [com.glassfiles.ui.components.AiModuleCodeBlock]).
  *
- * The palette is intentionally hand-picked (not derived from
- * [androidx.compose.material3.MaterialTheme.colorScheme]) so the AI
- * surfaces stay a visually obscured "engineering surface" regardless of
- * the user's chosen accent color elsewhere in the app. Outside the AI
- * module the global Material theme still applies — this palette must
+ * The palette is intentionally hand-picked so the AI surfaces stay a
+ * visually obscured "engineering surface" regardless of the user's
+ * chosen accent color elsewhere in the app. Outside the AI module the
+ * global app theme still applies — this palette must
  * not leak into Browse / Files / Settings / Terminal / GitHub etc.
  */
 @Immutable

@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,9 +41,8 @@ import com.glassfiles.ui.theme.JetBrainsMono
  *  - Body: monospace, horizontal scroll, dense lineHeight (1.25em)
  *  - Expand: full-screen takeover with the same body
  *
- * Lives in the agent-terminal package so the global
- * [androidx.compose.material3.MaterialTheme] is not consulted — palette
- * comes from [AgentTerminal.colors] only.
+ * Lives in the agent-terminal package and reads palette from
+ * [AgentTerminal.colors] only.
  */
 @Composable
 fun AgentTerminalCodeBlock(

@@ -6,8 +6,8 @@ import com.glassfiles.ui.components.CodeColors
 /**
  * Fixed colour palettes for code-block syntax highlighting.
  *
- * The syntax highlighter intentionally ignores [androidx.compose.material3.MaterialTheme]
- * because the user's accent / Material You colour theme would otherwise tint
+ * The syntax highlighter intentionally ignores the app-level UI theme
+ * because the user's accent colour would otherwise tint
  * keywords, strings and numbers — turning code into a mono-tone blob whenever
  * the theme picker is set to a strong primary (e.g. red, magenta).
  *
