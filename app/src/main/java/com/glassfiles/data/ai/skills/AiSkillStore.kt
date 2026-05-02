@@ -2,6 +2,7 @@ package com.glassfiles.data.ai.skills
 
 import android.content.Context
 import android.net.Uri
+import com.glassfiles.data.ai.agent.AgentToolRegistry
 import com.glassfiles.data.ai.agent.AgentTools
 import org.json.JSONArray
 import org.json.JSONObject
@@ -83,14 +84,11 @@ object AiSkillStore {
         "artifact_write",
         "artifact_update",
     )
-    private val dangerousTools = setOf(
-        "local_delete",
-        "local_trash_empty",
-        "terminal_run",
-        "root",
-        "shizuku",
-        "network_upload",
-    )
+    private val dangerousTools: Set<String>
+        get() = AgentToolRegistry.all
+            .filter { it.dangerous }
+            .map { it.name }
+            .toSet() + setOf("root", "shizuku", "network_upload")
     private val suspiciousPatterns = listOf(
         "ignore previous instructions",
         "do not tell the user",
@@ -416,8 +414,8 @@ object AiSkillStore {
         val pack = listPacks(context).firstOrNull { it.id == skill.packId }
         val allowDangerous = AiSkillPrefs.getAllowUntrustedDangerousTools(context)
         return (skill.tools + "skill_read")
-            .filter { AgentTools.byName(it) != null }
-            .filter { tool -> pack?.trusted == true || allowDangerous || tool !in dangerousTools }
+            .filter { AgentToolRegistry.isKnown(it) }
+            .filter { tool -> pack?.trusted == true || allowDangerous || !isDangerousTool(tool) }
             .toSet()
     }
 
@@ -460,7 +458,7 @@ object AiSkillStore {
     }
 
     fun isDangerousTool(toolName: String): Boolean =
-        toolName in dangerousTools || toolName.contains("delete", ignoreCase = true)
+        AgentToolRegistry.isDangerous(toolName) || toolName in dangerousTools
 
     private fun parseSkillFile(
         file: File,
@@ -747,7 +745,7 @@ object AiSkillStore {
     }
 
     private fun validateKnownTools(tools: List<String>) {
-        val unknown = tools.filterNot { AgentTools.byName(it) != null }
+        val unknown = tools.filterNot { AgentToolRegistry.isKnown(it) }
         require(unknown.isEmpty()) { "Unknown requested tools: ${unknown.joinToString()}" }
     }
 
@@ -776,11 +774,11 @@ object AiSkillStore {
                 warnings += "$sourceName: ignored unsupported tools: ${unknown.joinToString()}"
             }
         }
-        return normalized.filter { AgentTools.byName(it) != null }
+        return normalized.filter { AgentToolRegistry.isKnown(it) }
     }
 
     private fun escalateRisk(risk: AiSkillRisk, tools: List<String>): AiSkillRisk =
-        if (tools.any { it in dangerousTools || it.contains("delete", ignoreCase = true) }) {
+        if (tools.any { AgentToolRegistry.isDangerous(it) || it in dangerousTools }) {
             if (risk.ordinal < AiSkillRisk.HIGH.ordinal) AiSkillRisk.HIGH else risk
         } else risk
 

@@ -41,44 +41,6 @@ data class AiAgentApprovalCheck(
 }
 
 object AiAgentApprovalPolicy {
-    private val editTools = setOf("edit_file", "local_replace_in_file", "local_apply_patch", "local_apply_batch_patch")
-    private val writeTools = setOf(
-        "write_file",
-        "comment_pr",
-        "comment_issue",
-        "create_issue",
-        "memory_write",
-        "memory_append",
-        "local_write_file",
-        "local_append_file",
-        "local_mkdir",
-        "local_copy",
-        "local_move",
-        "local_rename",
-        "archive_extract",
-        "archive_create",
-        "local_create_temp_file",
-        "local_revert_file",
-        "local_trash_restore",
-        "archive_add_entries",
-        "archive_update_entry",
-        "archive_extract_nested",
-        "exif_remove",
-        "terminal_run",
-        "skill_enable",
-    )
-    private val commitTools = setOf("commit", "open_pr", "create_branch", "commit_changes", "create_pull_request")
-    private val destructiveTools = setOf(
-        "delete_file",
-        "reset_hard",
-        "force_push",
-        "memory_delete",
-        "local_delete_to_trash",
-        "local_delete",
-        "local_trash_empty",
-        "archive_delete_entries",
-        "skill_delete",
-    )
     // Only actual git-commit tool calls trigger the "commits to main/master require approval"
     // safety stop. write_file / edit_file no longer fall under it — those are governed by
     // the regular WRITE / EDIT auto-approve toggles (and YOLO when enabled).
@@ -132,15 +94,8 @@ object AiAgentApprovalPolicy {
         )
     }
 
-    fun categoryFor(toolName: String, tool: AiTool?): AiAgentApprovalCategory = when {
-        toolName in destructiveTools || toolName.contains("delete", ignoreCase = true) ->
-            AiAgentApprovalCategory.DESTRUCTIVE
-        tool?.readOnly == true -> AiAgentApprovalCategory.READ
-        toolName in editTools -> AiAgentApprovalCategory.EDIT
-        toolName in writeTools -> AiAgentApprovalCategory.WRITE
-        toolName in commitTools -> AiAgentApprovalCategory.COMMIT
-        else -> AiAgentApprovalCategory.WRITE
-    }
+    fun categoryFor(toolName: String, tool: AiTool?): AiAgentApprovalCategory =
+        AgentToolRegistry.approvalCategoryFor(toolName, tool)
 
     fun extractPaths(argsJson: String): List<String> {
         val root = runCatching { JSONObject(argsJson) }.getOrNull() ?: return emptyList()

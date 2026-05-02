@@ -92,7 +92,10 @@ import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.AiPreparedAttachment
 import com.glassfiles.data.ai.ModelRegistry
 import com.glassfiles.data.ai.SystemPrompts
+import com.glassfiles.data.ai.agent.AgentToolRegistry
 import com.glassfiles.data.ai.agent.AgentTools
+import com.glassfiles.data.ai.agent.AiAgentApprovalCategory
+import com.glassfiles.data.ai.agent.AiToolUiKind
 import com.glassfiles.data.ai.agent.AiToolCall
 import com.glassfiles.data.ai.agent.AiToolResult
 import com.glassfiles.data.ai.agent.GitHubToolExecutor
@@ -938,7 +941,7 @@ fun AiAgentScreen(
             val tools = if (repo.canWrite()) {
                 AgentTools.ALL
             } else {
-                AgentTools.ALL.filter { it.readOnly }
+                AgentTools.ALL.filter { AgentToolRegistry.isReadOnly(it.name) }
             }
             val selectedSkill = AiSkillPrefs.getSelectedSkillId(context)
                 ?.let { AiSkillStore.readSkill(context, it) }
@@ -1127,33 +1130,14 @@ fun AiAgentScreen(
                 // file contents — only counters and labels. See
                 // AiUsageRecord kdoc for the privacy contract.
                 runCatching {
-                    val readToolNames = buildSet {
-                        add(com.glassfiles.data.ai.agent.AgentTools.LIST_DIR.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_FILE.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_FILE_RANGE.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.SEARCH_REPO.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.LIST_BRANCHES.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.COMPARE_REFS.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.LIST_PULLS.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_PR.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.LIST_ISSUES.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_ISSUE.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_CHECK_RUNS.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.READ_WORKFLOW_RUN.name)
-                        addAll(com.glassfiles.data.ai.agent.AgentTools.LOCAL_TOOLS.filter { it.readOnly }.map { it.name })
-                        addAll(com.glassfiles.data.ai.agent.AgentTools.ARCHIVE_TOOLS.filter { it.readOnly }.map { it.name })
-                    }
-                    val writeToolNames = buildSet {
-                        add(com.glassfiles.data.ai.agent.AgentTools.EDIT_FILE.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.WRITE_FILE.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.COMMIT.name)
-                        add(com.glassfiles.data.ai.agent.AgentTools.OPEN_PR.name)
-                        addAll(com.glassfiles.data.ai.agent.AgentTools.LOCAL_TOOLS.filterNot { it.readOnly }.map { it.name })
-                        addAll(com.glassfiles.data.ai.agent.AgentTools.ARCHIVE_TOOLS.filterNot { it.readOnly }.map { it.name })
-                    }
                     val toolCalls = transcript.filterIsInstance<AgentEntry.ToolCall>()
-                    val readCalls = toolCalls.count { it.call.name in readToolNames }
-                    val writeCalls = toolCalls.count { it.call.name in writeToolNames }
+                    val readCalls = toolCalls.count {
+                        AgentToolRegistry.approvalCategoryFor(
+                            it.call.name,
+                            AgentTools.byName(it.call.name),
+                        ) == AiAgentApprovalCategory.READ
+                    }
+                    val writeCalls = toolCalls.size - readCalls
                     com.glassfiles.data.ai.usage.AiUsageStore.append(
                         context,
                         com.glassfiles.data.ai.usage.AiUsageRecord(
@@ -3812,20 +3796,27 @@ private fun hiddenToolArgLabel(value: Any?): String {
     return "[hidden ${if (length > 0) "$length chars" else "value"}]"
 }
 
-private fun compactToolVerb(name: String): String = when {
-    name.contains("search", ignoreCase = true) -> "search"
-    name.contains("read", ignoreCase = true) || name == AgentTools.LIST_DIR.name -> "read"
-    name.contains("write", ignoreCase = true) || name.contains("create", ignoreCase = true) -> "write"
-    name.contains("edit", ignoreCase = true) || name.contains("replace", ignoreCase = true) || name.contains("patch", ignoreCase = true) -> "edit"
-    name.contains("delete", ignoreCase = true) || name.contains("trash", ignoreCase = true) -> "delete"
-    name.contains("move", ignoreCase = true) || name.contains("rename", ignoreCase = true) || name.contains("copy", ignoreCase = true) -> "move"
-    name.contains("archive", ignoreCase = true) -> "archive"
-    name.contains("terminal", ignoreCase = true) -> "run"
-    name.contains("think", ignoreCase = true) -> "thinking"
-    name.contains("memory", ignoreCase = true) -> "memory"
-    name.contains("web", ignoreCase = true) -> "web"
-    name.contains("github", ignoreCase = true) -> "github"
-    else -> name.substringBefore("_").take(8).ifBlank { "tool" }
+private fun compactToolVerb(name: String): String = when (AgentToolRegistry.uiKindFor(name)) {
+    AiToolUiKind.SEARCH -> "search"
+    AiToolUiKind.LIST -> "list"
+    AiToolUiKind.READ -> "read"
+    AiToolUiKind.WRITE -> "write"
+    AiToolUiKind.EDIT -> "edit"
+    AiToolUiKind.DELETE -> "delete"
+    AiToolUiKind.DIFF -> "diff"
+    AiToolUiKind.ARCHIVE -> "archive"
+    AiToolUiKind.TERMINAL -> "run"
+    AiToolUiKind.MEMORY -> "memory"
+    AiToolUiKind.WEB -> "web"
+    AiToolUiKind.GITHUB -> "github"
+    AiToolUiKind.SKILL -> "skill"
+    AiToolUiKind.ARTIFACT -> "file"
+    AiToolUiKind.SYSTEM -> "context"
+    AiToolUiKind.OTHER -> when {
+        name.contains("move", ignoreCase = true) || name.contains("rename", ignoreCase = true) || name.contains("copy", ignoreCase = true) -> "move"
+        name.contains("think", ignoreCase = true) -> "thinking"
+        else -> name.substringBefore("_").take(8).ifBlank { "tool" }
+    }
 }
 
 private fun compactToolTarget(call: AiToolCall, result: AiToolResult?): String {
@@ -4588,7 +4579,7 @@ private suspend fun runAgentLoop(
             transcript += AgentEntry.ToolCall(call)
             val tool = AgentTools.byName(call.name)
             estimate?.bumpToolCall()
-            if (tool?.readOnly == false) estimate?.bumpWriteProposal()
+            if (!AgentToolRegistry.isReadOnly(call.name)) estimate?.bumpWriteProposal()
             if (allowedSkillTools != null && call.name !in allowedSkillTools) {
                 val result = AiToolResult(
                     callId = call.id,
