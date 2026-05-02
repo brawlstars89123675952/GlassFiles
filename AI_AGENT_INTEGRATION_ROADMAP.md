@@ -20,6 +20,152 @@
 
 ---
 
+## Ближайший план после анализа Claude Code
+
+Этот блок фиксирует оставшиеся этапы, которые стоит делать по порядку. Цель не в копировании чужой реализации, а в переносе архитектурных паттернов в Android/Compose-архитектуру GlassFiles.
+
+### 1. Tool Search
+
+Добавить `tool_search`: read-only инструмент поиска по реестру tools. Он должен искать по `name`, `domain`, `uiKind`, `searchHint`, `description`.
+
+Первый вариант должен работать без deferred loading: агент уже видит tools как раньше, но может вызывать `tool_search`, чтобы найти правильный инструмент.
+
+### 2. Tool Prompt Trimming
+
+После стабилизации `tool_search` часть редких/heavy tools можно не отправлять модели сразу. Вместо этого в prompt остаются базовые tools и `tool_search`, а остальные доступны через discovery.
+
+Цель: уменьшить tool schema в prompt, снизить токены и сделать выбор tools менее шумным.
+
+### 3. Large Tool Result Storage
+
+Большие tool outputs и созданные текстовые файлы нужно сохранять во внутреннее хранилище приложения, а в чат отдавать короткий preview + ссылку/attachment.
+
+Это должно закрыть проблемы с:
+
+- обрезанными long prompt `.md`;
+- длинными результатами `terminal_run`;
+- большими diff/search outputs;
+- созданными файлами, которые нельзя нормально открыть/скачать из preview.
+
+### 4. Skill Format Upgrade
+
+Привести imported skills к внутреннему формату:
+
+```text
+skills/
+└── <pack-id>/
+    ├── manifest.json
+    ├── SKILL.md
+    ├── README.md
+    └── references/
+```
+
+Discovery должен грузить только frontmatter и короткое описание. Полные инструкции skill должны инжектиться только после ручного выбора или уверенного match.
+
+### 5. Skill Base Directory
+
+Для активного skill агент должен получать read-only base directory:
+
+```text
+Base directory for this skill: <app-files>/skills/packs/<pack-id>
+```
+
+Reference-файлы и assets читаются через `skill_read`, а не исполняются напрямую. Skill остается инструкциями и metadata, без произвольного кода.
+
+### 6. Plan Mode
+
+Добавить явное состояние `PLAN`: агент может читать, искать и анализировать, но не может выполнять write/edit/archive/terminal действия до approval.
+
+Это должно работать как промежуточный слой между обычным режимом и workspace mode:
+
+- пользователь дает большую задачу;
+- агент исследует проект;
+- показывает план;
+- после approval получает доступ к write tools.
+
+### 7. Workspace Tool State
+
+Добавить tools/commands для видимости workspace:
+
+- `workspace_status`;
+- `workspace_diff`;
+- `workspace_commit_request`;
+- `workspace_discard_request`.
+
+Агент должен понимать, что изменения находятся в virtual workspace, а не в real FS/GitHub до commit approval.
+
+### 8. Context / Usage Inspector
+
+Добавить экран или bottom sheet, который показывает, что агент реально видит:
+
+- system prompt;
+- memory blocks;
+- skill catalog;
+- selected skill;
+- attachments;
+- tool schemas;
+- chat history window;
+- token/cost estimate по секциям.
+
+Это поможет отлаживать случаи, когда агент "видит репозиторий" в chat-only или не видит выбранный skill.
+
+### 9. Task Progress Metadata
+
+Хранить и показывать прогресс задачи:
+
+- tool count;
+- read/write count;
+- last activity;
+- token estimate;
+- current phase;
+- active skill;
+- workspace state.
+
+UI может использовать это для topbar и compact tool call list.
+
+### 10. Memory Directory Index
+
+Улучшить memory до index + topic files:
+
+```text
+memory/
+├── MEMORY.md
+├── project.md
+├── preferences.md
+├── decisions.md
+└── topics/
+```
+
+`MEMORY.md` должен быть коротким индексом, а подробности должны лежать в отдельных topic-файлах. Нужны лимиты и предупреждения о слишком длинной памяти.
+
+### 11. Permission Log
+
+Логировать решения approval policy:
+
+- tool;
+- category;
+- reason;
+- auto/manual;
+- yolo/sessionTrust/protected path;
+- active skill allowlist;
+- timestamp.
+
+Потом показать это в debug/settings, чтобы было понятно, почему tool был разрешен или заблокирован.
+
+### 12. Future / Later
+
+Пока не трогать:
+
+- multi-agent teams/swarms;
+- remote sessions;
+- IDE bridge;
+- cron/proactive agents;
+- plugin marketplace.
+
+Эти подсистемы имеют смысл только после стабилизации core agent: tools, skills, file artifacts, workspace, permissions и collapsed UI.
+
+---
+
 ## 1. App Agent Context
 
 Агенту нужно передавать не только текст пользователя, но и контекст приложения.
