@@ -206,6 +206,12 @@ class GitHubToolExecutor(
                     repoFullName(),
                     args.getString("path"),
                 )
+                AgentTools.WORKSPACE_STATUS.name -> workspaceStatus()
+                AgentTools.WORKSPACE_DIFF.name -> workspaceDiff(args.optInt("max_chars", 20_000))
+                AgentTools.WORKSPACE_COMMIT_REQUEST.name ->
+                    "Workspace commit requested. The app requires explicit user review; finish the task so the pending workspace diff appears in the chat UI."
+                AgentTools.WORKSPACE_DISCARD_REQUEST.name ->
+                    "Workspace discard requested. The app requires explicit user confirmation from the workspace review UI."
                 else -> "Unknown tool: ${call.name}"
             }
             AiToolResult(callId = call.id, name = call.name, output = capped(output))
@@ -222,6 +228,41 @@ class GitHubToolExecutor(
     // ─── tool impls ───────────────────────────────────────────────────────
 
     private fun repoFullName(): String = "$owner/$repo"
+
+    private suspend fun workspaceStatus(): String {
+        val vfs = virtualFileSystem ?: return "Workspace mode is off for this task."
+        val diff = vfs.diff()
+        return buildString {
+            appendLine("workspace: active")
+            appendLine("repo: ${repoFullName()}@$branch")
+            appendLine("files changed: ${diff.filesChanged}")
+            appendLine("additions: ${diff.additions}")
+            appendLine("deletions: ${diff.deletions}")
+            if (diff.changes.isNotEmpty()) {
+                appendLine()
+                diff.changes.take(40).forEach { change ->
+                    appendLine("- ${change.operation.name.lowercase(Locale.US)} ${change.path} (+${change.additions}/-${change.deletions})")
+                }
+                if (diff.changes.size > 40) appendLine("- ... ${diff.changes.size - 40} more")
+            }
+        }.trimEnd()
+    }
+
+    private suspend fun workspaceDiff(maxChars: Int): String {
+        val vfs = virtualFileSystem ?: return "Workspace mode is off for this task."
+        val diff = vfs.diff()
+        if (diff.changes.isEmpty()) return "Workspace has no staged changes."
+        val cap = maxChars.coerceIn(1_000, 80_000)
+        val text = buildString {
+            appendLine("workspace diff: ${diff.filesChanged} file(s), +${diff.additions}/-${diff.deletions}")
+            diff.changes.forEach { change ->
+                appendLine()
+                appendLine("### ${change.operation.name.lowercase(Locale.US)} ${change.path}")
+                appendLine(change.unifiedDiff)
+            }
+        }.trimEnd()
+        return text.take(cap) + if (text.length > cap) "\n[truncated: ${text.length - cap} chars omitted]" else ""
+    }
 
     private suspend fun listDir(context: Context, path: String): String {
         virtualFileSystem?.let { return listWorkspaceDir(it, path) }

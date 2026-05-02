@@ -739,6 +739,11 @@ object AgentTools {
         readOnly = false,
     )
 
+    val WORKSPACE_STATUS = tool("workspace_status", "Show current virtual workspace state, staged file count and diff summary.", true, arrayOf())
+    val WORKSPACE_DIFF = tool("workspace_diff", "Show the current virtual workspace unified diff summary. Read-only.", true, arrayOf(), "max_chars" to "integer")
+    val WORKSPACE_COMMIT_REQUEST = tool("workspace_commit_request", "Ask the user to review and commit the pending virtual workspace. Does not commit automatically.", true, arrayOf())
+    val WORKSPACE_DISCARD_REQUEST = tool("workspace_discard_request", "Ask the user to discard the pending virtual workspace. Does not discard automatically.", true, arrayOf())
+
     val LOCAL_LIST_DIR = AiTool(
         name = "local_list_dir",
         description = "List files in the current local file context. Relative paths resolve inside the chat/session local workspace.",
@@ -1090,6 +1095,7 @@ object AgentTools {
         EDIT_FILE, WRITE_FILE, CREATE_BRANCH, COMMIT, OPEN_PR,
         COMMENT_PR, COMMENT_ISSUE, CREATE_ISSUE,
         MEMORY_READ, MEMORY_WRITE, MEMORY_APPEND, MEMORY_LIST, MEMORY_SEARCH, MEMORY_DELETE,
+        WORKSPACE_STATUS, WORKSPACE_DIFF, WORKSPACE_COMMIT_REQUEST, WORKSPACE_DISCARD_REQUEST,
     ) + LOCAL_TOOLS + ARCHIVE_TOOLS + PUBLIC_REMOTE_TOOLS + SKILL_TOOLS
 
     val CHAT_ARTIFACTS: List<AiTool> = listOf(ARTIFACT_WRITE, ARTIFACT_UPDATE)

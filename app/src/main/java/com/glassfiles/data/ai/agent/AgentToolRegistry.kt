@@ -102,6 +102,11 @@ object AgentToolRegistry {
             meta(AgentTools.MEMORY_APPEND, AiToolDomain.MEMORY, AiToolUiKind.MEMORY, AiAgentApprovalCategory.WRITE, AiToolRisk.LOW, false, "append agent memory", changesFiles = true),
             meta(AgentTools.MEMORY_DELETE, AiToolDomain.MEMORY, AiToolUiKind.DELETE, AiAgentApprovalCategory.DESTRUCTIVE, AiToolRisk.DESTRUCTIVE, false, "delete agent memory", changesFiles = true, destructive = true, dangerous = true),
 
+            meta(AgentTools.WORKSPACE_STATUS, AiToolDomain.REPOSITORY, AiToolUiKind.READ, AiAgentApprovalCategory.READ, AiToolRisk.READ_ONLY, false, "show virtual workspace status"),
+            meta(AgentTools.WORKSPACE_DIFF, AiToolDomain.REPOSITORY, AiToolUiKind.DIFF, AiAgentApprovalCategory.READ, AiToolRisk.READ_ONLY, false, "show virtual workspace diff"),
+            meta(AgentTools.WORKSPACE_COMMIT_REQUEST, AiToolDomain.REPOSITORY, AiToolUiKind.SYSTEM, AiAgentApprovalCategory.READ, AiToolRisk.READ_ONLY, false, "request workspace review and commit"),
+            meta(AgentTools.WORKSPACE_DISCARD_REQUEST, AiToolDomain.REPOSITORY, AiToolUiKind.SYSTEM, AiAgentApprovalCategory.READ, AiToolRisk.READ_ONLY, false, "request workspace discard"),
+
             meta(AgentTools.ARTIFACT_WRITE, AiToolDomain.ARTIFACT, AiToolUiKind.ARTIFACT, AiAgentApprovalCategory.WRITE, AiToolRisk.LOW, true, "create chat file attachments", changesFiles = true),
             meta(AgentTools.ARTIFACT_UPDATE, AiToolDomain.ARTIFACT, AiToolUiKind.ARTIFACT, AiAgentApprovalCategory.EDIT, AiToolRisk.LOW, true, "update chat file attachments", changesFiles = true),
             meta(AgentTools.TODO_WRITE, AiToolDomain.TASK, AiToolUiKind.TASK, AiAgentApprovalCategory.READ, AiToolRisk.READ_ONLY, true, "write task checklists"),
