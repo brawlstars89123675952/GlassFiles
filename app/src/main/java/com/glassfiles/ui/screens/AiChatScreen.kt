@@ -686,6 +686,108 @@ private fun ChatView(
         )
     }
 
+    fun appendLocalCommandResult(commandText: String, response: String) {
+        val next = messages + ChatMessage("user", commandText) + ChatMessage("assistant", response)
+        messages = next
+        input = ""
+        attachedImage = null
+        attachedFile = null
+        save(next)
+    }
+
+    fun chatSlashHelp(): String = """
+        [slash commands]
+        /help          show this list
+        /clear         clear current chat
+        /cost          show local token/cost estimate
+        /compact       compact visible transcript locally
+        /resume        open chat history
+        /export        save chat markdown to Downloads
+        /settings      open API/model settings
+    """.trimIndent()
+
+    fun chatCostSummary(): String = buildString {
+        appendLine("[cost estimate]")
+        appendLine("model: ${currentModel?.displayName ?: modelId.ifBlank { "not selected" }}")
+        appendLine("input chars: ${chatInputChars(messages) + pendingInputChars}")
+        appendLine("output chars: ${chatOutputChars(messages) + currentResponse.length}")
+        appendLine("tokens: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
+        usageEstimate.costUsd?.let {
+            appendLine("cost: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
+        }
+        appendLine("messages: ${messages.size}")
+    }.trimEnd()
+
+    fun compactChatLocally(commandText: String) {
+        if (isLoading) {
+            appendLocalCommandResult(commandText, "[system] wait for the current response to finish before compacting.")
+            return
+        }
+        if (messages.size <= 8) {
+            appendLocalCommandResult(commandText, "[system] nothing to compact yet.")
+            return
+        }
+        val recentUser = messages
+            .filter { it.role == "user" }
+            .map { it.content.trim() }
+            .filter { it.isNotBlank() }
+            .takeLast(6)
+        val summary = buildString {
+            appendLine("[compact summary]")
+            appendLine("messages: ${messages.size}")
+            appendLine("input chars: ${chatInputChars(messages)}")
+            appendLine("output chars: ${chatOutputChars(messages)}")
+            if (recentUser.isNotEmpty()) {
+                appendLine()
+                appendLine("recent user requests:")
+                recentUser.forEach { appendLine("- ${it.lineSequence().firstOrNull().orEmpty().take(160)}") }
+            }
+        }.trimEnd()
+        val tail = messages.takeLast(8)
+        val next = listOf(ChatMessage("assistant", summary)) + tail
+        messages = next
+        input = ""
+        save(next)
+    }
+
+    fun handleSlashCommand(rawText: String): Boolean {
+        if (!rawText.startsWith("/")) return false
+        val body = rawText.drop(1).trim()
+        val name = body.substringBefore(' ', missingDelimiterValue = body).lowercase(Locale.US)
+        when (name) {
+            "help", "?" -> appendLocalCommandResult(rawText, chatSlashHelp())
+            "clear" -> {
+                currentJob?.cancel()
+                currentJob = null
+                isLoading = false
+                currentResponse = ""
+                messages = emptyList()
+                input = ""
+                attachedImage = null
+                attachedFile = null
+                save(messages)
+                Toast.makeText(context, "Chat cleared", Toast.LENGTH_SHORT).show()
+            }
+            "cost" -> appendLocalCommandResult(rawText, chatCostSummary())
+            "compact" -> compactChatLocally(rawText)
+            "resume", "history" -> {
+                input = ""
+                save(messages)
+                onBack()
+            }
+            "export" -> {
+                input = ""
+                exportChat()
+            }
+            "settings" -> {
+                input = ""
+                showSettings = true
+            }
+            else -> appendLocalCommandResult(rawText, "[system] unknown slash command: /$name\n\n${chatSlashHelp()}")
+        }
+        return true
+    }
+
     /**
      * Pending send args captured while the pre-request cost preview
      * dialog is on screen. Non-null means a `doSend(...)` call has
@@ -767,6 +869,9 @@ private fun ChatView(
     fun send() {
         var t = input.trim()
         if (t.isEmpty() && attachedImage == null && attachedFile == null) return
+        if (t.startsWith("/") && attachedImage == null && attachedFile == null) {
+            if (handleSlashCommand(t)) return
+        }
         val file = attachedFile
         val fc = file?.promptContent
         if (t.isEmpty() && attachedImage != null) t = "What is in this image?"
@@ -1141,6 +1246,13 @@ private fun ChatView(
         }
 
         // Input
+        if (input.trim().startsWith("/") && attachedImage == null && attachedFile == null) {
+            ChatSlashCommandHint(
+                query = input,
+                commands = CHAT_SLASH_COMMANDS,
+                onPick = { command -> input = "$command " },
+            )
+        }
         TerminalChatInput(
             value = input,
             onValueChange = { input = it },
@@ -1222,6 +1334,15 @@ private const val CHAT_AUTO_PROVIDER = "AUTO"
 private const val CHAT_PREFS = "ai_chat_screen"
 private const val CHAT_PREF_PROVIDER = "provider"
 private const val CHAT_PREF_MODEL = "model"
+private val CHAT_SLASH_COMMANDS = listOf(
+    "/help" to "show commands",
+    "/clear" to "clear current chat",
+    "/cost" to "show context estimate",
+    "/compact" to "compact transcript",
+    "/resume" to "open history",
+    "/export" to "save markdown to Downloads",
+    "/settings" to "open model/API settings",
+)
 
 private data class ChatModelKey(
     val providerId: AiProviderId,
@@ -1358,6 +1479,68 @@ private fun AiChatUsageChip(estimate: AiUsageEstimate) {
             .border(1.dp, colors.border, RoundedCornerShape(4.dp))
             .padding(horizontal = 6.dp, vertical = 4.dp),
     )
+}
+
+@Composable
+private fun ChatSlashCommandHint(
+    query: String,
+    commands: List<Pair<String, String>>,
+    onPick: (String) -> Unit,
+) {
+    val colors = AiModuleTheme.colors
+    val needle = query.trim().lowercase(Locale.US)
+    val visible = commands
+        .filter { (command, description) ->
+            needle == "/" ||
+                command.lowercase(Locale.US).startsWith(needle) ||
+                description.lowercase(Locale.US).contains(needle.removePrefix("/"))
+        }
+        .take(6)
+    if (visible.isEmpty()) return
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        AiModuleText(
+            "[slash commands]",
+            color = colors.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+        )
+        visible.forEach { (command, description) ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onPick(command) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AiModuleText(
+                    command,
+                    color = colors.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    modifier = Modifier.width(112.dp),
+                )
+                AiModuleText(
+                    description,
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
 }
 
 private fun chatInputChars(messages: List<ChatMessage>): Int =

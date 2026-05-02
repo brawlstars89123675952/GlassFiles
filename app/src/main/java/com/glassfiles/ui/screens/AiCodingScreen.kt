@@ -67,6 +67,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -102,6 +103,7 @@ import com.glassfiles.ui.screens.ai.terminal.IconButton
 import com.glassfiles.ui.screens.ai.terminal.TerminalHairline
 import com.glassfiles.ui.screens.ai.terminal.TerminalPageBar
 import com.glassfiles.ui.screens.ai.terminal.TerminalPillButton
+import com.glassfiles.ui.screens.ai.terminal.TerminalSlashCommandHint
 import com.glassfiles.ui.screens.ai.terminal.Text
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.Dispatchers
@@ -116,6 +118,13 @@ import java.util.Locale
 
 private const val HISTORY_MODE = "coding"
 private const val SESSION_MODE = AiChatSessionStore.MODE_CODING
+private val CODING_SLASH_COMMANDS = listOf(
+    "/help" to "show commands",
+    "/clear" to "clear current coding chat",
+    "/cost" to "show context estimate",
+    "/compact" to "compact transcript",
+    "/resume" to "open history",
+)
 
 /**
  * Coding-focused chat. Distinct from [AiChatScreen]:
@@ -671,6 +680,97 @@ private fun CodingChatView(
      */
     var pendingSend by remember { mutableStateOf<PendingCodingSend?>(null) }
 
+    fun appendLocalCommandResult(commandText: String, response: String) {
+        transcript += CodingMessage("user", commandText)
+        transcript += CodingMessage("assistant", response)
+        draft = TextFieldValue("")
+        pendingImage = null
+        pendingFile = null
+        persist()
+    }
+
+    fun codingSlashHelp(): String = """
+        [slash commands]
+        /help       show this list
+        /clear      clear current coding chat
+        /cost       show local token/cost estimate
+        /compact    compact visible transcript locally
+        /resume     open coding chat history
+    """.trimIndent()
+
+    fun codingCostSummary(): String = buildString {
+        appendLine("[cost estimate]")
+        appendLine("model: ${currentModel?.displayName ?: modelId.ifBlank { "not selected" }}")
+        appendLine("input chars: ${codingInputChars(transcript)}")
+        appendLine("output chars: ${codingOutputChars(transcript)}")
+        appendLine("tokens: ${AiUsageAccounting.formatTokens(usageEstimate.totalTokens, estimated = usageEstimate.estimated)}")
+        usageEstimate.costUsd?.let {
+            appendLine("cost: ${AiUsageAccounting.formatUsd(it, estimated = usageEstimate.estimated)}")
+        }
+        appendLine("messages: ${transcript.size}")
+    }.trimEnd()
+
+    fun compactCodingLocally(commandText: String) {
+        if (streaming) {
+            appendLocalCommandResult(commandText, "[system] wait for the current response to finish before compacting.")
+            return
+        }
+        if (transcript.size <= 8) {
+            appendLocalCommandResult(commandText, "[system] nothing to compact yet.")
+            return
+        }
+        val recentUser = transcript
+            .filter { it.role == "user" }
+            .map { it.content.trim() }
+            .filter { it.isNotBlank() }
+            .takeLast(6)
+        val summary = buildString {
+            appendLine("[compact summary]")
+            appendLine("messages: ${transcript.size}")
+            appendLine("input chars: ${codingInputChars(transcript)}")
+            appendLine("output chars: ${codingOutputChars(transcript)}")
+            if (recentUser.isNotEmpty()) {
+                appendLine()
+                appendLine("recent user requests:")
+                recentUser.forEach { appendLine("- ${it.lineSequence().firstOrNull().orEmpty().take(160)}") }
+            }
+        }.trimEnd()
+        val tail = transcript.takeLast(8)
+        transcript.clear()
+        transcript += CodingMessage("assistant", summary)
+        transcript.addAll(tail)
+        draft = TextFieldValue("")
+        persist()
+    }
+
+    fun handleSlashCommand(rawText: String): Boolean {
+        if (!rawText.startsWith("/")) return false
+        val body = rawText.drop(1).trim()
+        val name = body.substringBefore(' ', missingDelimiterValue = body).lowercase(Locale.US)
+        when (name) {
+            "help", "?" -> appendLocalCommandResult(rawText, codingSlashHelp())
+            "clear" -> {
+                streamJob?.cancel()
+                streamJob = null
+                streaming = false
+                transcript.clear()
+                draft = TextFieldValue("")
+                pendingImage = null
+                pendingFile = null
+                persist()
+            }
+            "cost" -> appendLocalCommandResult(rawText, codingCostSummary())
+            "compact" -> compactCodingLocally(rawText)
+            "resume", "history" -> {
+                draft = TextFieldValue("")
+                persist()
+                onBack()
+            }
+            else -> appendLocalCommandResult(rawText, "[system] unknown slash command: /$name\n\n${codingSlashHelp()}")
+        }
+        return true
+    }
+
     fun actuallyDoSend(text: String, image: String?, file: AiPreparedAttachment?) {
         val displayText = text.ifBlank {
             when {
@@ -697,10 +797,13 @@ private fun CodingChatView(
     }
 
     fun send() {
-        provider ?: return
-        modelId.takeIf { it.isNotBlank() } ?: return
         val text = draft.text.trim()
         if ((text.isBlank() && pendingImage == null && pendingFile == null) || streaming) return
+        if (text.startsWith("/") && pendingImage == null && pendingFile == null) {
+            if (handleSlashCommand(text)) return
+        }
+        provider ?: return
+        modelId.takeIf { it.isNotBlank() } ?: return
 
         val image = pendingImage?.takeIf { visionAvailable }
         val file = pendingFile
@@ -855,6 +958,16 @@ private fun CodingChatView(
         }
 
         // ── Input bar ───────────────────────────────────────────────────
+        if (draft.text.trim().startsWith("/") && pendingImage == null && pendingFile == null) {
+            TerminalSlashCommandHint(
+                query = draft.text,
+                commands = CODING_SLASH_COMMANDS,
+                onPick = { command ->
+                    val next = "$command "
+                    draft = TextFieldValue(next, selection = TextRange(next.length))
+                },
+            )
+        }
         InputBar(
             value = draft,
             onValueChange = { draft = it },

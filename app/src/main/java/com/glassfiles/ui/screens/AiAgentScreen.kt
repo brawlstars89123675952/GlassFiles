@@ -77,6 +77,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -1870,6 +1871,16 @@ fun AiAgentScreen(
             (chatOnlyMode || (selectedRepo != null && selectedBranch != null)) &&
             selectedModel != null &&
             activeApiKey.isNotBlank()
+        if (input.text.trim().startsWith("/") && pendingImage == null && pendingFile == null) {
+            com.glassfiles.ui.screens.ai.terminal.TerminalSlashCommandHint(
+                query = input.text,
+                commands = AGENT_SLASH_COMMANDS,
+                onPick = { command ->
+                    val next = "$command "
+                    input = TextFieldValue(next, selection = TextRange(next.length))
+                },
+            )
+        }
         com.glassfiles.ui.screens.ai.terminal.AgentInput(
             value = input,
             onValueChange = { input = it },
@@ -5352,6 +5363,20 @@ private fun List<AiChatSessionStore.Message>.toAgentEntries(): List<AgentEntry> 
 
 private const val CHAT_ONLY_REPO_KEY = "__chat_only__"
 private const val CHAT_MEMORY_SCOPE_PREFIX = "chat/"
+private val AGENT_SLASH_COMMANDS = listOf(
+    "/help" to "show commands",
+    "/clear" to "clear current task",
+    "/cost" to "show context estimate",
+    "/memory" to "open working memory",
+    "/memory files" to "open memory files",
+    "/skills" to "open installed skills",
+    "/permissions" to "show or set permission mode",
+    "/plan" to "toggle plan-first mode",
+    "/system" to "edit system prompt",
+    "/compact" to "compact transcript",
+    "/resume" to "open history",
+    "/diff" to "open workspace diff",
+)
 private val AGENT_TODO_SYSTEM_PROMPT: String = """
 For multi-step work, maintain a short task checklist with todo_write and todo_update.
 Use todo_write once you understand the task; keep exactly one item in_progress when actively working; mark items completed as soon as they are done.

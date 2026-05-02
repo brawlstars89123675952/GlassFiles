@@ -8,8 +8,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.glassfiles.ui.theme.JetBrainsMono
+import java.util.Locale
 
 /**
  * Terminal-style chat input. Layout left → right:
@@ -146,6 +149,69 @@ fun AgentInput(
                 fontWeight = FontWeight.Medium,
                 fontSize = AgentTerminal.type.topBarTitle,
             )
+        }
+    }
+}
+
+@Composable
+fun TerminalSlashCommandHint(
+    query: String,
+    commands: List<Pair<String, String>>,
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = AgentTerminal.colors
+    val needle = query.trim().lowercase(Locale.US)
+    val visible = commands
+        .filter { (command, description) ->
+            needle == "/" ||
+                command.lowercase(Locale.US).startsWith(needle) ||
+                description.lowercase(Locale.US).contains(needle.removePrefix("/"))
+        }
+        .take(6)
+    if (visible.isEmpty()) return
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.surfaceElevated)
+            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = "[slash commands]",
+            color = colors.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = AgentTerminal.type.label,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+        )
+        visible.forEach { (command, description) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onPick(command) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    command,
+                    color = colors.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = AgentTerminal.type.message,
+                    modifier = Modifier.width(118.dp),
+                )
+                Text(
+                    description,
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = AgentTerminal.type.label,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
