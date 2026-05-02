@@ -490,7 +490,7 @@ fun AiAgentScreen(
     fun agentScopeLabel(scopeFullName: String): String =
         if (scopeFullName.startsWith(CHAT_MEMORY_SCOPE_PREFIX)) "chat only" else scopeFullName
 
-    fun chatOnlyMemoryPrompt(scopeFullName: String): List<AiMessage> {
+    fun chatOnlyMemoryPrompt(scopeFullName: String, latestUserText: String): List<AiMessage> {
         val messages = mutableListOf<AiMessage>()
         val workingMemoryBlock = if (com.glassfiles.data.ai.AiWorkingMemoryPrefs.getEnabled(context)) {
             com.glassfiles.data.ai.AiAgentMemoryStore.workingMemoryPrompt(context, scopeFullName)
@@ -501,6 +501,7 @@ fun AiAgentScreen(
             ?.takeIf { it.isNotBlank() }
         val planFirst = com.glassfiles.data.ai.AiAgentPrefs
             .getPlanThenExecute(context, scopeFullName)
+        val planOnlyTurn = planFirst && !isPlanApprovalText(latestUserText)
         if (workingMemoryBlock.isNotBlank()) {
             messages += AiMessage(role = "system", content = workingMemoryBlock)
         }
@@ -510,7 +511,7 @@ fun AiAgentScreen(
         if (systemOverride != null) {
             messages += AiMessage(role = "system", content = systemOverride)
         }
-        if (planFirst) {
+        if (planOnlyTurn) {
             messages += AiMessage(role = "system", content = AGENT_PLAN_FIRST_SYSTEM_PROMPT)
         }
         return messages
@@ -926,7 +927,7 @@ fun AiAgentScreen(
                     ?.toSet()
                 val taskToolNames = AgentTools.TASK_TOOLS.map { it.name }.toSet()
                 val messages = mutableListOf<AiMessage>().apply {
-                    addAll(chatOnlyMemoryPrompt(chatScope))
+                    addAll(chatOnlyMemoryPrompt(chatScope, text))
                     add(AiMessage("system", CHAT_ONLY_SYSTEM_PROMPT))
                     add(AiMessage("system", AGENT_TODO_SYSTEM_PROMPT))
                     AiSkillStore.catalogPrompt(context).takeIf { it.isNotBlank() }?.let {
@@ -939,10 +940,17 @@ fun AiAgentScreen(
                     }
                     addAll(transcript.dropLast(1).toAiMessages())
                 }
-                val chatTools = if (skillAllowedTools != null) {
-                    AgentTools.CHAT_TOOLS.filter { it.name in skillAllowedTools || it.name in taskToolNames }
+                val chatPlanOnlyTurn = com.glassfiles.data.ai.AiAgentPrefs
+                    .getPlanThenExecute(context, chatScope) && !isPlanApprovalText(text)
+                val scopedChatTools = if (chatPlanOnlyTurn) {
+                    AgentTools.CHAT_TOOLS.filter { AgentToolRegistry.isReadOnly(it.name) }
                 } else {
                     AgentTools.CHAT_TOOLS
+                }
+                val chatTools = if (skillAllowedTools != null) {
+                    scopedChatTools.filter { it.name in skillAllowedTools || it.name in taskToolNames }
+                } else {
+                    scopedChatTools
                 }
                 var turnIndex = 0
                 while (turnIndex < 8) {
@@ -1182,10 +1190,18 @@ fun AiAgentScreen(
                 ?.flatMap { AiSkillStore.allowedToolsForSkill(context, it) }
                 ?.toSet()
             val taskToolNames = AgentTools.TASK_TOOLS.map { it.name }.toSet()
-            val effectiveTools = if (skillAllowedTools != null) {
-                tools.filter { it.name in skillAllowedTools || it.name in taskToolNames }
+            val planFirst = com.glassfiles.data.ai.AiAgentPrefs
+                .getPlanThenExecute(context, repo.fullName)
+            val planOnlyTurn = planFirst && !isPlanApprovalText(displayText)
+            val scopedTools = if (planOnlyTurn) {
+                tools.filter { AgentToolRegistry.isReadOnly(it.name) }
             } else {
                 tools
+            }
+            val effectiveTools = if (skillAllowedTools != null) {
+                scopedTools.filter { it.name in skillAllowedTools || it.name in taskToolNames }
+            } else {
+                scopedTools
             }
             // Build the ordered fallback list: every other tool-use
             // capable model the user has a key for, ranked by the same
@@ -1206,12 +1222,9 @@ fun AiAgentScreen(
                 ?.takeIf { it.isNotBlank() }
             // C3 — plan-then-execute. When the per-repo toggle is on,
             // prepend a planning preamble ahead of the user's prompt
-            // so the very first model turn outputs only a numbered
-            // plan (no tool calls). Tools resume on the next user turn,
-            // i.e. when the user types "go", clicks "Approve plan", or
-            // simply continues the conversation.
-            val planFirst = com.glassfiles.data.ai.AiAgentPrefs
-                .getPlanThenExecute(context, repo.fullName)
+            // so the next model turn outputs only a numbered plan and
+            // can only use read-only tools. Write tools resume once the
+            // user replies with an approval phrase such as "go".
             val baseMessages = transcript.toAiMessages()
             // Working memory (BUGS_FIX.md Section 3). When the user has the
             // toggle on AND working_memory.md is non-empty for this repo we
@@ -1249,7 +1262,7 @@ fun AiAgentScreen(
                         ),
                     )
                 }
-                if (planFirst) {
+                if (planOnlyTurn) {
                     add(
                         AiMessage(
                             role = "system",
@@ -5117,10 +5130,42 @@ private fun extractFilePathArg(call: com.glassfiles.data.ai.agent.AiToolCall): S
  */
 private const val AGENT_PLAN_FIRST_SYSTEM_PROMPT =
     "Plan-then-execute mode is enabled. On your very next turn, output " +
-        "ONLY a short numbered plan describing what you will do — do NOT " +
-        "call any tools yet, do NOT modify any files. Then stop and wait " +
-        "for the user. Once the user replies (e.g. 'go', 'approve', or " +
-        "any further instructions), proceed normally with tool calls."
+        "ONLY a short numbered plan describing what you will do. You may " +
+        "use read-only tools to inspect context, but do NOT modify files, " +
+        "run terminal commands, create archives, or perform write actions. " +
+        "Then stop and wait for the user. Once the user replies (e.g. " +
+        "'go', 'approve', or any further instructions), proceed normally " +
+        "with tool calls."
+
+private fun isPlanApprovalText(text: String): Boolean {
+    val normalized = text.trim().lowercase(Locale.US)
+    if (normalized.isBlank()) return false
+    val firstToken = normalized.substringBefore(' ').trim('.', ',', '!', '?', ':', ';')
+    return firstToken in setOf(
+        "go",
+        "run",
+        "start",
+        "execute",
+        "approve",
+        "approved",
+        "continue",
+        "ok",
+        "yes",
+        "да",
+        "го",
+        "ок",
+        "можно",
+        "одобряю",
+        "апрув",
+        "дальше",
+        "делай",
+        "продолжай",
+        "выполняй",
+        "начинай",
+        "приступай",
+        "сделай",
+    )
+}
 
 /** Hard char-length budget for the rolling tool-use transcript. ~80 000
  * chars ≈ 20–25 k tokens, well under the smallest tool-use windows of
