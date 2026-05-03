@@ -3073,6 +3073,34 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/collaborators/${URLEncoder.encode(username, "UTF-8")}", "PUT", body).success
     }
 
+    suspend fun getRepoInvitations(context: Context, owner: String, repo: String): List<GHRepoInvitation> {
+        val r = request(context, "/repos/$owner/$repo/invitations?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHRepoInvitation(
+                    id = j.optLong("id"),
+                    invitee = j.optJSONObject("invitee")?.optString("login") ?: "",
+                    inviter = j.optJSONObject("inviter")?.optString("login") ?: "",
+                    permissions = j.optString("permissions", ""),
+                    createdAt = j.optString("created_at", ""),
+                    expired = j.optBoolean("expired", false),
+                    htmlUrl = j.optString("html_url", "")
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun updateRepoInvitation(context: Context, owner: String, repo: String, invitationId: Long, permission: String): Boolean {
+        val body = JSONObject().apply { put("permissions", permission) }.toString()
+        return request(context, "/repos/$owner/$repo/invitations/$invitationId", "PATCH", body).success
+    }
+
+    suspend fun deleteRepoInvitation(context: Context, owner: String, repo: String, invitationId: Long): Boolean =
+        request(context, "/repos/$owner/$repo/invitations/$invitationId", "DELETE").let { it.code == 204 || it.success }
+
     // ═══════════════════════════════════
     // Repository Teams
     // ═══════════════════════════════════
@@ -5488,6 +5516,16 @@ data class GHCollaborator(
     val login: String,
     val avatarUrl: String,
     val role: String
+)
+
+data class GHRepoInvitation(
+    val id: Long,
+    val invitee: String,
+    val inviter: String,
+    val permissions: String,
+    val createdAt: String,
+    val expired: Boolean,
+    val htmlUrl: String
 )
 
 data class GHRepoTeam(

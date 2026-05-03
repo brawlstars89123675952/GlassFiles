@@ -2,6 +2,7 @@ package com.glassfiles.ui.screens
 
 
 import android.widget.Toast
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.glassfiles.data.github.GHCollaborator
+import com.glassfiles.data.github.GHRepoInvitation
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.components.AiModuleAlertDialog
 import com.glassfiles.ui.components.AiModuleIcon as Icon
@@ -58,12 +60,15 @@ internal fun CollaboratorsScreen(
     val scope = rememberCoroutineScope()
 
     var collaborators by remember { mutableStateOf<List<GHCollaborator>>(emptyList()) }
+    var invitations by remember { mutableStateOf<List<GHRepoInvitation>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var newUsername by remember { mutableStateOf("") }
     var selectedPermission by remember { mutableStateOf("push") }
     var showAddDialog by remember { mutableStateOf(false) }
     var userToRemove by remember { mutableStateOf<GHCollaborator?>(null) }
     var userToEdit by remember { mutableStateOf<GHCollaborator?>(null) }
+    var invitationToCancel by remember { mutableStateOf<GHRepoInvitation?>(null) }
+    var invitationToEdit by remember { mutableStateOf<GHRepoInvitation?>(null) }
     var query by remember { mutableStateOf("") }
     var actionInFlight by remember { mutableStateOf(false) }
 
@@ -71,6 +76,7 @@ internal fun CollaboratorsScreen(
         loading = true
         scope.launch {
             collaborators = GitHubManager.getCollaborators(context, repoOwner, repoName)
+            invitations = GitHubManager.getRepoInvitations(context, repoOwner, repoName)
             loading = false
         }
     }
@@ -99,6 +105,12 @@ internal fun CollaboratorsScreen(
             val visibleCollaborators = collaborators.filter {
                 query.isBlank() || it.login.contains(query, ignoreCase = true) || permissionLabel(it.role).contains(query, ignoreCase = true)
             }
+            val visibleInvitations = invitations.filter {
+                query.isBlank() ||
+                    it.invitee.contains(query, ignoreCase = true) ||
+                    it.inviter.contains(query, ignoreCase = true) ||
+                    permissionLabel(it.permissions).contains(query, ignoreCase = true)
+            }
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
@@ -106,6 +118,14 @@ internal fun CollaboratorsScreen(
             ) {
                 item {
                     CollaboratorsSummaryCard(collaborators)
+                }
+                item {
+                    RepoInvitationsSection(
+                        invitations = visibleInvitations,
+                        totalInvitations = invitations.size,
+                        onEdit = { invitationToEdit = it },
+                        onCancel = { invitationToCancel = it }
+                    )
                 }
                 item {
                     AiModuleTextField(
@@ -271,6 +291,160 @@ internal fun CollaboratorsScreen(
             }
         )
     }
+
+    if (invitationToEdit != null) {
+        var editPermission by remember(invitationToEdit) { mutableStateOf(normalizeCollaboratorPermission(invitationToEdit!!.permissions)) }
+        AiModuleAlertDialog(
+            onDismissRequest = { invitationToEdit = null },
+            title = "Invitation Permission",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(invitationToEdit!!.invitee.ifBlank { "pending user" }, fontSize = 14.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary)
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        COLLABORATOR_PERMISSIONS.forEach { (perm, label) ->
+                            GitHubTerminalButton(
+                                label = label.lowercase(),
+                                onClick = { editPermission = perm },
+                                color = if (perm == editPermission) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "save",
+                    enabled = !actionInFlight && editPermission != normalizeCollaboratorPermission(invitationToEdit!!.permissions),
+                    onClick = {
+                        val target = invitationToEdit ?: return@AiModuleTextAction
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.updateRepoInvitation(context, repoOwner, repoName, target.id, editPermission)
+                            Toast.makeText(context, if (ok) "Updated" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            invitationToEdit = null
+                            loadCollaborators()
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { invitationToEdit = null }, tint = AiModuleTheme.colors.textSecondary)
+            }
+        )
+    }
+
+    if (invitationToCancel != null) {
+        AiModuleAlertDialog(
+            onDismissRequest = { invitationToCancel = null },
+            title = "Cancel Invitation?",
+            content = {
+                Text("Cancel pending invitation for ${invitationToCancel!!.invitee}?", fontSize = 14.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "cancel invite",
+                    enabled = !actionInFlight,
+                    tint = AiModuleTheme.colors.error,
+                    onClick = {
+                        val target = invitationToCancel ?: return@AiModuleTextAction
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.deleteRepoInvitation(context, repoOwner, repoName, target.id)
+                            Toast.makeText(context, if (ok) "Cancelled" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            invitationToCancel = null
+                            loadCollaborators()
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "keep", onClick = { invitationToCancel = null }, tint = AiModuleTheme.colors.textSecondary)
+            }
+        )
+    }
+}
+
+@Composable
+private fun RepoInvitationsSection(
+    invitations: List<GHRepoInvitation>,
+    totalInvitations: Int,
+    onEdit: (GHRepoInvitation) -> Unit,
+    onCancel: (GHRepoInvitation) -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .background(palette.surface)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("pending invitations", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(totalInvitations.toString(), color = palette.accent, fontFamily = JetBrainsMono, fontSize = 12.sp)
+        }
+        if (invitations.isEmpty()) {
+            Text("// no pending invitations", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+        } else {
+            invitations.forEach { invitation ->
+                RepoInvitationRow(invitation = invitation, onEdit = { onEdit(invitation) }, onCancel = { onCancel(invitation) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepoInvitationRow(
+    invitation: GHRepoInvitation,
+    onEdit: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border.copy(alpha = 0.75f), RoundedCornerShape(2.dp))
+            .background(palette.background.copy(alpha = 0.35f))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("@${invitation.invitee.ifBlank { "unknown" }}", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            InvitationPermissionBadge(invitation.permissions)
+            if (invitation.expired) Text("expired", color = palette.error, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (invitation.inviter.isNotBlank()) {
+                Text("from:${invitation.inviter}", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            }
+            if (invitation.createdAt.isNotBlank()) {
+                Text(invitation.createdAt.take(10), color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+            }
+            Spacer(Modifier.width(4.dp))
+            GitHubTerminalButton("permission", onClick = onEdit, color = palette.textSecondary)
+            GitHubTerminalButton("cancel", onClick = onCancel, color = palette.error)
+        }
+    }
+}
+
+@Composable
+private fun InvitationPermissionBadge(permission: String) {
+    val color = collaboratorRoleColor(permission)
+    Text(
+        permissionLabel(permission).lowercase(),
+        color = color,
+        fontFamily = JetBrainsMono,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(2.dp))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+    )
 }
 
 @Composable

@@ -1317,3 +1317,20 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub collaborators: repository invitations
+- Закрыт repository admin gap из `GITHUB_API_ANALYSIS.md`: pending repository invitations.
+- `GitHubManager.kt`:
+  - добавлены `getRepoInvitations(...)`, `updateRepoInvitation(...)`, `deleteRepoInvitation(...)`;
+  - добавлена модель `GHRepoInvitation`.
+- `GitHubCollaboratorsModule.kt`:
+  - collaborators screen теперь загружает pending invitations вместе с collaborators;
+  - добавлена terminal-style секция `pending invitations`;
+  - pending invitation можно обновить по permission или cancel/delete;
+  - новая UI часть использует mono text, border/surface rows и `GitHubTerminalButton` без добавления Material UI.
+- `GITHUB_API_ANALYSIS.md`:
+  - `Repo invitations` перенесён из backlog в implemented;
+  - remaining repository admin gaps сужены до transfer и default branch rename.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка `git diff --check`.
