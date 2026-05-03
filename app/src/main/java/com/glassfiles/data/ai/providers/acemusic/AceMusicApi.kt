@@ -2,17 +2,11 @@ package com.glassfiles.data.ai.providers.acemusic
 
 import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
-import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 
 interface AceMusicApi {
-    @POST("v1/chat/completions")
-    suspend fun createCompletion(
-        @Body request: AceMusicCompletionRequest,
-    ): ResponseBody
-
     @POST("release_task")
     suspend fun releaseTask(
         @Body request: AceMusicGenerationRequest,
@@ -24,34 +18,19 @@ interface AceMusicApi {
     ): AceMusicEnvelope<List<AceMusicTaskRecord>>
 
     @GET("v1/models")
-    suspend fun listModelsRaw(): ResponseBody
+    suspend fun listModelsRaw(): AceMusicEnvelope<AceMusicModelData>
 }
 
-data class AceMusicCompletionRequest(
-    @SerializedName("model") val model: String,
-    @SerializedName("messages") val messages: List<AceMusicChatMessage>,
-    @SerializedName("stream") val stream: Boolean = false,
-    @SerializedName("thinking") val thinking: Boolean? = true,
-    @SerializedName("use_format") val useFormat: Boolean? = null,
-    @SerializedName("sample_mode") val sampleMode: Boolean? = null,
-    @SerializedName("use_cot_caption") val useCotCaption: Boolean? = null,
-    @SerializedName("use_cot_language") val useCotLanguage: Boolean? = null,
-    @SerializedName("audio_config") val audioConfig: AceMusicCompletionAudioConfig? = null,
-    @SerializedName("guidance_scale") val guidanceScale: Float? = null,
-    @SerializedName("seed") val seed: Int? = null,
-    @SerializedName("batch_size") val batchSize: Int? = null,
+data class AceMusicModelData(
+    @SerializedName("models") val models: List<AceMusicModelRecord>? = null,
+    @SerializedName("default_model") val defaultModel: String? = null,
 )
 
-data class AceMusicChatMessage(
-    @SerializedName("role") val role: String,
-    @SerializedName("content") val content: String,
-)
-
-data class AceMusicCompletionAudioConfig(
-    @SerializedName("format") val format: String = "mp3",
-    @SerializedName("vocal_language") val vocalLanguage: String = "en",
-    @SerializedName("duration") val duration: Int? = null,
-    @SerializedName("bpm") val bpm: Int? = null,
+data class AceMusicModelRecord(
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("model") val model: String? = null,
+    @SerializedName("is_default") val isDefault: Boolean? = null,
 )
 
 data class AceMusicGenerationRequest(

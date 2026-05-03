@@ -13,12 +13,6 @@ class AceMusicRepository(
     private val api: AceMusicApi,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    suspend fun createCompletionRawOrThrow(
-        request: AceMusicCompletionRequest,
-    ): String = withContext(ioDispatcher) {
-        callOrThrow("chat_completions") { api.createCompletion(request).string() }
-    }
-
     suspend fun releaseTaskOrThrow(
         request: AceMusicGenerationRequest,
     ): AceMusicReleaseTaskData = withContext(ioDispatcher) {
@@ -35,8 +29,9 @@ class AceMusicRepository(
         envelope.requireOk("query_result").data.orEmpty()
     }
 
-    suspend fun listModelsRawOrThrow(): String = withContext(ioDispatcher) {
-        callOrThrow("models") { api.listModelsRaw().string() }
+    suspend fun listModelsOrThrow(): AceMusicModelData = withContext(ioDispatcher) {
+        val envelope = callOrThrow("models") { api.listModelsRaw() }
+        envelope.requireOk("models").data ?: AceMusicModelData()
     }
 
     private suspend fun <T> callOrThrow(

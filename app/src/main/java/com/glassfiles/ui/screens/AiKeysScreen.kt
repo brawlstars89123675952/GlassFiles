@@ -261,6 +261,16 @@ private fun ProviderRow(
                     }
                 }
 
+                if (provider == AiProviderId.ACEMUSIC) {
+                    Text(
+                        Strings.aiAceMusicKeyHint,
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMono,
+                        color = colors.textMuted,
+                        lineHeight = 1.3.em,
+                    )
+                }
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     GetKeyLink(onClick = onOpenConsole)
                     Spacer(Modifier.weight(1f))

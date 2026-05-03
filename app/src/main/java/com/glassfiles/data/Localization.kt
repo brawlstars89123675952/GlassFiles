@@ -207,9 +207,7 @@ object Strings {
     val aiVideoGen get() = s("Генерация видео", "Video generation")
     val aiVideoGenSubtitle get() = s("Veo, Wan-Video, Grok Video", "Veo, Wan-Video, Grok Video")
     val aiMusicGen get() = s("Генерация музыки", "Music generation")
-    val aiMusicGenSubtitle get() = s("ACEMusic / ACE-Step", "ACEMusic / ACE-Step")
-    val aiMusicGenPausedSubtitle get() = s("ACEMusic API: ожидаем ответ поддержки", "ACEMusic API: waiting for support")
-    val aiPaused get() = s("пауза", "paused")
+    val aiMusicGenSubtitle get() = s("ACE-Step API · release_task", "ACE-Step API · release_task")
     val aiModels get() = s("Модели", "Models")
     val aiModelsSubtitle get() = s("Каталог по провайдерам", "Catalog by provider")
     val aiKeys get() = s("API-ключи", "API keys")
@@ -221,6 +219,10 @@ object Strings {
     val aiKeySaved get() = s("Сохранено", "Saved")
     val aiKeyClear get() = s("Очистить", "Clear")
     val aiKeyGetHere get() = s("Получить ключ", "Get a key")
+    val aiAceMusicKeyHint get() = s(
+        "ACE-Step API: ключ или https://host|ключ; используется /release_task",
+        "ACE-Step API: key or https://host|key; uses /release_task",
+    )
     val aiRefresh get() = s("Обновить", "Refresh")
     val aiRefreshing get() = s("Обновляем…", "Refreshing…")
     val aiNoModels get() = s("Нет моделей. Введите ключ и нажмите «Обновить».", "No models. Enter the API key and tap “Refresh”.")
