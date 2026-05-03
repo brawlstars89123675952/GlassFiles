@@ -24,6 +24,7 @@ object AceMusicProvider : AiProvider {
     override val id: AiProviderId = AiProviderId.ACEMUSIC
 
     private const val BASE_URL = "https://api.acemusic.ai"
+    private const val CLOUD_MODEL_ALIAS = "ACE Steps"
     private val fallbackModels = listOf(
         "acemusic/acestep-v15-turbo",
         "acemusic/acestep-v15-turbo-shift3",
@@ -91,8 +92,29 @@ object AceMusicProvider : AiProvider {
         apiKey: String,
         onProgress: (String) -> Unit,
     ): JSONObject {
+        val primaryModel = completionModelId(modelId)
+        return runCatching {
+            postCompletion(primaryModel, request, apiKey, includeTuning = true, onProgress = onProgress)
+        }.recoverCatching { firstError ->
+            if (!firstError.isRetryableCloudError()) throw firstError
+            onProgress("retry:minimal")
+            postCompletion(primaryModel, request, apiKey, includeTuning = false, onProgress = onProgress)
+        }.recoverCatching { secondError ->
+            if (!secondError.isRetryableCloudError() || primaryModel == CLOUD_MODEL_ALIAS) throw secondError
+            onProgress("retry:model")
+            postCompletion(CLOUD_MODEL_ALIAS, request, apiKey, includeTuning = false, onProgress = onProgress)
+        }.getOrThrow()
+    }
+
+    private fun postCompletion(
+        modelId: String,
+        request: AiMusicRequest,
+        apiKey: String,
+        includeTuning: Boolean,
+        onProgress: (String) -> Unit,
+    ): JSONObject {
         val body = JSONObject().apply {
-            put("model", completionModelId(modelId))
+            put("model", modelId)
             put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", completionPrompt(request))))
             put("stream", false)
             put("thinking", request.thinking)
@@ -106,14 +128,15 @@ object AceMusicProvider : AiProvider {
                     .put("format", request.audioFormat)
                     .put("vocal_language", request.vocalLanguage),
             )
-            put("guidance_scale", request.guidanceScale)
-            put("use_random_seed", request.useRandomSeed)
-            put("batch_size", request.batchSize.coerceIn(1, 8))
-            request.durationSec?.takeIf { it > 0f }?.let { put("audio_duration", it.coerceIn(10f, 600f)) }
-            request.bpm?.takeIf { it > 0 }?.let { put("bpm", it.coerceIn(30, 300)) }
-            if (request.keyScale.isNotBlank()) put("key_scale", request.keyScale)
-            if (request.timeSignature.isNotBlank()) put("time_signature", request.timeSignature)
-            if (!request.useRandomSeed) put("seed", request.seed ?: -1)
+            if (includeTuning) {
+                request.durationSec?.takeIf { it > 0f }?.let { put("audio_duration", it.coerceIn(10f, 600f)) }
+                request.bpm?.takeIf { it > 0 }?.let { put("bpm", it.coerceIn(30, 300)) }
+                request.guidanceScale.takeIf { it != 7f }?.let { put("guidance_scale", it) }
+                request.batchSize.takeIf { it > 1 }?.let { put("batch_size", it.coerceIn(2, 8)) }
+                request.seed?.takeIf { !request.useRandomSeed }?.let { put("seed", it) }
+                if (request.keyScale.isNotBlank()) put("key_scale", request.keyScale)
+                if (request.timeSignature.isNotBlank() && request.timeSignature != "4") put("time_signature", request.timeSignature)
+            }
         }.toString()
         val conn = Http.postJson("$BASE_URL/v1/chat/completions", body, authHeaders(apiKey)).apply {
             readTimeout = 11 * 60_000
@@ -294,16 +317,14 @@ object AceMusicProvider : AiProvider {
 
     private fun completionModelId(modelId: String): String {
         val clean = normalizeModelId(modelId).ifBlank { fallbackModels.first() }
-        return if ('/' in clean) clean else "acemusic/$clean"
+        return if ('/' in clean || clean.any(Char::isWhitespace)) clean else "acemusic/$clean"
     }
 
     private fun normalizeModelId(raw: String): String {
         val clean = raw.trim()
         if (clean.isBlank()) return clean
-        if (clean.equals("ACE Step", ignoreCase = true) || clean.equals("ACE Steps", ignoreCase = true)) {
-            return fallbackModels.first()
-        }
-        return if (clean.any(Char::isWhitespace) && '/' !in clean) fallbackModels.first() else clean
+        if (clean.equals("ACE Step", ignoreCase = true)) return CLOUD_MODEL_ALIAS
+        return clean
     }
 
     private fun displayNameForModel(modelId: String, label: String, isDefault: Boolean): String {
@@ -354,6 +375,11 @@ object AceMusicProvider : AiProvider {
             val message = first.optJSONObject("message")?.optString("content", "").orEmpty()
             throw RuntimeException("${id.displayName}: ${message.ifBlank { "generation failed" }}")
         }
+    }
+
+    private fun Throwable.isRetryableCloudError(): Boolean {
+        val text = message.orEmpty().lowercase()
+        return "http 500" in text || "http 502" in text || "http 503" in text || "internal server" in text
     }
 
     private fun extensionFor(format: String, fileUrl: String): String {
