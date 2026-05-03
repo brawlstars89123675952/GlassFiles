@@ -198,6 +198,7 @@ internal fun ActionsTab(
     var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedWorkflowId by remember { mutableStateOf<Long?>(null) }
+    var workflowDetailId by remember { mutableStateOf<Long?>(null) }
     var selectedBranch by remember(repo.owner, repo.name) { mutableStateOf(repo.defaultBranch) }
     var actionsNotice by remember { mutableStateOf<String?>(null) }
     var dispatchSchema by remember { mutableStateOf<GHWorkflowDispatchSchema?>(null) }
@@ -286,6 +287,16 @@ internal fun ActionsTab(
         missingDispatchInputs(dispatchSchema, dispatchInputValues)
     }
 
+    workflowDetailId?.let { workflowId ->
+        WorkflowDetailScreen(
+            repo = repo,
+            workflowId = workflowId,
+            onBack = { workflowDetailId = null },
+            onRunClick = onRunClick,
+        )
+        return
+    }
+
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(
@@ -351,6 +362,7 @@ internal fun ActionsTab(
                     if (ok) refreshOverview()
                 }
             },
+            onOpenWorkflowDetail = { workflow -> workflowDetailId = workflow.id },
             dispatching = dispatching,
             onDispatch = {
                 val workflowId = selectedWorkflowId
@@ -411,6 +423,190 @@ internal fun ActionsTab(
         )
     }
     }
+}
+
+@Composable
+private fun WorkflowDetailScreen(
+    repo: GHRepo,
+    workflowId: Long,
+    onBack: () -> Unit,
+    onRunClick: (GHWorkflowRun) -> Unit,
+) {
+    val context = LocalContext.current
+    val palette = AiModuleTheme.colors
+    var workflow by remember(workflowId) { mutableStateOf<GHWorkflow?>(null) }
+    var recentRuns by remember(workflowId) { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }
+    var loading by remember(workflowId) { mutableStateOf(true) }
+    var reloadNonce by remember { mutableStateOf(0) }
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(repo.fullName, workflowId, reloadNonce) {
+        loading = true
+        workflow = GitHubManager.getWorkflow(context, repo.owner, repo.name, workflowId)
+        recentRuns = GitHubManager.getWorkflowRuns(
+            context = context,
+            owner = repo.owner,
+            repo = repo.name,
+            workflowId = workflowId,
+            perPage = 12,
+            page = 1
+        )
+        nowMs = System.currentTimeMillis()
+        loading = false
+    }
+
+    AiModuleSurface {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
+            GitHubPageBar(
+                title = "> workflow",
+                subtitle = workflow?.name ?: repo.fullName,
+                onBack = onBack,
+                trailing = {
+                    workflow?.htmlUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        GitHubTopBarAction(
+                            glyph = GhGlyphs.OPEN_NEW,
+                            onClick = {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            tint = palette.accent,
+                            contentDescription = "open workflow",
+                        )
+                    }
+                    GitHubTopBarAction(
+                        glyph = GhGlyphs.REFRESH,
+                        onClick = { reloadNonce++ },
+                        tint = palette.accent,
+                        enabled = !loading,
+                        contentDescription = "refresh workflow",
+                    )
+                },
+            )
+            when {
+                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner(label = "loading workflow…")
+                }
+                workflow == null -> Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.TopStart) {
+                    Text("// workflow not found", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                }
+                else -> LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item { WorkflowDetailInfoCard(workflow!!) }
+                    item {
+                        Text(
+                            "recent runs",
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    if (recentRuns.isEmpty()) {
+                        item {
+                            Text("// no recent runs", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                        }
+                    } else {
+                        items(recentRuns) { run ->
+                            WorkflowDetailRunRow(run = run, nowMs = nowMs, onClick = { onRunClick(run) })
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkflowDetailInfoCard(workflow: GHWorkflow) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .background(palette.surface)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                workflow.name.ifBlank { workflow.path.substringAfterLast('/') },
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "[${workflow.state.ifBlank { "unknown" }}]",
+                color = if (workflow.state == "active") palette.accent else palette.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+            )
+        }
+        WorkflowDetailKv("id", workflow.id.toString())
+        WorkflowDetailKv("path", workflow.path)
+        WorkflowDetailKv("created", workflow.createdAt.take(19).replace("T", " "))
+        WorkflowDetailKv("updated", workflow.updatedAt.take(19).replace("T", " "))
+        if (workflow.badgeUrl.isNotBlank()) WorkflowDetailKv("badge", workflow.badgeUrl)
+    }
+}
+
+@Composable
+private fun WorkflowDetailKv(label: String, value: String) {
+    if (value.isBlank()) return
+    val palette = AiModuleTheme.colors
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.width(58.dp))
+        Text(value, color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun WorkflowDetailRunRow(run: GHWorkflowRun, nowMs: Long, onClick: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    val color = runStatusColor(run)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .background(palette.surface)
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("#${run.runNumber}", color = color, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+            Text(run.name.ifBlank { run.workflowName }, color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Text(displayRunStatus(run), color = color, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (run.branch.isNotBlank()) WorkflowRunMetaChip(run.branch)
+            if (run.event.isNotBlank()) WorkflowRunMetaChip(run.event)
+            WorkflowRunMetaChip(calcRunDuration(run, nowMs).ifBlank { formatTimeAgoMono(run.createdAt, nowMs) })
+        }
+    }
+}
+
+@Composable
+private fun WorkflowRunMetaChip(label: String) {
+    if (label.isBlank()) return
+    Text(
+        label,
+        color = AiModuleTheme.colors.textMuted,
+        fontFamily = JetBrainsMono,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(2.dp))
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+    )
 }
 
 @Composable
@@ -861,6 +1057,7 @@ private fun ActionsOverviewHeader(
     missingRequiredInputs: List<String>,
     onDispatchInputChange: (String, String) -> Unit,
     onToggleWorkflowState: (GHWorkflow) -> Unit,
+    onOpenWorkflowDetail: (GHWorkflow) -> Unit,
     dispatching: Boolean,
     onDispatch: () -> Unit,
     refreshing: Boolean,
@@ -1059,6 +1256,11 @@ private fun ActionsOverviewHeader(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
+                        )
+                        GitHubTerminalButton(
+                            label = "details",
+                            onClick = { onOpenWorkflowDetail(selectedWorkflow) },
+                            color = palette.textSecondary,
                         )
                         if (canWrite) {
                             val isActive = selectedWorkflow.state == "active"

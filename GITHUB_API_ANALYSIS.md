@@ -143,6 +143,7 @@ items.
 | Feature | API Endpoint | Backend | UI | Notes |
 |---------|-------------|---------|-----|-------|
 | List workflows | `/repos/{owner}/{repo}/actions/workflows` | ✅ | ✅ | ActionsTab |
+| Get single workflow | `/repos/{owner}/{repo}/actions/workflows/{id}` | ✅ | ✅ | Workflow detail screen |
 | List workflow runs | `/repos/{owner}/{repo}/actions/runs` | ✅ | ✅ | With live polling |
 | Get run jobs | `/repos/{owner}/{repo}/actions/runs/{id}/jobs` | ✅ | ✅ | WorkflowRunDetailScreen |
 | Get run logs | `/repos/{owner}/{repo}/actions/runs/{id}/logs` | ✅ | ✅ | Redirect handling |
@@ -364,7 +365,6 @@ None currently tracked.
 ### GitHub Actions (Advanced)
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
-| Get single workflow | `/repos/{owner}/{repo}/actions/workflows/{id}` | Low | Workflow list/detail enough for current UI, no dedicated single-workflow detail endpoint |
 | List runner groups | `/repos/{owner}/{repo}/actions/runner-groups` | Low | Enterprise-only / not surfaced |
 
 ### GitHub Apps / OAuth
@@ -398,7 +398,7 @@ None currently tracked.
 | Issues | ✅ Complete for main issue flow | Deeper timeline event actions |
 | Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs/check suites | None tracked |
 | Releases | ✅ Complete | None tracked |
-| GitHub Actions | ✅ Complete for runs/logs/artifacts/dispatch/jobs/cache/secrets/variables/runners/settings | Single-workflow detail and enterprise runner groups |
+| GitHub Actions | ✅ Complete for runs/logs/artifacts/dispatch/jobs/cache/secrets/variables/runners/settings/workflow detail | Enterprise runner groups |
 | Gists | ✅ Complete | None tracked |
 | Notifications | ✅ Complete | None tracked |
 | Search | ✅ Complete | None tracked |
@@ -451,5 +451,4 @@ None currently tracked.
 
 **Low Priority (nice to have):**
 1. **Standalone Git Data tools** — tree/blob/tag/ref viewers only if a concrete workflow needs them.
-2. **Single workflow detail** — wire `/actions/workflows/{id}` only if the workflow overview needs a separate detail screen.
-3. **Repository admin extras** — transfer, branch rename and invitations.
+2. **Repository admin extras** — transfer, branch rename and invitations.

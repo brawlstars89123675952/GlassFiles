@@ -644,6 +644,18 @@ object GitHubManager {
         }
     }
 
+    private fun parseWorkflow(j: JSONObject): GHWorkflow =
+        GHWorkflow(
+            id = j.optLong("id"),
+            name = j.optString("name"),
+            state = j.optString("state"),
+            path = j.optString("path"),
+            htmlUrl = j.optString("html_url", ""),
+            badgeUrl = j.optString("badge_url", ""),
+            createdAt = j.optString("created_at", ""),
+            updatedAt = j.optString("updated_at", "")
+        )
+
     private fun parseTrafficSeries(j: JSONObject, itemKey: String): GHTrafficSeries {
         val items = j.optJSONArray(itemKey) ?: JSONArray()
         return GHTrafficSeries(
@@ -1250,7 +1262,7 @@ object GitHubManager {
                 val arr = JSONObject(r.body).getJSONArray("workflows")
                 for (i in 0 until arr.length()) {
                     val j = arr.getJSONObject(i)
-                    workflows += GHWorkflow(id = j.optLong("id"), name = j.optString("name"), state = j.optString("state"), path = j.optString("path"))
+                    workflows += parseWorkflow(j)
                 }
                 arr.length()
             } catch (e: Exception) {
@@ -1260,6 +1272,12 @@ object GitHubManager {
             page++
         }
         return workflows.distinctBy { it.id }
+    }
+
+    suspend fun getWorkflow(context: Context, owner: String, repo: String, workflowId: Long): GHWorkflow? {
+        val r = request(context, "/repos/$owner/$repo/actions/workflows/$workflowId")
+        if (!r.success) return null
+        return try { parseWorkflow(JSONObject(r.body)) } catch (e: Exception) { null }
     }
 
     suspend fun getWorkflowRuns(
@@ -5052,7 +5070,16 @@ data class GHCommitDetail(val sha: String, val message: String, val author: Stri
 
 data class GHDiffFile(val filename: String, val status: String, val additions: Int, val deletions: Int, val patch: String)
 
-data class GHWorkflow(val id: Long, val name: String, val state: String, val path: String)
+data class GHWorkflow(
+    val id: Long,
+    val name: String,
+    val state: String,
+    val path: String,
+    val htmlUrl: String = "",
+    val badgeUrl: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = ""
+)
 
 data class GHWorkflowDispatchInput(
     val key: String,

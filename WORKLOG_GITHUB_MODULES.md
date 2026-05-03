@@ -1280,3 +1280,20 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub Actions: single workflow detail
+- Закрыт следующий Actions gap из `GITHUB_API_ANALYSIS.md`: `GET /repos/{owner}/{repo}/actions/workflows/{id}`.
+- `GitHubManager.kt`:
+  - добавлен `getWorkflow(...)`;
+  - `getWorkflows(...)` переведён на общий parser workflow metadata;
+  - модель `GHWorkflow` расширена `htmlUrl`, `badgeUrl`, `createdAt`, `updatedAt` с default values для совместимости.
+- `GitHubActionsModule.kt`:
+  - в workflow control добавлена terminal action `details`;
+  - добавлен `WorkflowDetailScreen` с metadata workflow и последними runs по выбранному workflow;
+  - UI выполнен через terminal controls, mono text и border/surface rows без добавления Material UI.
+- `GITHUB_API_ANALYSIS.md`:
+  - `Get single workflow` перенесён в implemented Actions;
+  - remaining Actions gaps сужены до enterprise runner groups.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка `git diff --check`.
