@@ -1528,6 +1528,8 @@ private fun PullRequestDetailScreen(
     var files by remember { mutableStateOf<List<GHPullFile>>(emptyList()) }
     var comments by remember { mutableStateOf<List<GHReviewComment>>(emptyList()) }
     var checks by remember { mutableStateOf<List<GHCheckRun>>(emptyList()) }
+    var checkSuites by remember { mutableStateOf<List<GHCheckSuite>>(emptyList()) }
+    var mergedStatus by remember { mutableStateOf<GHPullMergeStatus?>(null) }
     var reviews by remember { mutableStateOf<List<GHPullReview>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showReview by remember { mutableStateOf(false) }
@@ -1551,7 +1553,10 @@ private fun PullRequestDetailScreen(
         files = GitHubManager.getPullRequestFiles(context, repo.owner, repo.name, pullNumber)
         comments = GitHubManager.getPullRequestReviewComments(context, repo.owner, repo.name, pullNumber)
         reviews = GitHubManager.getPullRequestReviews(context, repo.owner, repo.name, pullNumber)
-        checks = detail?.let { GitHubManager.getPullRequestCheckRuns(context, repo.owner, repo.name, it.headSha.ifBlank { it.head }) }.orEmpty()
+        mergedStatus = GitHubManager.getPullRequestMergedStatus(context, repo.owner, repo.name, pullNumber)
+        val ref = detail?.let { pull -> pull.headSha.ifBlank { pull.head } }.orEmpty()
+        checks = if (ref.isBlank()) emptyList() else GitHubManager.getPullRequestCheckRuns(context, repo.owner, repo.name, ref)
+        checkSuites = if (ref.isBlank()) emptyList() else GitHubManager.getPullRequestCheckSuites(context, repo.owner, repo.name, ref)
         loading = false
     }
 
@@ -1618,7 +1623,7 @@ private fun PullRequestDetailScreen(
             item {
                 Column(Modifier.fillMaxWidth().ghGlassCard(16.dp).padding(16.dp)) {
                     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Rounded.CallMerge, null, Modifier.size(22.dp), tint = pullStateColor(current))
+                        AiModuleGlyph(GhGlyphs.MERGE, Modifier.size(22.dp), tint = pullStateColor(current), fontSize = 13.sp)
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(current.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, lineHeight = 20.sp)
                             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1654,7 +1659,7 @@ private fun PullRequestDetailScreen(
             }
 
             item {
-                PullMergeabilityCard(current, checks)
+                PullMergeabilityCard(current, checks, checkSuites, mergedStatus)
             }
 
             item {
@@ -1874,7 +1879,7 @@ private fun AiPullSummaryDialog(
         title = Strings.aiSummary,
         content = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AiModuleIcon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp), tint = palette.accent)
+                AiModuleGlyph(GhGlyphs.AI, Modifier.size(18.dp), tint = palette.accent, fontSize = 13.sp)
                 Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier
@@ -1937,24 +1942,59 @@ private fun PullMetric(value: String, label: String, color: Color) {
 }
 
 @Composable
-private fun PullMergeabilityCard(pr: GHPullRequest, checks: List<GHCheckRun>) {
+private fun PullMergeabilityCard(
+    pr: GHPullRequest,
+    checks: List<GHCheckRun>,
+    checkSuites: List<GHCheckSuite>,
+    mergedStatus: GHPullMergeStatus?
+) {
+    val palette = AiModuleTheme.colors
     val failedChecks = checks.count { it.conclusion in listOf("failure", "cancelled", "timed_out", "action_required") }
     val activeChecks = checks.count { it.status != "completed" }
     val successChecks = checks.count { it.conclusion == "success" }
+    val failedSuites = checkSuites.count { it.conclusion in listOf("failure", "cancelled", "timed_out", "action_required") }
+    val activeSuites = checkSuites.count { it.status != "completed" }
+    val successSuites = checkSuites.count { it.conclusion == "success" }
     val mergeColor = pullMergeColor(pr)
-    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .background(palette.surface)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.Verified, null, Modifier.size(18.dp), tint = mergeColor)
-            Text(pullMergeText(pr), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+            Text("merge", color = mergeColor, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(pullMergeText(pr), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = palette.textPrimary, modifier = Modifier.weight(1f))
         }
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PullBadge("$successChecks successful", Color(0xFF34C759))
             if (activeChecks > 0) PullBadge("$activeChecks active", Blue)
             if (failedChecks > 0) PullBadge("$failedChecks failed", Color(0xFFFF3B30))
             if (checks.isEmpty()) PullBadge("No checks", TextTertiary)
+            if (checkSuites.isNotEmpty()) {
+                PullBadge("$successSuites suites ok", Color(0xFF34C759))
+                if (activeSuites > 0) PullBadge("$activeSuites suites active", Blue)
+                if (failedSuites > 0) PullBadge("$failedSuites suites failed", Color(0xFFFF3B30))
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val explicitLabel = when {
+                mergedStatus == null -> "merged endpoint: pending"
+                !mergedStatus.checked -> "merged endpoint: unavailable"
+                mergedStatus.merged -> "merged endpoint: merged"
+                else -> "merged endpoint: not merged"
+            }
+            PullBadge(explicitLabel, if (mergedStatus?.merged == true) GitHubMergedPurple else palette.textSecondary)
+            if (checkSuites.isEmpty()) PullBadge("No check suites", TextTertiary)
         }
         if (pr.mergeableState.isNotBlank()) {
-            Text("Merge state: ${pr.mergeableState}", fontSize = 11.sp, color = TextTertiary)
+            Text("Merge state: ${pr.mergeableState}", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+        }
+        if (mergedStatus != null && !mergedStatus.checked && mergedStatus.message.isNotBlank()) {
+            Text("Merged endpoint: ${mergedStatus.message}", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }

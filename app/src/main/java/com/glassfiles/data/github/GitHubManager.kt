@@ -587,6 +587,15 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/pulls/$number/merge", "PUT", body).success
     }
 
+    suspend fun getPullRequestMergedStatus(context: Context, owner: String, repo: String, number: Int): GHPullMergeStatus {
+        val r = request(context, "/repos/$owner/$repo/pulls/$number/merge")
+        return when (r.code) {
+            204 -> GHPullMergeStatus(merged = true, checked = true, code = r.code, message = "merged")
+            404 -> GHPullMergeStatus(merged = false, checked = true, code = r.code, message = "not merged")
+            else -> GHPullMergeStatus(merged = false, checked = false, code = r.code, message = r.body.take(180))
+        }
+    }
+
     suspend fun getPullRequestReviews(context: Context, owner: String, repo: String, number: Int): List<GHPullReview> {
         val r = request(context, "/repos/$owner/$repo/pulls/$number/reviews?per_page=100")
         if (!r.success) return emptyList()
@@ -2971,6 +2980,32 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
+    suspend fun getPullRequestCheckSuites(context: Context, owner: String, repo: String, ref: String): List<GHCheckSuite> {
+        if (ref.isBlank()) return emptyList()
+        val encodedRef = URLEncoder.encode(ref, "UTF-8")
+        val r = request(context, "/repos/$owner/$repo/commits/$encodedRef/check-suites?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("check_suites") ?: JSONArray()
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHCheckSuite(
+                    id = j.optLong("id"),
+                    status = j.optString("status"),
+                    conclusion = j.optString("conclusion", ""),
+                    app = j.optJSONObject("app")?.optString("name") ?: "",
+                    headBranch = j.optString("head_branch", ""),
+                    headSha = j.optString("head_sha", ""),
+                    before = j.optString("before", ""),
+                    after = j.optString("after", ""),
+                    createdAt = j.optString("created_at", ""),
+                    updatedAt = j.optString("updated_at", ""),
+                    latestCheckRunsCount = j.optInt("latest_check_runs_count", 0)
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
     // ═══════════════════════════════════
     // Compare Commits
     // ═══════════════════════════════════
@@ -4805,6 +4840,13 @@ data class GHPullRequest(val number: Int, val title: String, val state: String, 
     val changedFiles: Int = 0,
     val requestedReviewers: List<String> = emptyList())
 
+data class GHPullMergeStatus(
+    val merged: Boolean,
+    val checked: Boolean,
+    val code: Int,
+    val message: String
+)
+
 data class GHPullReview(
     val id: Long,
     val user: String,
@@ -5139,6 +5181,20 @@ data class GHCheckRun(
     val title: String = outputTitle,
     val summary: String = outputSummary,
     val annotationsCount: Int = 0
+)
+
+data class GHCheckSuite(
+    val id: Long,
+    val status: String,
+    val conclusion: String,
+    val app: String,
+    val headBranch: String,
+    val headSha: String,
+    val before: String,
+    val after: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val latestCheckRunsCount: Int
 )
 
 data class GHCompareResult(

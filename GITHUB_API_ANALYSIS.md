@@ -105,6 +105,8 @@ items.
 | View PR diff | `/repos/{owner}/{repo}/pulls/{number}/files` | ✅ | ✅ | PullRequestDiffScreen |
 | PR review comments | `/repos/{owner}/{repo}/pulls/{number}/comments` | ✅ | ✅ | Line comments in diff viewer |
 | PR check runs | `/repos/{owner}/{repo}/commits/{ref}/check-runs` | ✅ | ✅ | PR detail checks summary and full checks screen |
+| PR check suites | `/repos/{owner}/{repo}/commits/{ref}/check-suites` | ✅ | ✅ | PR detail checks summary and full checks screen |
+| Check if PR was merged | `/repos/{owner}/{repo}/pulls/{number}/merge` (GET) | ✅ | ✅ | Explicit merged endpoint shown in PR merge status card |
 | Update PR | `/repos/{owner}/{repo}/pulls/{number}` (PATCH) | ✅ | ✅ | Title, body, base, state |
 | List PR reviews | `/repos/{owner}/{repo}/pulls/{number}/reviews` | ✅ | ✅ | Review history |
 | Get single review | `/repos/{owner}/{repo}/pulls/{number}/reviews/{id}` | ✅ | ✅ | Review detail dialog |
@@ -343,12 +345,6 @@ None currently tracked.
 |---------|-------------|----------|-------|
 | Deeper timeline event actions | Multiple issue timeline/event endpoints | Low | Timeline is readable; event-specific mutations are not modeled |
 
-### Pull Requests (Advanced)
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| PR check suites | `/repos/{owner}/{repo}/commits/{ref}/check-suites` | Medium | Check runs are implemented; suites are not |
-| Check if PR was merged | `/repos/{owner}/{repo}/pulls/{number}/merge` (GET) | Low | Mergeability is shown from PR detail; this explicit endpoint is not wired |
-
 ### Git Data (Advanced)
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
@@ -400,7 +396,7 @@ None currently tracked.
 | Branches | ✅ Complete for list/create/delete/switch | Required signatures and other advanced protection sub-resources |
 | Commits / Compare | ✅ Complete for current UI | Low-level Git Data endpoints remain mostly internal or unsurfaced |
 | Issues | ✅ Complete for main issue flow | Deeper timeline event actions |
-| Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs | Check suites and explicit `GET /pulls/{number}/merge` merged-state endpoint |
+| Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs/check suites | None tracked |
 | Releases | ✅ Complete | None tracked |
 | GitHub Actions | ✅ Complete for runs/logs/artifacts/dispatch/jobs/cache/secrets/variables/runners/settings | Single-workflow detail and enterprise runner groups |
 | Gists | ✅ Complete | None tracked |
@@ -426,7 +422,7 @@ None currently tracked.
 - ✅ Branch management
 - ✅ Commits and compare
 - ✅ Issues (basic CRUD, comments, reactions, lock/unlock, timeline)
-- ✅ Pull Requests (detail, reviews, comments, merge methods, check runs)
+- ✅ Pull Requests (detail, reviews, comments, merge methods, check runs, check suites)
 - ✅ Releases (full CRUD)
 - ✅ GitHub Actions (runs, logs, dispatch, artifacts, caches, secrets, variables, runners)
 - ✅ Gists
@@ -448,14 +444,12 @@ None currently tracked.
 **Not Implemented / Early Coverage — Major Gaps:**
 - ⚠️ Git Data standalone UI/API surface.
 - ⚠️ Repository analytics/admin extras: traffic, stargazers/watchers/events, transfer, branch rename, invitations.
-- ⚠️ Advanced PR extras: check suites and explicit merged-state endpoint.
 - ⚠️ Deeper issue timeline event actions.
 - ⚠️ GitHub Apps/OAuth and Enterprise-only APIs.
 
 ### Recommendations for Next Implementation
 
 **Low Priority (nice to have):**
-1. **Advanced PR check suites / explicit merged-state endpoint** — remaining PR polish.
-2. **Repository analytics/admin extras** — traffic, stargazers/watchers/events, transfer and branch rename.
-3. **Standalone Git Data tools** — tree/blob/tag/ref viewers only if a concrete workflow needs them.
-4. **Single workflow detail** — wire `/actions/workflows/{id}` only if the workflow overview needs a separate detail screen.
+1. **Repository analytics/admin extras** — traffic, stargazers/watchers/events, transfer and branch rename.
+2. **Standalone Git Data tools** — tree/blob/tag/ref viewers only if a concrete workflow needs them.
+3. **Single workflow detail** — wire `/actions/workflows/{id}` only if the workflow overview needs a separate detail screen.

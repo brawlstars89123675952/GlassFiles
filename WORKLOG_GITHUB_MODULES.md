@@ -1241,3 +1241,22 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub pull requests: check suites and explicit merged status
+- Закрыт следующий PR polish gap из `GITHUB_API_ANALYSIS.md`: check suites и explicit merged-state endpoint.
+- `GitHubManager.kt`:
+  - добавлен `getPullRequestCheckSuites(...)` для `/repos/{owner}/{repo}/commits/{ref}/check-suites`;
+  - добавлен `getPullRequestMergedStatus(...)` для `GET /repos/{owner}/{repo}/pulls/{number}/merge`;
+  - добавлены модели `GHCheckSuite` и `GHPullMergeStatus`.
+- `GitHubRepoModule.kt`:
+  - PR detail теперь загружает check suites вместе с check runs;
+  - mergeability card показывает explicit merged endpoint status;
+  - mergeability card переведена на terminal-style border/surface без нового Material UI.
+- `GitHubCheckRunsModule.kt`:
+  - экран `checks` теперь показывает сначала check suites, затем check runs.
+- `GITHUB_API_ANALYSIS.md`:
+  - `PR check suites` и explicit `GET /pulls/{number}/merge` перенесены в implemented;
+  - Pull Requests в summary теперь `None tracked`.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка `git diff --check`.

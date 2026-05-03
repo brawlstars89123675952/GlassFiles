@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.glassfiles.data.github.GHCheckRun
+import com.glassfiles.data.github.GHCheckSuite
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModuleSpinner
@@ -45,15 +46,17 @@ internal fun CheckRunsScreen(
     val context = LocalContext.current
 
     var checkRuns by remember { mutableStateOf<List<GHCheckRun>>(emptyList()) }
+    var checkSuites by remember { mutableStateOf<List<GHCheckSuite>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
 
     LaunchedEffect(repoOwner, repoName, ref) {
+        checkSuites = GitHubManager.getPullRequestCheckSuites(context, repoOwner, repoName, ref)
         checkRuns = GitHubManager.getPullRequestCheckRuns(context, repoOwner, repoName, ref)
         loading = false
     }
 
     GitHubScreenFrame(
-        title = "> check runs",
+        title = "> checks",
         onBack = onBack,
         subtitle = "$repoOwner/$repoName · $ref",
     ) {
@@ -61,20 +64,94 @@ internal fun CheckRunsScreen(
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 AiModuleSpinner(label = "loading checks…")
             }
-            checkRuns.isEmpty() -> GitHubMonoEmpty(
-                title = "no check runs",
+            checkRuns.isEmpty() && checkSuites.isEmpty() -> GitHubMonoEmpty(
+                title = "no checks",
                 subtitle = "no CI activity reported for this ref",
             )
             else -> LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
             ) {
+                if (checkSuites.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "check suites",
+                            color = AiModuleTheme.colors.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                    items(checkSuites) { suite ->
+                        CheckSuiteRow(suite)
+                        AiModuleHairline()
+                    }
+                }
+                if (checkRuns.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "check runs",
+                            color = AiModuleTheme.colors.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        )
+                    }
+                }
                 items(checkRuns) { run ->
                     CheckRunRow(run)
                     AiModuleHairline()
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CheckSuiteRow(suite: GHCheckSuite) {
+    val palette = AiModuleTheme.colors
+    val badge = aiModuleStatusBadge(suite.status, suite.conclusion, palette)
+    val label = aiModuleStatusLabel(suite.status, suite.conclusion)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = badge.glyph,
+                color = badge.color,
+                fontFamily = JetBrainsMono,
+                fontSize = 14.sp,
+                modifier = Modifier.width(18.dp),
+            )
+            Text(
+                text = suite.app.ifBlank { "check suite ${suite.id}" },
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = label,
+                color = badge.color,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "${suite.latestCheckRunsCount} runs · ${suite.headSha.take(7)} · ${suite.updatedAt.take(10)}",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            lineHeight = 1.3.em,
+            modifier = Modifier.padding(start = 18.dp),
+        )
     }
 }
 
