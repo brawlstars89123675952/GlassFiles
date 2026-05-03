@@ -1368,3 +1368,22 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub module pause: remaining backlog before AI module
+- GitHub module временно ставим на паузу и переключаемся на ИИ-модуль.
+- В core mobile flows по GitHub сейчас нет tracked gaps для:
+  - repositories/files;
+  - pull requests;
+  - releases;
+  - gists;
+  - notifications;
+  - search;
+  - discussions;
+  - projects/packages/security/webhooks/rules/user settings.
+- Что осталось не реализовано или намеренно не выведено в UI:
+  - deeper issue timeline/event-specific actions: timeline читается, но отдельные mutation-действия по событиям не смоделированы;
+  - Git Data write tools: create tree/blob/tag/commit, update/delete refs; часть уже используется внутренне, но отдельный mutation UI не сделан;
+  - GitHub Actions runner groups: repo runner groups endpoint enterprise-only, не surfaced;
+  - GitHub Apps/OAuth: user installations, installation repositories, legacy OAuth authorizations;
+  - Enterprise/admin-only APIs: enterprise runners, org runner groups, SCIM, audit log, SAML SSO.
+- Для следующего возврата к GitHub приоритет лучше держать низким, кроме случая, когда появится конкретный пользовательский сценарий под Git Data mutations или Apps/OAuth.
