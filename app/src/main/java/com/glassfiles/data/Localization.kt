@@ -208,6 +208,8 @@ object Strings {
     val aiVideoGenSubtitle get() = s("Veo, Wan-Video, Grok Video", "Veo, Wan-Video, Grok Video")
     val aiMusicGen get() = s("Генерация музыки", "Music generation")
     val aiMusicGenSubtitle get() = s("ACE-Step API · release_task", "ACE-Step API · release_task")
+    val aiMusicGenPausedSubtitle get() = s("нужен рабочий ACE-Step base URL от поддержки", "waiting for a working ACE-Step base URL")
+    val aiPaused get() = s("пауза", "paused")
     val aiModels get() = s("Модели", "Models")
     val aiModelsSubtitle get() = s("Каталог по провайдерам", "Catalog by provider")
     val aiKeys get() = s("API-ключи", "API keys")

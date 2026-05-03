@@ -73,7 +73,15 @@ fun AiHubScreen(
                     AiHubItem(Icons.Rounded.AutoAwesome, Strings.aiChat, Strings.aiHubSubtitle, soon = false, onChat),
                     AiHubItem(Icons.Rounded.Code, Strings.aiCoding, Strings.aiCodingSubtitle, soon = false, onCoding),
                     AiHubItem(Icons.Rounded.Build, Strings.aiAgent, Strings.aiAgentSubtitle, soon = false, onAgent),
-                    AiHubItem(null, Strings.aiMusicGen, Strings.aiMusicGenSubtitle, soon = false, onMusic, glyph = "♪"),
+                    AiHubItem(
+                        icon = null,
+                        title = Strings.aiMusicGen,
+                        subtitle = Strings.aiMusicGenPausedSubtitle,
+                        soon = false,
+                        onClick = onMusic,
+                        glyph = "♪",
+                        disabled = true,
+                    ),
                     AiHubItem(Icons.Rounded.Image, Strings.aiImageGen, Strings.aiImageGenSubtitle, soon = false, onImage),
                     AiHubItem(Icons.Rounded.Movie, Strings.aiVideoGen, Strings.aiVideoGenSubtitle, soon = false, onVideo),
                     AiHubItem(Icons.Rounded.BubbleChart, Strings.aiModels, Strings.aiModelsSubtitle, soon = false, onModels),
@@ -96,34 +104,41 @@ private data class AiHubItem(
     val soon: Boolean,
     val onClick: () -> Unit,
     val glyph: String? = null,
+    val disabled: Boolean = false,
 )
 
 @Composable
 private fun AiHubRow(item: AiHubItem) {
     val colors = AiModuleTheme.colors
+    val enabled = !item.soon && !item.disabled
+    val rowBackground = if (item.disabled) colors.surface.copy(alpha = 0.58f) else colors.surface
+    val iconBackground = if (item.disabled) colors.border.copy(alpha = 0.6f) else colors.surfaceElevated
+    val contentTint = if (item.disabled) colors.textMuted else colors.accent
+    val titleTint = if (item.disabled) colors.textMuted else colors.textPrimary
+    val subtitleTint = if (item.disabled) colors.textMuted.copy(alpha = 0.82f) else colors.textMuted
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(colors.surface)
-            .clickable(enabled = !item.soon) { item.onClick() }
+            .background(rowBackground)
+            .clickable(enabled = enabled) { item.onClick() }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(34.dp).clip(CircleShape).background(colors.surfaceElevated),
+            Modifier.size(34.dp).clip(CircleShape).background(iconBackground),
             contentAlignment = Alignment.Center,
         ) {
             if (item.glyph != null) {
                 AiModuleText(
                     item.glyph,
-                    color = colors.accent,
+                    color = contentTint,
                     fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Medium,
                     fontSize = 17.sp,
                 )
             } else if (item.icon != null) {
-                AiModuleIcon(item.icon, null, Modifier.size(17.dp), tint = colors.accent)
+                AiModuleIcon(item.icon, null, Modifier.size(17.dp), tint = contentTint)
             }
         }
         Spacer(Modifier.size(12.dp))
@@ -134,9 +149,12 @@ private fun AiHubRow(item: AiHubItem) {
                     fontSize = 14.sp,
                     fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Medium,
-                    color = colors.textPrimary,
+                    color = titleTint,
                 )
-                if (item.soon) {
+                if (item.disabled) {
+                    Spacer(Modifier.size(8.dp))
+                    AiHubPausedPill()
+                } else if (item.soon) {
                     Spacer(Modifier.size(8.dp))
                     AiHubSoonPill()
                 }
@@ -145,10 +163,10 @@ private fun AiHubRow(item: AiHubItem) {
                 item.subtitle,
                 fontSize = 11.sp,
                 fontFamily = JetBrainsMono,
-                color = colors.textMuted,
+                color = subtitleTint,
             )
         }
-        if (!item.soon) {
+        if (enabled) {
             AiModuleIcon(
                 Icons.Rounded.ChevronRight,
                 null,
@@ -157,6 +175,14 @@ private fun AiHubRow(item: AiHubItem) {
             )
         }
     }
+}
+
+@Composable
+private fun AiHubPausedPill() {
+    AiModuleChip(
+        label = Strings.aiPaused.uppercase(),
+        color = AiModuleTheme.colors.textMuted,
+    )
 }
 
 @Composable
