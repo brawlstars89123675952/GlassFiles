@@ -272,6 +272,14 @@ items.
 | List package versions | `.../versions` | ✅ | ✅ | Version list with tags |
 | Delete package version | `.../versions/{package_version_id}` (DELETE) | ✅ | ✅ | Confirmation dialog |
 
+### GitHub Apps / Installations
+| Feature | API Endpoint | Backend | UI | Notes |
+|---------|-------------|---------|-----|-------|
+| List app installations | `/user/installations` | ✅ | ✅ | Apps screen with installation summary |
+| List repos for installation | `/user/installations/{id}/repositories` | ✅ | ✅ | Installation detail repository list |
+| Add repo to installation | `/user/installations/{id}/repositories/{repository_id}` (PUT) | ✅ | ✅ | Requires compatible token and admin access |
+| Remove repo from installation | `/user/installations/{id}/repositories/{repository_id}` (DELETE) | ✅ | ✅ | Requires selected repository installation |
+
 ### Security
 | Feature | API Endpoint | Backend | UI | Notes |
 |---------|-------------|---------|-----|-------|
@@ -367,11 +375,9 @@ None currently tracked.
 |---------|-------------|----------|-------|
 | List runner groups | `/repos/{owner}/{repo}/actions/runner-groups` | Low | Enterprise-only / not surfaced |
 
-### GitHub Apps / OAuth
+### OAuth
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
-| List app installations | `/user/installations` | Low | GitHub Apps |
-| List repos for installation | `/user/installations/{id}/repositories` | Low | |
 | OAuth app authorizations | `/authorizations` | Low | Legacy |
 
 ### Enterprise / Advanced
@@ -410,7 +416,8 @@ None currently tracked.
 | Webhooks | ✅ Complete | None tracked |
 | Repository Rules | ✅ Complete | None tracked |
 | User Settings | ✅ Complete for supported public APIs | Web-only settings remain out of scope |
-| GitHub Apps / OAuth | ❌ Backlog | Installations and legacy OAuth app authorization views |
+| GitHub Apps / Installations | ✅ Complete | None tracked for user installation flows |
+| OAuth | ❌ Backlog | Legacy OAuth app authorization views |
 | Enterprise / Advanced | ❌ Backlog | Enterprise runners, org runner groups, SCIM, audit log, SAML SSO |
 
 ### Overall Assessment
@@ -432,6 +439,7 @@ None currently tracked.
 - ✅ Discussions
 - ✅ Projects and Projects V2
 - ✅ Packages
+- ✅ GitHub Apps installations
 - ✅ User settings (comprehensive)
 - ✅ Security alerts and controls
 - ✅ Security single-alert detail and community profile
@@ -444,7 +452,7 @@ None currently tracked.
 **Not Implemented / Early Coverage — Major Gaps:**
 - ⚠️ Git Data write tools remain internal or intentionally unsurfaced.
 - ⚠️ Deeper issue timeline event actions.
-- ⚠️ GitHub Apps/OAuth and Enterprise-only APIs.
+- ⚠️ Legacy OAuth authorizations and Enterprise-only APIs.
 
 ### Recommendations for Next Implementation
 

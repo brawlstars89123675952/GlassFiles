@@ -1387,3 +1387,25 @@
   - GitHub Apps/OAuth: user installations, installation repositories, legacy OAuth authorizations;
   - Enterprise/admin-only APIs: enterprise runners, org runner groups, SCIM, audit log, SAML SSO.
 - Для следующего возврата к GitHub приоритет лучше держать низким, кроме случая, когда появится конкретный пользовательский сценарий под Git Data mutations или Apps/OAuth.
+
+### GitHub Apps / installations
+- Закрыт GitHub Apps gap из `GITHUB_API_ANALYSIS.md` для user installation flows.
+- `GitHubManager.kt`:
+  - добавлены `getAppInstallations(...)` для `GET /user/installations`;
+  - добавлены `getAppInstallationRepositories(...)` для `GET /user/installations/{installation_id}/repositories`;
+  - добавлены `addRepositoryToAppInstallation(...)` и `removeRepositoryFromAppInstallation(...)`;
+  - добавлены модели `GHAppInstallation`, `GHAppInstallationsPage`, `GHAppInstallationReposPage`;
+  - `GHRepo` расширен `id`, чтобы repository installation mutations могли работать по `repository_id`.
+- `GitHubAppsModule.kt`:
+  - добавлен терминальный экран `> apps` без Material UI;
+  - список installations показывает account/app/status/permissions/events;
+  - detail screen показывает repositories, умеет открыть repo, добавить repo по numeric repository id и удалить repo из installation;
+  - ошибки API показываются явно, потому что часть GitHub Apps endpoints требует GitHub App user token или classic PAT/admin access.
+- `GitHubHomeModule.kt`:
+  - добавлен quick chip `apps` на главном GitHub экране.
+- `GITHUB_API_ANALYSIS.md`:
+  - GitHub Apps installations перенесены из backlog в implemented;
+  - в backlog остался только legacy OAuth authorization gap и enterprise/admin-only APIs.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка исходников.

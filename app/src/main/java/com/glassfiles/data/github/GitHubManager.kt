@@ -2496,6 +2496,70 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
+    // ═══════════════════════════════════
+    // GitHub Apps / Installations
+    // ═══════════════════════════════════
+
+    suspend fun getAppInstallations(context: Context, page: Int = 1, perPage: Int = 30): GHAppInstallationsPage {
+        val r = request(
+            context,
+            "/user/installations?per_page=$perPage&page=$page",
+            extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        )
+        if (!r.success) return GHAppInstallationsPage(error = apiErrorMessage(r), code = r.code)
+        return try {
+            val root = JSONObject(r.body)
+            val arr = root.optJSONArray("installations") ?: JSONArray()
+            GHAppInstallationsPage(
+                installations = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::parseAppInstallation) },
+                totalCount = root.optInt("total_count", arr.length()),
+                code = r.code
+            )
+        } catch (e: Exception) {
+            GHAppInstallationsPage(error = e.message ?: "Parse error", code = r.code)
+        }
+    }
+
+    suspend fun getAppInstallationRepositories(context: Context, installationId: Long, page: Int = 1, perPage: Int = 30): GHAppInstallationReposPage {
+        val r = request(
+            context,
+            "/user/installations/$installationId/repositories?per_page=$perPage&page=$page",
+            extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        )
+        if (!r.success) return GHAppInstallationReposPage(error = apiErrorMessage(r), code = r.code)
+        return try {
+            val root = JSONObject(r.body)
+            val arr = root.optJSONArray("repositories") ?: JSONArray()
+            GHAppInstallationReposPage(
+                repositories = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::parseRepo) },
+                totalCount = root.optInt("total_count", arr.length()),
+                code = r.code
+            )
+        } catch (e: Exception) {
+            GHAppInstallationReposPage(error = e.message ?: "Parse error", code = r.code)
+        }
+    }
+
+    suspend fun addRepositoryToAppInstallation(context: Context, installationId: Long, repositoryId: Long): GHActionResult {
+        val r = request(
+            context,
+            "/user/installations/$installationId/repositories/$repositoryId",
+            "PUT",
+            extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        )
+        return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository added" else apiErrorMessage(r))
+    }
+
+    suspend fun removeRepositoryFromAppInstallation(context: Context, installationId: Long, repositoryId: Long): GHActionResult {
+        val r = request(
+            context,
+            "/user/installations/$installationId/repositories/$repositoryId",
+            "DELETE",
+            extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        )
+        return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository removed" else apiErrorMessage(r))
+    }
+
     suspend fun getLabels(context: Context, owner: String, repo: String): List<GHLabel> {
         val r = request(context, "/repos/$owner/$repo/labels?per_page=50")
         if (!r.success) return emptyList()
@@ -5046,6 +5110,7 @@ object GitHubManager {
         htmlUrl = j.optString("html_url", ""),
         isArchived = j.optBoolean("archived", false),
         isTemplate = j.optBoolean("is_template", false),
+        id = j.optLong("id", 0L),
         permissions = j.optJSONObject("permissions")?.let { p ->
             GHPermissions(
                 admin = p.optBoolean("admin", false),
@@ -5056,6 +5121,38 @@ object GitHubManager {
             )
         }
     )
+
+    private fun parseAppInstallation(j: JSONObject): GHAppInstallation {
+        val account = j.optJSONObject("account")
+        val suspendedBy = j.optJSONObject("suspended_by")
+        return GHAppInstallation(
+            id = j.optLong("id"),
+            appId = j.optLong("app_id"),
+            appSlug = j.optString("app_slug", ""),
+            targetId = j.optLong("target_id"),
+            targetType = j.optString("target_type", ""),
+            targetLogin = account?.optString("login") ?: "",
+            targetAvatarUrl = account?.optString("avatar_url") ?: "",
+            repositorySelection = j.optString("repository_selection", ""),
+            permissions = parseStringMap(j.optJSONObject("permissions")),
+            events = parseStringArray(j.optJSONArray("events")),
+            singleFileName = j.optString("single_file_name", ""),
+            singleFilePaths = parseStringArray(j.optJSONArray("single_file_paths")),
+            htmlUrl = j.optString("html_url", ""),
+            createdAt = j.optString("created_at", ""),
+            updatedAt = j.optString("updated_at", ""),
+            suspendedAt = j.optString("suspended_at", ""),
+            suspendedBy = suspendedBy?.optString("login") ?: ""
+        )
+    }
+
+    private fun parseStringMap(j: JSONObject?): List<Pair<String, String>> {
+        if (j == null) return emptyList()
+        return j.keys().asSequence()
+            .mapNotNull { key -> key.takeIf { it.isNotBlank() }?.let { it to j.optString(it, "") } }
+            .sortedBy { it.first }
+            .toList()
+    }
 
     data class ApiResult(val success: Boolean, val body: String, val code: Int)
 
@@ -5095,6 +5192,7 @@ data class GHRepo(val name: String, val fullName: String, val description: Strin
     val stars: Int, val forks: Int, val isPrivate: Boolean, val isFork: Boolean, val defaultBranch: String,
     val updatedAt: String, val owner: String, val htmlUrl: String = "", val isArchived: Boolean = false,
     val isTemplate: Boolean = false,
+    val id: Long = 0L,
     val permissions: GHPermissions? = null)
 
 /**
@@ -5117,6 +5215,40 @@ fun GHRepo.canWrite(): Boolean = permissions?.let { it.push || it.maintain || it
 fun GHRepo.canAdmin(): Boolean = permissions?.admin == true
 
 data class GHActionResult(val success: Boolean, val code: Int, val message: String)
+
+data class GHAppInstallationsPage(
+    val installations: List<GHAppInstallation> = emptyList(),
+    val totalCount: Int = 0,
+    val error: String = "",
+    val code: Int = 0
+)
+
+data class GHAppInstallationReposPage(
+    val repositories: List<GHRepo> = emptyList(),
+    val totalCount: Int = 0,
+    val error: String = "",
+    val code: Int = 0
+)
+
+data class GHAppInstallation(
+    val id: Long,
+    val appId: Long,
+    val appSlug: String,
+    val targetId: Long,
+    val targetType: String,
+    val targetLogin: String,
+    val targetAvatarUrl: String,
+    val repositorySelection: String,
+    val permissions: List<Pair<String, String>>,
+    val events: List<String>,
+    val singleFileName: String,
+    val singleFilePaths: List<String>,
+    val htmlUrl: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val suspendedAt: String,
+    val suspendedBy: String
+)
 
 data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String)
 
