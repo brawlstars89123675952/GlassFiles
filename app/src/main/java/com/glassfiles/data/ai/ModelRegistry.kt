@@ -133,12 +133,7 @@ object ModelRegistry {
         }
     }
 
-    private fun normalizeCachedId(provider: AiProviderId, rawId: String): String {
-        val clean = rawId.trim()
-        if (provider != AiProviderId.ACEMUSIC) return clean
-        if (clean.equals("ACE Step", ignoreCase = true)) return "ACE Steps"
-        return clean
-    }
+    private fun normalizeCachedId(_provider: AiProviderId, rawId: String): String = rawId.trim()
 
     private fun normalizeCachedDisplayName(provider: AiProviderId, id: String, rawName: String): String {
         val clean = rawName.trim().ifBlank { id }
