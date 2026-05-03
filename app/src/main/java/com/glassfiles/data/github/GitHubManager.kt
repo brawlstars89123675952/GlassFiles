@@ -2934,6 +2934,28 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/transfer", "POST", body).success
     }
 
+    suspend fun mergeBranch(
+        context: Context,
+        owner: String,
+        repo: String,
+        base: String,
+        head: String,
+        commitMessage: String? = null
+    ): Boolean {
+        val body = JSONObject().apply {
+            put("base", base)
+            put("head", head)
+            if (!commitMessage.isNullOrBlank()) put("commit_message", commitMessage)
+        }.toString()
+        return request(context, "/repos/$owner/$repo/merges", "POST", body).success
+    }
+
+    suspend fun renameBranch(context: Context, owner: String, repo: String, branch: String, newName: String): Boolean {
+        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
+        val body = JSONObject().apply { put("new_name", newName) }.toString()
+        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/rename", "POST", body).success
+    }
+
     // ═══════════════════════════════════
     // Branch Protection
     // ═══════════════════════════════════

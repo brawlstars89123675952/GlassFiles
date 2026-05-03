@@ -1350,3 +1350,21 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub repository settings: admin operations
+- Закрыт repository admin gap из `GITHUB_API_ANALYSIS.md`: merge branch, transfer repository и branch rename.
+- `GitHubManager.kt`:
+  - добавлен `mergeBranch(...)` для `POST /repos/{owner}/{repo}/merges`;
+  - добавлен `renameBranch(...)` для `POST /repos/{owner}/{repo}/branches/{branch}/rename`;
+  - существующий `transferRepo(...)` подключен к UI.
+- `GitHubRepoSettingsModule.kt`:
+  - repo settings теперь загружает список branches через GitHub API;
+  - добавлен terminal-style блок `Repository API` с операциями merge, rename и transfer;
+  - для каждой write-операции используется typed confirmation, transfer помечен как danger action;
+  - новая UI часть использует mono text, terminal text fields/buttons и border/surface layout без добавления Material UI.
+- `GITHUB_API_ANALYSIS.md`:
+  - `Merge branch`, `Transfer repo` и `Rename branch` перенесены в implemented Repositories;
+  - repository admin backlog очищен.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка `git diff --check`.

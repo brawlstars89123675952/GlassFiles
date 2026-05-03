@@ -2,6 +2,7 @@ package com.glassfiles.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,8 +58,10 @@ internal fun RepoSettingsScreen(
 
     var settings by remember { mutableStateOf<GHRepoSettings?>(null) }
     var tags by remember { mutableStateOf<List<GHTag>>(emptyList()) }
+    var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
+    var adminActionInFlight by remember { mutableStateOf(false) }
     var showArchiveConfirm by remember { mutableStateOf<Boolean?>(null) }
 
     // Editable fields
@@ -77,10 +80,22 @@ internal fun RepoSettingsScreen(
     var deleteBranchOnMerge by remember { mutableStateOf(false) }
     var topics by remember { mutableStateOf<List<String>>(emptyList()) }
     var newTopic by remember { mutableStateOf("") }
+    var mergeBase by remember { mutableStateOf("") }
+    var mergeHead by remember { mutableStateOf("") }
+    var mergeMessage by remember { mutableStateOf("") }
+    var mergeConfirm by remember { mutableStateOf("") }
+    var renameBranch by remember { mutableStateOf("") }
+    var renameTo by remember { mutableStateOf("") }
+    var renameConfirm by remember { mutableStateOf("") }
+    var transferOwner by remember { mutableStateOf("") }
+    var transferName by remember { mutableStateOf("") }
+    var transferConfirm by remember { mutableStateOf("") }
 
     LaunchedEffect(repoOwner, repoName) {
         val s = GitHubManager.getRepoSettings(context, repoOwner, repoName)
+        val fetchedBranches = GitHubManager.getBranches(context, repoOwner, repoName)
         tags = GitHubManager.getRepoTags(context, repoOwner, repoName)
+        branches = fetchedBranches
         settings = s
         if (s != null) {
             description = s.description
@@ -97,6 +112,12 @@ internal fun RepoSettingsScreen(
             allowRebaseMerge = s.allowRebaseMerge
             deleteBranchOnMerge = s.deleteBranchOnMerge
             topics = s.topics
+            if (mergeBase.isBlank()) mergeBase = s.defaultBranch
+            if (renameBranch.isBlank()) renameBranch = s.defaultBranch
+        } else {
+            val firstBranch = fetchedBranches.firstOrNull().orEmpty()
+            if (mergeBase.isBlank()) mergeBase = firstBranch
+            if (renameBranch.isBlank()) renameBranch = firstBranch
         }
         loading = false
     }
@@ -398,6 +419,94 @@ internal fun RepoSettingsScreen(
                     }
                 }
 
+                item { SectionHeader("Repository API") }
+
+                item {
+                    RepoAdminOperationsCard(
+                        repoOwner = repoOwner,
+                        repoName = repoName,
+                        branches = branches,
+                        busy = adminActionInFlight,
+                        mergeBase = mergeBase,
+                        onMergeBaseChange = { mergeBase = it },
+                        mergeHead = mergeHead,
+                        onMergeHeadChange = { mergeHead = it },
+                        mergeMessage = mergeMessage,
+                        onMergeMessageChange = { mergeMessage = it },
+                        mergeConfirm = mergeConfirm,
+                        onMergeConfirmChange = { mergeConfirm = it },
+                        onMergeBranch = {
+                            if (!adminActionInFlight) {
+                                val base = mergeBase.trim()
+                                val head = mergeHead.trim()
+                                val message = mergeMessage.trim().takeIf { it.isNotBlank() }
+                                adminActionInFlight = true
+                                scope.launch {
+                                    val ok = GitHubManager.mergeBranch(context, repoOwner, repoName, base, head, message)
+                                    Toast.makeText(context, if (ok) "Branch merged" else "Merge failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) {
+                                        mergeConfirm = ""
+                                        mergeMessage = ""
+                                    }
+                                    adminActionInFlight = false
+                                }
+                            }
+                        },
+                        renameBranch = renameBranch,
+                        onRenameBranchChange = { renameBranch = it },
+                        renameTo = renameTo,
+                        onRenameToChange = { renameTo = it },
+                        renameConfirm = renameConfirm,
+                        onRenameConfirmChange = { renameConfirm = it },
+                        onRenameBranch = {
+                            if (!adminActionInFlight) {
+                                val oldBranch = renameBranch.trim()
+                                val newBranch = renameTo.trim()
+                                adminActionInFlight = true
+                                scope.launch {
+                                    val ok = GitHubManager.renameBranch(context, repoOwner, repoName, oldBranch, newBranch)
+                                    Toast.makeText(context, if (ok) "Branch renamed" else "Rename failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) {
+                                        val refreshedSettings = GitHubManager.getRepoSettings(context, repoOwner, repoName)
+                                        val refreshedBranches = GitHubManager.getBranches(context, repoOwner, repoName)
+                                        settings = refreshedSettings
+                                        branches = refreshedBranches
+                                        if (mergeBase.trim() == oldBranch) mergeBase = newBranch
+                                        if (mergeHead.trim() == oldBranch) mergeHead = newBranch
+                                        renameBranch = newBranch
+                                        renameTo = ""
+                                        renameConfirm = ""
+                                    }
+                                    adminActionInFlight = false
+                                }
+                            }
+                        },
+                        transferOwner = transferOwner,
+                        onTransferOwnerChange = { transferOwner = it },
+                        transferName = transferName,
+                        onTransferNameChange = { transferName = it },
+                        transferConfirm = transferConfirm,
+                        onTransferConfirmChange = { transferConfirm = it },
+                        onTransferRepo = {
+                            if (!adminActionInFlight) {
+                                val newOwner = transferOwner.trim()
+                                val newName = transferName.trim().takeIf { it.isNotBlank() }
+                                adminActionInFlight = true
+                                scope.launch {
+                                    val ok = GitHubManager.transferRepo(context, repoOwner, repoName, newOwner, newName)
+                                    Toast.makeText(context, if (ok) "Transfer requested" else "Transfer failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) {
+                                        transferOwner = ""
+                                        transferName = ""
+                                        transferConfirm = ""
+                                    }
+                                    adminActionInFlight = false
+                                }
+                            }
+                        },
+                    )
+                }
+
                 // Topics section
                 item { SectionHeader("Topics") }
 
@@ -585,6 +694,228 @@ private fun RepoTagRow(tag: GHTag) {
             }
         }
         Icon(Icons.Rounded.ChevronRight, null, Modifier.size(15.dp), tint = AiModuleTheme.colors.textMuted)
+    }
+}
+
+@Composable
+private fun RepoAdminOperationsCard(
+    repoOwner: String,
+    repoName: String,
+    branches: List<String>,
+    busy: Boolean,
+    mergeBase: String,
+    onMergeBaseChange: (String) -> Unit,
+    mergeHead: String,
+    onMergeHeadChange: (String) -> Unit,
+    mergeMessage: String,
+    onMergeMessageChange: (String) -> Unit,
+    mergeConfirm: String,
+    onMergeConfirmChange: (String) -> Unit,
+    onMergeBranch: () -> Unit,
+    renameBranch: String,
+    onRenameBranchChange: (String) -> Unit,
+    renameTo: String,
+    onRenameToChange: (String) -> Unit,
+    renameConfirm: String,
+    onRenameConfirmChange: (String) -> Unit,
+    onRenameBranch: () -> Unit,
+    transferOwner: String,
+    onTransferOwnerChange: (String) -> Unit,
+    transferName: String,
+    onTransferNameChange: (String) -> Unit,
+    transferConfirm: String,
+    onTransferConfirmChange: (String) -> Unit,
+    onTransferRepo: () -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    val repoFullName = "$repoOwner/$repoName"
+    val mergeBaseClean = mergeBase.trim()
+    val mergeHeadClean = mergeHead.trim()
+    val mergeToken = if (mergeBaseClean.isNotBlank() && mergeHeadClean.isNotBlank()) "$mergeBaseClean<-$mergeHeadClean" else "base<-head"
+    val renameBranchClean = renameBranch.trim()
+    val renameToClean = renameTo.trim()
+    val canMerge = !busy &&
+        mergeBaseClean.isNotBlank() &&
+        mergeHeadClean.isNotBlank() &&
+        mergeBaseClean != mergeHeadClean &&
+        mergeConfirm.trim() == mergeToken
+    val canRename = !busy &&
+        renameBranchClean.isNotBlank() &&
+        renameToClean.isNotBlank() &&
+        renameBranchClean != renameToClean &&
+        renameConfirm.trim() == renameBranchClean
+    val canTransfer = !busy &&
+        transferOwner.trim().isNotBlank() &&
+        transferConfirm.trim() == repoFullName
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TerminalAdminSection(
+            title = "merge branch",
+            endpoint = "POST /repos/$repoOwner/$repoName/merges",
+        ) {
+            TerminalLabeledField("base", mergeBase, onMergeBaseChange, "target branch")
+            TerminalBranchQuickPick("base branches", branches, mergeBaseClean, onMergeBaseChange)
+            TerminalLabeledField("head", mergeHead, onMergeHeadChange, "source branch")
+            TerminalBranchQuickPick("head branches", branches, mergeHeadClean, onMergeHeadChange)
+            TerminalLabeledField("commit_message", mergeMessage, onMergeMessageChange, "optional")
+            TerminalLabeledField("confirm $mergeToken", mergeConfirm, onMergeConfirmChange, mergeToken)
+            GitHubTerminalButton(
+                label = if (busy) "running" else "merge",
+                onClick = onMergeBranch,
+                color = palette.accent,
+                enabled = canMerge,
+                modifier = Modifier.align(Alignment.End),
+            )
+        }
+
+        TerminalAdminSection(
+            title = "rename branch",
+            endpoint = "POST /repos/$repoOwner/$repoName/branches/{branch}/rename",
+        ) {
+            TerminalLabeledField("branch", renameBranch, onRenameBranchChange, "current branch")
+            TerminalBranchQuickPick("known branches", branches, renameBranchClean, onRenameBranchChange)
+            TerminalLabeledField("new_name", renameTo, onRenameToChange, "new branch name")
+            TerminalLabeledField("confirm $renameBranchClean", renameConfirm, onRenameConfirmChange, renameBranchClean.ifBlank { "branch" })
+            GitHubTerminalButton(
+                label = if (busy) "running" else "rename",
+                onClick = onRenameBranch,
+                color = palette.accent,
+                enabled = canRename,
+                modifier = Modifier.align(Alignment.End),
+            )
+        }
+
+        TerminalAdminSection(
+            title = "transfer repository",
+            endpoint = "POST /repos/$repoOwner/$repoName/transfer",
+            danger = true,
+        ) {
+            TerminalLabeledField("new_owner", transferOwner, onTransferOwnerChange, "user or organization")
+            TerminalLabeledField("new_name", transferName, onTransferNameChange, "optional repository name")
+            TerminalLabeledField("confirm $repoFullName", transferConfirm, onTransferConfirmChange, repoFullName)
+            GitHubTerminalButton(
+                label = if (busy) "running" else "transfer",
+                onClick = onTransferRepo,
+                color = palette.error,
+                enabled = canTransfer,
+                modifier = Modifier.align(Alignment.End),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TerminalAdminSection(
+    title: String,
+    endpoint: String,
+    danger: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    val borderColor = if (danger) palette.error else palette.textMuted
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, borderColor, RoundedCornerShape(2.dp))
+            .background(palette.surface)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "> $title",
+                color = if (danger) palette.error else palette.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (danger) "[danger]" else "[write]",
+                color = borderColor,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+            )
+        }
+        Text(
+            endpoint,
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        content()
+    }
+}
+
+@Composable
+private fun TerminalLabeledField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    singleLine: Boolean = true,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            label,
+            color = AiModuleTheme.colors.textSecondary,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+        )
+        GitHubTerminalTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            minHeight = 38.dp,
+            singleLine = singleLine,
+            maxLines = if (singleLine) 1 else 4,
+        )
+    }
+}
+
+@Composable
+private fun TerminalBranchQuickPick(
+    label: String,
+    branches: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    if (branches.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                label,
+                color = AiModuleTheme.colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+            )
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                branches.take(24).forEach { branch ->
+                    GitHubTerminalButton(
+                        label = branch,
+                        onClick = { onSelect(branch) },
+                        color = if (branch == selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textMuted,
+                    )
+                }
+                if (branches.size > 24) {
+                    Text(
+                        "+${branches.size - 24}",
+                        color = AiModuleTheme.colors.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.CenterVertically),
+                    )
+                }
+            }
+        }
     }
 }
 

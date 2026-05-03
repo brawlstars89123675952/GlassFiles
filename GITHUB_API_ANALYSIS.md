@@ -57,6 +57,9 @@ items.
 | Repo collaborators | `/repos/{owner}/{repo}/collaborators` | ✅ | ✅ | List/add/remove/update permission |
 | Repo invitations | `/repos/{owner}/{repo}/invitations` | ✅ | ✅ | Pending invitations list/update/cancel in collaborators screen |
 | Repo teams | `/repos/{owner}/{repo}/teams`, `/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}` | ✅ | ✅ | List org repo teams, add/remove teams, update team permission |
+| Merge branch | `/repos/{owner}/{repo}/merges` (POST) | ✅ | ✅ | Repo settings admin operation with typed confirmation |
+| Transfer repo | `/repos/{owner}/{repo}/transfer` (POST) | ✅ | ✅ | Repo settings admin operation with typed confirmation |
+| Rename branch | `/repos/{owner}/{repo}/branches/{branch}/rename` (POST) | ✅ | ✅ | Repo settings admin operation with typed confirmation |
 
 ### Branches
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -344,13 +347,6 @@ None currently tracked.
 
 ## ❌ NOT IMPLEMENTED / REMAINING BACKLOG
 
-### Repository Management
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| Merge branch | `/repos/{owner}/{repo}/merges` (POST) | Low | Branch-to-branch merge endpoint is not wired |
-| Transfer repo | `/repos/{owner}/{repo}/transfer` (POST) | Low | |
-| Rename default branch | `/repos/{owner}/{repo}/branches/{branch}/rename` (POST) | Low | |
-
 ### Issues (Advanced)
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
@@ -396,7 +392,7 @@ None currently tracked.
 | Area | Status | Remaining gaps |
 |------|--------|----------------|
 | Authentication & User | ✅ Complete | None tracked |
-| Repositories / Files | ✅ Complete for core mobile flows | Merge branch, transfer/rename/default-branch admin |
+| Repositories / Files | ✅ Complete for core mobile flows | None tracked |
 | Branches | ✅ Complete for list/create/delete/switch/signature protection | Other advanced protection sub-resources |
 | Commits / Compare / Git Data | ✅ Complete for current read-only UI | Low-level Git Data write endpoints remain internal or unsurfaced |
 | Issues | ✅ Complete for main issue flow | Deeper timeline event actions |
@@ -446,7 +442,6 @@ None currently tracked.
 - None currently tracked.
 
 **Not Implemented / Early Coverage — Major Gaps:**
-- ⚠️ Repository admin extras: transfer and default branch rename.
 - ⚠️ Git Data write tools remain internal or intentionally unsurfaced.
 - ⚠️ Deeper issue timeline event actions.
 - ⚠️ GitHub Apps/OAuth and Enterprise-only APIs.
@@ -454,5 +449,4 @@ None currently tracked.
 ### Recommendations for Next Implementation
 
 **Low Priority (nice to have):**
-1. **Repository admin extras** — transfer and branch rename.
-2. **Git Data write tools** — tree/blob/tag/ref mutation UI only if a concrete workflow needs it.
+1. **Git Data write tools** — tree/blob/tag/ref mutation UI only if a concrete workflow needs it.
