@@ -53,6 +53,7 @@ items.
 | Repo topics | `/repos/{owner}/{repo}/topics` | ✅ | ✅ | List/replace topics in settings |
 | Repo tags | `/repos/{owner}/{repo}/tags` | ✅ | ✅ | Read-only tags list in settings |
 | Branch protection rules | `/repos/{owner}/{repo}/branches/{branch}/protection` | ✅ | ✅ | Required checks/reviews/admins/conversation resolution |
+| Required signatures | `/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures` | ✅ | ✅ | Signed commits toggle in branch protection |
 | Repo collaborators | `/repos/{owner}/{repo}/collaborators` | ✅ | ✅ | List/add/remove/update permission |
 | Repo invitations | `/repos/{owner}/{repo}/invitations` | ✅ | ✅ | Pending invitations list/update/cancel in collaborators screen |
 | Repo teams | `/repos/{owner}/{repo}/teams`, `/orgs/{org}/teams/{team_slug}/repos/{owner}/{repo}` | ✅ | ✅ | List org repo teams, add/remove teams, update team permission |
@@ -349,7 +350,6 @@ None currently tracked.
 | Merge branch | `/repos/{owner}/{repo}/merges` (POST) | Low | Branch-to-branch merge endpoint is not wired |
 | Transfer repo | `/repos/{owner}/{repo}/transfer` (POST) | Low | |
 | Rename default branch | `/repos/{owner}/{repo}/branches/{branch}/rename` (POST) | Low | |
-| Required signatures | `/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures` | Low | |
 
 ### Issues (Advanced)
 | Feature | API Endpoint | Priority | Notes |
@@ -397,7 +397,7 @@ None currently tracked.
 |------|--------|----------------|
 | Authentication & User | ✅ Complete | None tracked |
 | Repositories / Files | ✅ Complete for core mobile flows | Merge branch, transfer/rename/default-branch admin |
-| Branches | ✅ Complete for list/create/delete/switch | Required signatures and other advanced protection sub-resources |
+| Branches | ✅ Complete for list/create/delete/switch/signature protection | Other advanced protection sub-resources |
 | Commits / Compare / Git Data | ✅ Complete for current read-only UI | Low-level Git Data write endpoints remain internal or unsurfaced |
 | Issues | ✅ Complete for main issue flow | Deeper timeline event actions |
 | Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs/check suites | None tracked |

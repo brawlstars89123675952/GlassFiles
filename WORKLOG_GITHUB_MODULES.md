@@ -1334,3 +1334,19 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка `git diff --check`.
+
+### GitHub branch protection: required signatures
+- Закрыт branch protection gap из `GITHUB_API_ANALYSIS.md`: required signatures.
+- `GitHubManager.kt`:
+  - добавлены `getBranchRequiredSignatures(...)`, `enableBranchRequiredSignatures(...)`, `disableBranchRequiredSignatures(...)`;
+  - `GHBranchProtection` расширен `requiredSignatures`.
+- `GitHubBranchProtectionModule.kt`:
+  - branch protection load/save теперь учитывает signed commits protection;
+  - добавлен terminal-style row `Require signed commits`;
+  - summary badges показывают `Signatures`, если настройка включена;
+  - новая UI часть использует mono text и terminal toggle без добавления Material UI.
+- `GITHUB_API_ANALYSIS.md`:
+  - `Required signatures` перенесён из backlog в implemented.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнена только статическая проверка `git diff --check`.

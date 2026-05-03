@@ -67,6 +67,7 @@ internal fun BranchProtectionScreen(
     var allowDeletions by remember { mutableStateOf(true) }
     var requireConversationResolution by remember { mutableStateOf(false) }
     var enforceAdmins by remember { mutableStateOf(false) }
+    var requireSignatures by remember { mutableStateOf(false) }
 
     fun loadProtection() {
         loading = true
@@ -74,6 +75,7 @@ internal fun BranchProtectionScreen(
             val p = GitHubManager.getBranchProtection(context, repoOwner, repoName, selectedBranch)
             protection = p
             if (p != null) {
+                val signatures = GitHubManager.getBranchRequiredSignatures(context, repoOwner, repoName, selectedBranch)
                 enabled = p.enabled
                 requireStatusChecks = p.requiredStatusChecks != null
                 statusChecksStrict = p.requiredStatusChecks?.strict ?: false
@@ -86,6 +88,7 @@ internal fun BranchProtectionScreen(
                 allowDeletions = p.allowDeletions
                 requireConversationResolution = p.requiredConversationResolution
                 enforceAdmins = p.enforceAdmins
+                requireSignatures = p.requiredSignatures || signatures
             } else {
                 enabled = false
                 requireStatusChecks = false
@@ -99,6 +102,7 @@ internal fun BranchProtectionScreen(
                 allowDeletions = true
                 requireConversationResolution = false
                 enforceAdmins = false
+                requireSignatures = false
             }
             loadedState = BranchProtectionEditState(
                 enabled = enabled,
@@ -112,7 +116,8 @@ internal fun BranchProtectionScreen(
                 allowForcePushes = allowForcePushes,
                 allowDeletions = allowDeletions,
                 requireConversationResolution = requireConversationResolution,
-                enforceAdmins = enforceAdmins
+                enforceAdmins = enforceAdmins,
+                requireSignatures = requireSignatures
             )
             loading = false
         }
@@ -132,7 +137,8 @@ internal fun BranchProtectionScreen(
         allowForcePushes = allowForcePushes,
         allowDeletions = allowDeletions,
         requireConversationResolution = requireConversationResolution,
-        enforceAdmins = enforceAdmins
+        enforceAdmins = enforceAdmins,
+        requireSignatures = requireSignatures
     )
     val hasUnsavedChanges = loadedState != null && currentState != loadedState
 
@@ -148,7 +154,7 @@ internal fun BranchProtectionScreen(
                 val ok = GitHubManager.deleteBranchProtection(context, repoOwner, repoName, selectedBranch)
                 Toast.makeText(context, if (ok) "Protection removed" else "Failed", Toast.LENGTH_SHORT).show()
             } else {
-                val ok = GitHubManager.updateBranchProtection(
+                val protectionOk = GitHubManager.updateBranchProtection(
                     context = context,
                     owner = repoOwner,
                     repo = repoName,
@@ -168,6 +174,17 @@ internal fun BranchProtectionScreen(
                     requiredConversationResolution = requireConversationResolution,
                     enforceAdmins = enforceAdmins
                 )
+                val signatureChanged = loadedState?.requireSignatures != requireSignatures
+                val signaturesOk = if (signatureChanged) {
+                    if (requireSignatures) {
+                        GitHubManager.enableBranchRequiredSignatures(context, repoOwner, repoName, selectedBranch)
+                    } else {
+                        GitHubManager.disableBranchRequiredSignatures(context, repoOwner, repoName, selectedBranch)
+                    }
+                } else {
+                    true
+                }
+                val ok = protectionOk && signaturesOk
                 Toast.makeText(context, if (ok) "Protection saved" else "Failed to save", Toast.LENGTH_SHORT).show()
             }
             disableConfirmed = false
@@ -403,6 +420,11 @@ internal fun BranchProtectionScreen(
                                     enforceAdmins,
                                     Icons.Rounded.AdminPanelSettings
                                 ) { enforceAdmins = it }
+
+                                SignatureProtectionRow(
+                                    enabled = requireSignatures,
+                                    onToggle = { requireSignatures = !requireSignatures }
+                                )
                             }
                         }
                     }
@@ -454,7 +476,8 @@ private data class BranchProtectionEditState(
     val allowForcePushes: Boolean,
     val allowDeletions: Boolean,
     val requireConversationResolution: Boolean,
-    val enforceAdmins: Boolean
+    val enforceAdmins: Boolean,
+    val requireSignatures: Boolean
 )
 
 @Composable
@@ -487,6 +510,7 @@ private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionE
                 if (state.requirePRReviews) MiniProtectionBadge("Reviews", Color(0xFF34C759))
                 if (state.requireConversationResolution) MiniProtectionBadge("Conversations", Color(0xFFFF9500))
                 if (state.enforceAdmins) MiniProtectionBadge("Admins", Color(0xFFFF3B30))
+                if (state.requireSignatures) MiniProtectionBadge("Signatures", AiModuleTheme.colors.accent)
             }
         }
     }
@@ -545,6 +569,33 @@ private fun ContextChip(name: String, onRemove: () -> Unit) {
             Modifier.size(14.dp).clickable { onRemove() },
             tint = AiModuleTheme.colors.accent
         )
+    }
+}
+
+@Composable
+private fun SignatureProtectionRow(enabled: Boolean, onToggle: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            "sig",
+            fontSize = 12.sp,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.SemiBold,
+            color = if (enabled) palette.accent else palette.textSecondary,
+            modifier = Modifier.width(24.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text("Require signed commits", fontSize = 14.sp, color = palette.textPrimary)
+            Text("Reject unsigned commits on this protected branch", fontSize = 11.sp, color = palette.textMuted)
+        }
+        TerminalToggleIndicator(checked = enabled, tint = palette.accent)
     }
 }
 

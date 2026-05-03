@@ -2975,9 +2975,27 @@ object GitHubManager {
                 allowForcePushes = j.optJSONObject("allow_force_pushes")?.optBoolean("enabled") ?: true,
                 allowDeletions = j.optJSONObject("allow_deletions")?.optBoolean("enabled") ?: true,
                 requiredConversationResolution = j.optJSONObject("required_conversation_resolution")?.optBoolean("enabled") ?: false,
-                enforceAdmins = j.optJSONObject("enforce_admins")?.optBoolean("enabled") ?: false
+                enforceAdmins = j.optJSONObject("enforce_admins")?.optBoolean("enabled") ?: false,
+                requiredSignatures = j.optJSONObject("required_signatures")?.optBoolean("enabled") ?: false
             )
         } catch (e: Exception) { null }
+    }
+
+    suspend fun getBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
+        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
+        val r = request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures")
+        if (!r.success) return false
+        return try { JSONObject(r.body).optBoolean("enabled", true) } catch (e: Exception) { true }
+    }
+
+    suspend fun enableBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
+        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
+        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures", "POST", "{}").success
+    }
+
+    suspend fun disableBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
+        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
+        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures", "DELETE").let { it.code == 204 || it.success }
     }
 
     suspend fun updateBranchProtection(
@@ -5493,7 +5511,8 @@ data class GHBranchProtection(
     val allowForcePushes: Boolean,
     val allowDeletions: Boolean,
     val requiredConversationResolution: Boolean,
-    val enforceAdmins: Boolean
+    val enforceAdmins: Boolean,
+    val requiredSignatures: Boolean = false
 )
 
 data class GHRequiredStatusChecks(
