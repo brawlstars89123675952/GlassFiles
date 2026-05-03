@@ -30,11 +30,15 @@ object AceMusicProvider : AiProvider {
     )
 
     override suspend fun listModels(context: Context, apiKey: String): List<AiModel> = withContext(Dispatchers.IO) {
-        val conn = Http.open("$BASE_URL/v1/models", headers = authHeaders(apiKey))
-        Http.ensureOk(conn, id.displayName)
-        val raw = conn.inputStream.bufferedReader().use { it.readText() }
-        conn.disconnect()
-        parseModels(raw).ifEmpty { fallbackModelList() }
+        runCatching {
+            val conn = Http.open("$BASE_URL/v1/models", headers = authHeaders(apiKey))
+            Http.ensureOk(conn, id.displayName)
+            val raw = conn.inputStream.bufferedReader().use { it.readText() }
+            conn.disconnect()
+            parseModels(raw).ifEmpty { fallbackModelList() }
+        }.getOrElse {
+            fallbackModelList()
+        }
     }
 
     override suspend fun chat(
@@ -223,12 +227,13 @@ object AceMusicProvider : AiProvider {
     }
 
     private fun authHeaders(apiKey: String): Map<String, String> =
-        mapOf("Authorization" to "Bearer $apiKey")
+        mapOf("Authorization" to "Bearer ${apiKey.trim()}")
 
     private fun ensureApiOk(root: JSONObject) {
+        val hasCode = root.has("code") && !root.isNull("code")
         val code = root.optInt("code", 200)
         val error = if (root.isNull("error")) "" else root.optString("error", "")
-        if (code !in 200..299 || error.isNotBlank()) {
+        if ((hasCode && code != 0 && code !in 200..299) || error.isNotBlank()) {
             throw RuntimeException("${id.displayName}: ${error.ifBlank { "API code $code" }}")
         }
     }
