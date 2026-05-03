@@ -111,7 +111,7 @@ object AceMusicProvider : AiProvider {
         val repo = repository(auth)
         if (auth.apiMode == AceMusicApiMode.COMPLETION) {
             onProgress("generating:completion")
-            val resolvedModelId = resolveCompletionModelId(repo, modelId)
+            val resolvedModelId = completionGenerationModelId(modelId)
             onProgress("model:$resolvedModelId")
             return postCompletion(repo, resolvedModelId, request)
         }
@@ -143,17 +143,6 @@ object AceMusicProvider : AiProvider {
             )
         }
         return JSONObject(raw).also { ensureCompletionOk(it) }
-    }
-
-    private suspend fun resolveCompletionModelId(repo: AceMusicRepository, selectedModelId: String): String {
-        val selected = selectedModelId.trim()
-        if (selected.shouldRefreshCompletionModel()) {
-            val liveModel = runCatching {
-                parseFirstLiveModelId(repo.listModelsRawOrThrow())
-            }.getOrNull().orEmpty()
-            if (liveModel.isNotBlank()) return liveModel
-        }
-        return completionFallbackModelId(selected)
     }
 
     private suspend fun pollTaskResult(
@@ -337,33 +326,6 @@ object AceMusicProvider : AiProvider {
         }
     }
 
-    private fun parseFirstLiveModelId(raw: String): String {
-        val root = JSONObject(raw).also { ensureApiOk(it) }
-        val data = root.opt("data")
-        val defaultModel = when (data) {
-            is JSONObject -> firstPresentString(data, "default_model", "defaultModel")
-            else -> firstPresentString(root, "default_model", "defaultModel")
-        }
-        if (defaultModel.isNotBlank()) return defaultModel.trim()
-
-        val models = when (data) {
-            is JSONObject -> data.optJSONArray("models")
-            is JSONArray -> data
-            else -> root.optJSONArray("models")
-        } ?: return ""
-
-        for (i in 0 until models.length()) {
-            val item = models.opt(i)
-            val modelId = when (item) {
-                is JSONObject -> firstPresentString(item, "id", "model", "name")
-                is String -> item
-                else -> ""
-            }.trim()
-            if (modelId.isNotBlank()) return modelId
-        }
-        return ""
-    }
-
     private fun parseResultRecords(value: Any?): List<JSONObject> {
         val parsed = when (value) {
             is JSONArray -> value
@@ -504,30 +466,18 @@ object AceMusicProvider : AiProvider {
         return clean.substringAfterLast('/')
     }
 
-    private fun completionFallbackModelId(modelId: String): String {
+    private fun completionGenerationModelId(modelId: String): String {
         val clean = modelId.trim()
         val short = clean.substringAfterLast('/')
         return when {
-            clean.isBlank() -> MODEL_ALIAS
-            clean.equals(MODEL_ALIAS, ignoreCase = true) -> MODEL_ALIAS
-            clean.equals("ACE Step", ignoreCase = true) -> MODEL_ALIAS
+            clean.startsWith("acestep/", ignoreCase = true) -> clean
+            clean.isBlank() -> CLOUD_REFERENCE_MODEL
+            clean.equals(MODEL_ALIAS, ignoreCase = true) -> CLOUD_REFERENCE_MODEL
+            clean.equals("ACE Step", ignoreCase = true) -> CLOUD_REFERENCE_MODEL
             clean.equals("ACE-Step-v1.5", ignoreCase = true) -> CLOUD_REFERENCE_MODEL
-            clean.startsWith("acemusic/", ignoreCase = true) && short.isLegacyAceStepModel() -> MODEL_ALIAS
-            short.isLegacyAceStepModel() -> MODEL_ALIAS
-            else -> clean
-        }
-    }
-
-    private fun String.shouldRefreshCompletionModel(): Boolean {
-        val clean = trim()
-        val short = clean.substringAfterLast('/')
-        return when {
-            clean.isBlank() -> true
-            clean.equals(MODEL_ALIAS, ignoreCase = true) -> true
-            clean.equals("ACE Step", ignoreCase = true) -> true
-            clean.startsWith("acemusic/", ignoreCase = true) && short.isLegacyAceStepModel() -> true
-            short.isLegacyAceStepModel() -> true
-            else -> false
+            clean.startsWith("acemusic/", ignoreCase = true) && short.isLegacyAceStepModel() -> CLOUD_REFERENCE_MODEL
+            short.isLegacyAceStepModel() -> CLOUD_REFERENCE_MODEL
+            else -> CLOUD_REFERENCE_MODEL
         }
     }
 
