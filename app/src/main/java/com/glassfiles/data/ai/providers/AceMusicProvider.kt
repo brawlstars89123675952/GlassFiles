@@ -17,8 +17,8 @@ import java.net.URLEncoder
  * Official ACEMusic / ACE-Step cloud API.
  *
  * Music generation is a separate flow from chat/image/video:
- * `/release_task` submits work, `/query_result` polls it, and `/v1/audio`
- * downloads the generated file.
+ * `/v1/music/generate` submits work, `/v1/jobs/{job_id}` polls it, and
+ * `/v1/audio` downloads the generated file.
  */
 object AceMusicProvider : AiProvider {
     override val id: AiProviderId = AiProviderId.ACEMUSIC
@@ -57,9 +57,9 @@ object AceMusicProvider : AiProvider {
         onProgress: (String) -> Unit,
     ): List<AiMusicResult> = withContext(Dispatchers.IO) {
         onProgress("submit")
-        val taskId = releaseTask(modelId, request, apiKey)
-        onProgress("queued:$taskId")
-        val records = pollTask(taskId, apiKey, onProgress)
+        val jobId = releaseTask(modelId, request, apiKey)
+        onProgress("queued:$jobId")
+        val records = pollTask(jobId, apiKey, onProgress)
         val outDir = File(context.cacheDir, "ai_music").apply { mkdirs() }
         records.mapIndexedNotNull { index, record ->
             val fileUrl = record.optString("file", "").ifBlank { record.optString("audio_url", "") }
@@ -77,7 +77,7 @@ object AceMusicProvider : AiProvider {
                 timeSignature = metas?.optString("timesignature", "") ?: metas?.optString("time_signature", "").orEmpty(),
                 durationSec = metas?.optDouble("duration")?.takeIf { it > 0.0 }?.toFloat(),
                 seed = record.optString("seed_value", ""),
-                taskId = taskId,
+                taskId = jobId,
             )
         }.ifEmpty {
             throw RuntimeException("${id.displayName}: no audio files in result")
@@ -87,6 +87,7 @@ object AceMusicProvider : AiProvider {
     private fun releaseTask(modelId: String, request: AiMusicRequest, apiKey: String): String {
         val body = JSONObject().apply {
             put("model", modelId)
+            put("caption", request.prompt)
             put("thinking", request.thinking)
             put("use_format", request.useFormat)
             put("vocal_language", request.vocalLanguage)
@@ -103,7 +104,6 @@ object AceMusicProvider : AiProvider {
             put("use_cot_language", request.useCotLanguage)
             put("constrained_decoding", request.constrainedDecoding)
             put("allow_lm_batch", request.allowLmBatch)
-            if (request.prompt.isNotBlank()) put("prompt", request.prompt)
             if (request.lyrics.isNotBlank()) put("lyrics", request.lyrics)
             if (request.sampleQuery.isNotBlank()) put("sample_query", request.sampleQuery)
             if (request.timesteps.isNotBlank()) put("timesteps", request.timesteps)
@@ -121,37 +121,38 @@ object AceMusicProvider : AiProvider {
             request.lmTopP?.let { put("lm_top_p", it.coerceIn(0f, 1f)) }
             request.lmRepetitionPenalty?.let { put("lm_repetition_penalty", it.coerceIn(0f, 5f)) }
         }.toString()
-        val conn = Http.postJson("$BASE_URL/release_task", body, authHeaders(apiKey))
+        val conn = Http.postJson("$BASE_URL/v1/music/generate", body, authHeaders(apiKey))
         Http.ensureOk(conn, id.displayName)
         val raw = conn.inputStream.bufferedReader().use { it.readText() }
         conn.disconnect()
         val root = JSONObject(raw).also { ensureApiOk(it) }
         val data = root.optJSONObject("data") ?: root
-        val taskId = data.optString("task_id", data.optString("job_id", ""))
-        if (taskId.isBlank()) throw RuntimeException("${id.displayName}: no task_id in response")
-        return taskId
+        val jobId = data.optString("job_id", data.optString("task_id", ""))
+        if (jobId.isBlank()) throw RuntimeException("${id.displayName}: no job_id in response")
+        return jobId
     }
 
     private suspend fun pollTask(
-        taskId: String,
+        jobId: String,
         apiKey: String,
         onProgress: (String) -> Unit,
     ): List<JSONObject> {
         val deadline = System.currentTimeMillis() + 20 * 60_000L
         while (System.currentTimeMillis() < deadline) {
-            val body = JSONObject().put("task_id_list", JSONArray().put(taskId)).toString()
-            val conn = Http.postJson("$BASE_URL/query_result", body, authHeaders(apiKey))
+            val conn = Http.open("$BASE_URL/v1/jobs/${URLEncoder.encode(jobId, "UTF-8")}", headers = authHeaders(apiKey))
             Http.ensureOk(conn, id.displayName)
             val raw = conn.inputStream.bufferedReader().use { it.readText() }
             conn.disconnect()
             val root = JSONObject(raw).also { ensureApiOk(it) }
-            val task = root.optJSONArray("data")?.optJSONObject(0)
-                ?: throw RuntimeException("${id.displayName}: missing task status")
-            val status = task.optInt("status", 0)
+            val task = root.optJSONObject("data") ?: root
+            val status = task.optString("status", "")
             onProgress(statusLabel(status))
             when (status) {
-                1 -> return parseResultRecords(task.opt("result"))
-                2 -> throw RuntimeException("${id.displayName}: task failed")
+                "succeeded" -> return parseResultRecords(task.opt("result"))
+                "failed" -> {
+                    val err = task.opt("error")?.toString().orEmpty().ifBlank { "task failed" }
+                    throw RuntimeException("${id.displayName}: $err")
+                }
                 else -> delay(4_000)
             }
         }
@@ -200,12 +201,12 @@ object AceMusicProvider : AiProvider {
     private fun parseResultRecords(value: Any?): List<JSONObject> {
         val parsed = when (value) {
             is JSONArray -> value
-            is JSONObject -> JSONArray().put(value)
+            is JSONObject -> recordsFromResultObject(value)
             is String -> {
                 if (value.isBlank()) JSONArray() else runCatching {
                     when (val token = JSONTokener(value).nextValue()) {
                         is JSONArray -> token
-                        is JSONObject -> JSONArray().put(token)
+                        is JSONObject -> recordsFromResultObject(token)
                         else -> JSONArray()
                     }
                 }.getOrElse {
@@ -215,6 +216,37 @@ object AceMusicProvider : AiProvider {
             else -> JSONArray()
         }
         return (0 until parsed.length()).mapNotNull { parsed.optJSONObject(it) }
+    }
+
+    private fun recordsFromResultObject(result: JSONObject): JSONArray {
+        val audioPaths = result.optJSONArray("audio_paths")
+        if (audioPaths != null && audioPaths.length() > 0) {
+            val metas = result.optJSONObject("metas") ?: JSONObject().apply {
+                put("bpm", result.optInt("bpm", 0))
+                put("duration", result.optDouble("duration", 0.0))
+                put("keyscale", result.optString("keyscale", ""))
+                put("timesignature", result.optString("timesignature", ""))
+            }
+            return JSONArray().apply {
+                for (i in 0 until audioPaths.length()) {
+                    val file = audioPaths.optString(i, "")
+                    if (file.isNotBlank()) {
+                        put(
+                            JSONObject()
+                                .put("file", file)
+                                .put("prompt", metas.optString("caption", ""))
+                                .put("metas", metas)
+                                .put("seed_value", result.optString("seed_value", "")),
+                        )
+                    }
+                }
+            }
+        }
+        val first = result.optString("first_audio_path", "")
+        if (first.isNotBlank()) {
+            return JSONArray().put(JSONObject().put("file", first).put("metas", result.optJSONObject("metas") ?: JSONObject()))
+        }
+        return JSONArray().put(result)
     }
 
     private fun fallbackModelList(): List<AiModel> = fallbackModels.map { name ->
@@ -238,11 +270,12 @@ object AceMusicProvider : AiProvider {
         }
     }
 
-    private fun statusLabel(status: Int): String = when (status) {
-        0 -> "running"
-        1 -> "succeeded"
-        2 -> "failed"
-        else -> "status:$status"
+    private fun statusLabel(status: String): String = when (status) {
+        "queued" -> "queued"
+        "running" -> "running"
+        "succeeded" -> "succeeded"
+        "failed" -> "failed"
+        else -> status.ifBlank { "unknown" }
     }
 
     private fun extensionFor(format: String, fileUrl: String): String {
