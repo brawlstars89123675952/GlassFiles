@@ -4,11 +4,15 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.WebView.WebViewTransport
 import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -373,7 +377,7 @@ private fun AceMusicSessionWebViewScreen(
     onCaptured: (authorization: String, cookie: String, userAgent: String) -> Unit,
 ) {
     val colors = AiModuleTheme.colors
-    var status by remember { mutableStateOf("loading https://acemusic.ai/login") }
+    var status by remember { mutableStateOf("loading https://acemusic.ai/playground/create") }
     var webView: WebView? by remember { mutableStateOf(null) }
 
     DisposableEffect(Unit) {
@@ -418,13 +422,51 @@ private fun AceMusicSessionWebViewScreen(
                         CookieManager.getInstance().setAcceptCookie(true)
                         WebView(ctx).apply {
                             webView = this
-                            setBackgroundColor(android.graphics.Color.BLACK)
+                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.databaseEnabled = true
                             settings.cacheMode = WebSettings.LOAD_DEFAULT
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            settings.loadsImagesAutomatically = true
+                            settings.javaScriptCanOpenWindowsAutomatically = true
+                            settings.setSupportMultipleWindows(true)
+                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                             settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
                             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onCreateWindow(
+                                    view: WebView?,
+                                    isDialog: Boolean,
+                                    isUserGesture: Boolean,
+                                    resultMsg: Message?,
+                                ): Boolean {
+                                    val parentView = view ?: return false
+                                    val child = WebView(ctx).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                                        webViewClient = object : WebViewClient() {
+                                            override fun shouldOverrideUrlLoading(
+                                                view: WebView?,
+                                                request: WebResourceRequest?,
+                                            ): Boolean {
+                                                request?.url?.toString()?.let(parentView::loadUrl)
+                                                return true
+                                            }
+
+                                            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                                if (!url.isNullOrBlank()) parentView.loadUrl(url)
+                                            }
+                                        }
+                                    }
+                                    val transport = resultMsg?.obj as? WebViewTransport ?: return false
+                                    transport.webView = child
+                                    resultMsg.sendToTarget()
+                                    return true
+                                }
+                            }
                             webViewClient = object : WebViewClient() {
                                 override fun shouldInterceptRequest(
                                     view: WebView?,
@@ -453,8 +495,18 @@ private fun AceMusicSessionWebViewScreen(
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     status = "page: ${url.orEmpty().ifBlank { "acemusic.ai" }}"
                                 }
+
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?,
+                                ) {
+                                    if (request?.isForMainFrame == true) {
+                                        status = "webview error: ${error?.description.orEmpty()}"
+                                    }
+                                }
                             }
-                            loadUrl("https://acemusic.ai/login")
+                            loadUrl("https://acemusic.ai/playground/create")
                         }
                     },
                 )
