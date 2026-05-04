@@ -360,7 +360,7 @@ internal fun RepoDetailScreen(
         return
     }
     if (showRepoInsights) { RepoInsightsScreen(repo) { showRepoInsights = false }; return }
-    if (showGitDataTools) { GitDataToolsScreen(repo) { showGitDataTools = false }; return }
+    if (showGitDataTools) { GitDataToolsScreen(repo, canWrite = canWrite) { showGitDataTools = false }; return }
     if (selectedIssue != null) { IssueDetailScreen(repo, selectedIssue!!.number) { selectedIssue = null }; return }
     if (selectedCommitSha != null) { 
         CommitDiffScreen(repo.owner, repo.name, selectedCommitSha!!) { selectedCommitSha = null }; 
@@ -1711,7 +1711,7 @@ private fun repoEventLabel(type: String): String =
 private enum class GitDataTab { REFS, TREE, BLOB, TAG, COMMIT }
 
 @Composable
-private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
+private fun GitDataToolsScreen(repo: GHRepo, canWrite: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
@@ -1731,6 +1731,31 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
     var tagResult by remember { mutableStateOf<GHGitTagDetail?>(null) }
     var commitResult by remember { mutableStateOf<GHGitCommit?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var operationMessage by remember { mutableStateOf<String?>(null) }
+    var newBlobContent by rememberSaveable(repo.fullName, "git-new-blob-content") { mutableStateOf("") }
+    var newBlobBase64 by rememberSaveable(repo.fullName, "git-new-blob-base64") { mutableStateOf(false) }
+    var newTreeBase by rememberSaveable(repo.fullName, "git-new-tree-base") { mutableStateOf("") }
+    var newTreePath by rememberSaveable(repo.fullName, "git-new-tree-path") { mutableStateOf("") }
+    var newTreeMode by rememberSaveable(repo.fullName, "git-new-tree-mode") { mutableStateOf("100644") }
+    var newTreeType by rememberSaveable(repo.fullName, "git-new-tree-type") { mutableStateOf("blob") }
+    var newTreeSha by rememberSaveable(repo.fullName, "git-new-tree-sha") { mutableStateOf("") }
+    var newTreeContent by rememberSaveable(repo.fullName, "git-new-tree-content") { mutableStateOf("") }
+    var newTagName by rememberSaveable(repo.fullName, "git-new-tag-name") { mutableStateOf("") }
+    var newTagMessage by rememberSaveable(repo.fullName, "git-new-tag-message") { mutableStateOf("") }
+    var newTagObjectSha by rememberSaveable(repo.fullName, "git-new-tag-object") { mutableStateOf("") }
+    var newTagObjectType by rememberSaveable(repo.fullName, "git-new-tag-type") { mutableStateOf("commit") }
+    var newTaggerName by rememberSaveable(repo.fullName, "git-new-tagger-name") { mutableStateOf("") }
+    var newTaggerEmail by rememberSaveable(repo.fullName, "git-new-tagger-email") { mutableStateOf("") }
+    var newCommitMessage by rememberSaveable(repo.fullName, "git-new-commit-message") { mutableStateOf("") }
+    var newCommitTreeSha by rememberSaveable(repo.fullName, "git-new-commit-tree") { mutableStateOf("") }
+    var newCommitParents by rememberSaveable(repo.fullName, "git-new-commit-parents") { mutableStateOf("") }
+    var updateRefName by rememberSaveable(repo.fullName, "git-update-ref-name") { mutableStateOf("heads/${repo.defaultBranch}") }
+    var updateRefSha by rememberSaveable(repo.fullName, "git-update-ref-sha") { mutableStateOf("") }
+    var updateRefForce by rememberSaveable(repo.fullName, "git-update-ref-force") { mutableStateOf(false) }
+    var createRefName by rememberSaveable(repo.fullName, "git-create-ref-name") { mutableStateOf("") }
+    var createRefSha by rememberSaveable(repo.fullName, "git-create-ref-sha") { mutableStateOf("") }
+    var deleteRefName by rememberSaveable(repo.fullName, "git-delete-ref-name") { mutableStateOf("") }
+    var deleteRefConfirm by rememberSaveable(repo.fullName, "git-delete-ref-confirm") { mutableStateOf("") }
 
     suspend fun loadRefData() {
         loading = true
@@ -1825,6 +1850,15 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
+            if (operationMessage != null) {
+                Text(
+                    "▸ ${operationMessage.orEmpty()}",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             if (loading) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     AiModuleSpinner(label = "loading git data…")
@@ -1864,6 +1898,72 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                                 }
                             }
                             item { GitRefListCard(matchingRefs, onSelect = { refQuery = it.ref.removePrefix("refs/"); refResult = it }) }
+                            item {
+                                GitDataWriteCard("write: refs", canWrite) {
+                                    GitDataWriteField("ref to create", createRefName, { createRefName = it }, "tags/v1.0.0 or heads/tmp")
+                                    GitDataWriteField("source sha", createRefSha, { createRefSha = it }, "commit or tag object sha")
+                                    GitHubTerminalButton("create ref", onClick = {
+                                        scope.launch {
+                                            loading = true
+                                            error = null
+                                            val created = GitHubManager.createGitRef(context, repo.owner, repo.name, createRefName, createRefSha)
+                                            loading = false
+                                            if (created != null) {
+                                                refQuery = created.ref.removePrefix("refs/")
+                                                refResult = created
+                                                updateRefName = created.ref.removePrefix("refs/")
+                                                operationMessage = "created ${created.ref}"
+                                            } else {
+                                                error = "failed to create ref"
+                                            }
+                                        }
+                                    }, color = palette.accent)
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                                    GitDataWriteField("ref to update", updateRefName, { updateRefName = it }, "heads/${repo.defaultBranch}")
+                                    GitDataWriteField("target sha", updateRefSha, { updateRefSha = it }, "commit sha")
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        GitHubTerminalButton("update ref", onClick = {
+                                            scope.launch {
+                                                loading = true
+                                                error = null
+                                                val updated = GitHubManager.updateGitRef(context, repo.owner, repo.name, updateRefName, updateRefSha, updateRefForce)
+                                                loading = false
+                                                if (updated != null) {
+                                                    refQuery = updated.ref.removePrefix("refs/")
+                                                    refResult = updated
+                                                    operationMessage = "updated ${updated.ref}"
+                                                } else {
+                                                    error = "failed to update ref"
+                                                }
+                                            }
+                                        }, color = palette.accent)
+                                        GitHubTerminalCheckbox("force", updateRefForce, { updateRefForce = !updateRefForce })
+                                    }
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+                                    GitDataWriteField("ref to delete", deleteRefName, { deleteRefName = it }, "heads/tmp-branch")
+                                    GitDataWriteField("confirm", deleteRefConfirm, { deleteRefConfirm = it }, "type delete")
+                                    GitHubTerminalButton("delete ref", onClick = {
+                                        scope.launch {
+                                            if (deleteRefConfirm.trim() != "delete") {
+                                                error = "type delete to confirm ref deletion"
+                                                return@launch
+                                            }
+                                            loading = true
+                                            error = null
+                                            val ok = GitHubManager.deleteGitRef(context, repo.owner, repo.name, deleteRefName)
+                                            loading = false
+                                            if (ok) {
+                                                operationMessage = "deleted ${deleteRefName.removePrefix("refs/")}"
+                                                deleteRefName = ""
+                                                deleteRefConfirm = ""
+                                                loadRefData()
+                                            } else {
+                                                error = "failed to delete ref"
+                                            }
+                                        }
+                                    }, color = palette.error)
+                                }
+                            }
                         }
                         GitDataTab.TREE -> {
                             item {
@@ -1879,6 +1979,44 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                                 )
                             }
                             treeResult?.let { tree -> item { GitTreeCard(tree, onBlob = { blobSha = it; selectedTab = GitDataTab.BLOB; scope.launch { loadBlobData() } }) } }
+                            item {
+                                GitDataWriteCard("write: create tree", canWrite) {
+                                    GitDataWriteField("base tree", newTreeBase, { newTreeBase = it }, "optional base tree sha")
+                                    GitDataWriteField("path", newTreePath, { newTreePath = it }, "path/in/repo.txt")
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        GitDataWriteField("mode", newTreeMode, { newTreeMode = it }, "100644", modifier = Modifier.weight(1f))
+                                        GitDataWriteField("type", newTreeType, { newTreeType = it }, "blob", modifier = Modifier.weight(1f))
+                                    }
+                                    GitDataWriteField("sha", newTreeSha, { newTreeSha = it }, "blob/tree sha")
+                                    GitDataWriteField("content", newTreeContent, { newTreeContent = it }, "inline blob content", singleLine = false, minHeight = 96.dp)
+                                    GitHubTerminalButton("create tree", onClick = {
+                                        scope.launch {
+                                            loading = true
+                                            error = null
+                                            val created = GitHubManager.createGitTree(
+                                                context = context,
+                                                owner = repo.owner,
+                                                repo = repo.name,
+                                                baseTree = newTreeBase,
+                                                path = newTreePath,
+                                                mode = newTreeMode,
+                                                type = newTreeType,
+                                                sha = newTreeSha,
+                                                content = newTreeContent
+                                            )
+                                            loading = false
+                                            if (created != null) {
+                                                treeResult = created
+                                                treeSha = created.sha
+                                                newCommitTreeSha = created.sha
+                                                operationMessage = "created tree ${created.sha.take(12)}"
+                                            } else {
+                                                error = "failed to create tree"
+                                            }
+                                        }
+                                    }, color = palette.accent)
+                                }
+                            }
                         }
                         GitDataTab.BLOB -> {
                             item {
@@ -1891,6 +2029,36 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                                 )
                             }
                             blobResult?.let { blob -> item { GitBlobCard(blob) } }
+                            item {
+                                GitDataWriteCard("write: create blob", canWrite) {
+                                    GitDataWriteField("content", newBlobContent, { newBlobContent = it }, "blob content", singleLine = false, minHeight = 140.dp)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        GitHubTerminalButton("create blob", onClick = {
+                                            scope.launch {
+                                                loading = true
+                                                error = null
+                                                val created = GitHubManager.createGitBlob(
+                                                    context,
+                                                    repo.owner,
+                                                    repo.name,
+                                                    newBlobContent,
+                                                    if (newBlobBase64) "base64" else "utf-8"
+                                                )
+                                                loading = false
+                                                if (created != null) {
+                                                    blobResult = created
+                                                    blobSha = created.sha
+                                                    newTreeSha = created.sha
+                                                    operationMessage = "created blob ${created.sha.take(12)}"
+                                                } else {
+                                                    error = "failed to create blob"
+                                                }
+                                            }
+                                        }, color = palette.accent)
+                                        GitHubTerminalCheckbox("base64", newBlobBase64, { newBlobBase64 = !newBlobBase64 })
+                                    }
+                                }
+                            }
                         }
                         GitDataTab.TAG -> {
                             item {
@@ -1903,6 +2071,45 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                                 )
                             }
                             tagResult?.let { tag -> item { GitTagCard(tag) } }
+                            item {
+                                GitDataWriteCard("write: create annotated tag", canWrite) {
+                                    GitDataWriteField("tag", newTagName, { newTagName = it }, "v1.0.0")
+                                    GitDataWriteField("message", newTagMessage, { newTagMessage = it }, "release message", singleLine = false, minHeight = 86.dp)
+                                    GitDataWriteField("object sha", newTagObjectSha, { newTagObjectSha = it }, "commit sha")
+                                    GitDataWriteField("object type", newTagObjectType, { newTagObjectType = it }, "commit")
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        GitDataWriteField("tagger name", newTaggerName, { newTaggerName = it }, "optional", modifier = Modifier.weight(1f))
+                                        GitDataWriteField("tagger email", newTaggerEmail, { newTaggerEmail = it }, "optional", modifier = Modifier.weight(1f))
+                                    }
+                                    GitHubTerminalButton("create tag object", onClick = {
+                                        scope.launch {
+                                            loading = true
+                                            error = null
+                                            val created = GitHubManager.createGitTag(
+                                                context = context,
+                                                owner = repo.owner,
+                                                repo = repo.name,
+                                                tag = newTagName,
+                                                message = newTagMessage,
+                                                objectSha = newTagObjectSha,
+                                                objectType = newTagObjectType,
+                                                taggerName = newTaggerName,
+                                                taggerEmail = newTaggerEmail
+                                            )
+                                            loading = false
+                                            if (created != null) {
+                                                tagResult = created
+                                                tagSha = created.sha
+                                                createRefName = "tags/${created.tag}"
+                                                createRefSha = created.sha
+                                                operationMessage = "created tag object ${created.sha.take(12)}"
+                                            } else {
+                                                error = "failed to create tag object"
+                                            }
+                                        }
+                                    }, color = palette.accent)
+                                }
+                            }
                         }
                         GitDataTab.COMMIT -> {
                             item {
@@ -1924,6 +2131,39 @@ private fun GitDataToolsScreen(repo: GHRepo, onBack: () -> Unit) {
                                             scope.launch { loadTreeData() }
                                         },
                                     )
+                                }
+                            }
+                            item {
+                                GitDataWriteCard("write: create commit", canWrite) {
+                                    GitDataWriteField("message", newCommitMessage, { newCommitMessage = it }, "commit message", singleLine = false, minHeight = 86.dp)
+                                    GitDataWriteField("tree sha", newCommitTreeSha, { newCommitTreeSha = it }, "tree sha")
+                                    GitDataWriteField("parents", newCommitParents, { newCommitParents = it }, "comma or newline separated parent shas", singleLine = false, minHeight = 72.dp)
+                                    GitHubTerminalButton("create commit", onClick = {
+                                        scope.launch {
+                                            loading = true
+                                            error = null
+                                            val parents = newCommitParents.split(',', '\n', ' ')
+                                                .map { it.trim() }
+                                                .filter { it.isNotBlank() }
+                                            val created = GitHubManager.createGitCommit(
+                                                context = context,
+                                                owner = repo.owner,
+                                                repo = repo.name,
+                                                message = newCommitMessage,
+                                                treeSha = newCommitTreeSha,
+                                                parentShas = parents
+                                            )
+                                            loading = false
+                                            if (created != null) {
+                                                commitResult = created
+                                                commitSha = created.sha
+                                                updateRefSha = created.sha
+                                                operationMessage = "created commit ${created.sha.take(12)}"
+                                            } else {
+                                                error = "failed to create commit"
+                                            }
+                                        }
+                                    }, color = palette.accent)
                                 }
                             }
                         }
@@ -1958,6 +2198,51 @@ private fun GitDataInputCard(
             GitHubTerminalButton(action, onClick = onAction, color = AiModuleTheme.colors.accent)
             trailing?.invoke()
         }
+    }
+}
+
+@Composable
+private fun GitDataWriteCard(title: String, canWrite: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    TerminalInsightCard(title) {
+        if (!canWrite) {
+            Text(
+                "! write access required",
+                color = AiModuleTheme.colors.warning,
+                fontFamily = JetBrainsMono,
+                fontSize = 12.sp,
+            )
+            Text(
+                "This low-level Git Data mutation is disabled for the current token.",
+                color = AiModuleTheme.colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+            )
+        } else {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun GitDataWriteField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    minHeight: androidx.compose.ui.unit.Dp = 38.dp,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+        GitHubTerminalTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            singleLine = singleLine,
+            minHeight = minHeight,
+        )
     }
 }
 

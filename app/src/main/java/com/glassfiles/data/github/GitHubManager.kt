@@ -612,6 +612,183 @@ object GitHubManager {
         } catch (e: Exception) { null }
     }
 
+    suspend fun createGitBlob(context: Context, owner: String, repo: String, content: String, encoding: String = "utf-8"): GHGitBlob? {
+        if (content.isBlank()) return null
+        val cleanEncoding = if (encoding.equals("base64", ignoreCase = true)) "base64" else "utf-8"
+        val body = JSONObject().apply {
+            put("content", content)
+            put("encoding", cleanEncoding)
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/blobs", "POST", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHGitBlob(
+                sha = j.optString("sha", ""),
+                size = content.length.toLong(),
+                encoding = cleanEncoding,
+                content = content,
+                url = j.optString("url", "")
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun createGitTree(
+        context: Context,
+        owner: String,
+        repo: String,
+        baseTree: String,
+        path: String,
+        mode: String,
+        type: String,
+        sha: String,
+        content: String
+    ): GHGitTree? {
+        val cleanPath = path.trim()
+        if (cleanPath.isBlank()) return null
+        if (sha.isBlank() && content.isBlank()) return null
+        val item = JSONObject().apply {
+            put("path", cleanPath)
+            put("mode", mode.ifBlank { "100644" })
+            put("type", type.ifBlank { "blob" })
+            if (content.isNotBlank()) put("content", content) else put("sha", sha.trim())
+        }
+        val body = JSONObject().apply {
+            if (baseTree.isNotBlank()) put("base_tree", baseTree.trim())
+            put("tree", JSONArray().put(item))
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/trees", "POST", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            val tree = j.optJSONArray("tree") ?: JSONArray()
+            GHGitTree(
+                sha = j.optString("sha", ""),
+                truncated = j.optBoolean("truncated", false),
+                items = (0 until tree.length()).map { i ->
+                    val treeItem = tree.getJSONObject(i)
+                    GHGitTreeItem(
+                        path = treeItem.optString("path", ""),
+                        mode = treeItem.optString("mode", ""),
+                        type = treeItem.optString("type", ""),
+                        sha = treeItem.optString("sha", ""),
+                        size = treeItem.optLong("size", 0L),
+                        url = treeItem.optString("url", "")
+                    )
+                }
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun createGitTag(
+        context: Context,
+        owner: String,
+        repo: String,
+        tag: String,
+        message: String,
+        objectSha: String,
+        objectType: String = "commit",
+        taggerName: String = "",
+        taggerEmail: String = ""
+    ): GHGitTagDetail? {
+        if (tag.isBlank() || message.isBlank() || objectSha.isBlank()) return null
+        val body = JSONObject().apply {
+            put("tag", tag.trim())
+            put("message", message)
+            put("object", objectSha.trim())
+            put("type", objectType.ifBlank { "commit" })
+            if (taggerName.isNotBlank() && taggerEmail.isNotBlank()) {
+                put("tagger", JSONObject().apply {
+                    put("name", taggerName.trim())
+                    put("email", taggerEmail.trim())
+                })
+            }
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/tags", "POST", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            val tagger = j.optJSONObject("tagger")
+            val obj = j.optJSONObject("object")
+            GHGitTagDetail(
+                sha = j.optString("sha", ""),
+                tag = j.optString("tag", ""),
+                message = j.optString("message", ""),
+                taggerName = tagger?.optString("name", "") ?: "",
+                taggerEmail = tagger?.optString("email", "") ?: "",
+                date = tagger?.optString("date", "") ?: "",
+                objectSha = obj?.optString("sha", "") ?: "",
+                objectType = obj?.optString("type", "") ?: ""
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun createGitCommit(
+        context: Context,
+        owner: String,
+        repo: String,
+        message: String,
+        treeSha: String,
+        parentShas: List<String>
+    ): GHGitCommit? {
+        if (message.isBlank() || treeSha.isBlank()) return null
+        val body = JSONObject().apply {
+            put("message", message)
+            put("tree", treeSha.trim())
+            put("parents", JSONArray().apply { parentShas.filter { it.isNotBlank() }.forEach { put(it.trim()) } })
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/commits", "POST", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            val author = j.optJSONObject("author")
+            val committer = j.optJSONObject("committer")
+            val parents = j.optJSONArray("parents") ?: JSONArray()
+            GHGitCommit(
+                sha = j.optString("sha", ""),
+                message = j.optString("message", ""),
+                treeSha = j.optJSONObject("tree")?.optString("sha", "") ?: "",
+                parentShas = (0 until parents.length()).mapNotNull { i -> parents.optJSONObject(i)?.optString("sha")?.takeIf { it.isNotBlank() } },
+                authorName = author?.optString("name", "") ?: "",
+                authorEmail = author?.optString("email", "") ?: "",
+                authorDate = author?.optString("date", "") ?: "",
+                committerName = committer?.optString("name", "") ?: "",
+                committerEmail = committer?.optString("email", "") ?: "",
+                committerDate = committer?.optString("date", "") ?: ""
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun updateGitRef(context: Context, owner: String, repo: String, ref: String, sha: String, force: Boolean = false): GHGitRef? {
+        val cleanRef = ref.trim().removePrefix("refs/").trim('/')
+        if (cleanRef.isBlank() || sha.isBlank()) return null
+        val body = JSONObject().apply {
+            put("sha", sha.trim())
+            put("force", force)
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/refs/$cleanRef", "PATCH", body)
+        if (!r.success) return null
+        return try { parseGitRef(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun createGitRef(context: Context, owner: String, repo: String, ref: String, sha: String): GHGitRef? {
+        val cleanRef = ref.trim().removePrefix("refs/").trim('/')
+        if (cleanRef.isBlank() || sha.isBlank()) return null
+        val body = JSONObject().apply {
+            put("ref", "refs/$cleanRef")
+            put("sha", sha.trim())
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/git/refs", "POST", body)
+        if (!r.success) return null
+        return try { parseGitRef(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun deleteGitRef(context: Context, owner: String, repo: String, ref: String): Boolean {
+        val cleanRef = ref.trim().removePrefix("refs/").trim('/')
+        if (cleanRef.isBlank()) return false
+        return request(context, "/repos/$owner/$repo/git/refs/$cleanRef", "DELETE").success
+    }
+
     suspend fun getPullRequests(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHPullRequest> {
         val r = request(context, "/repos/$owner/$repo/pulls?state=$state&per_page=30&page=$page")
         if (!r.success) return emptyList()

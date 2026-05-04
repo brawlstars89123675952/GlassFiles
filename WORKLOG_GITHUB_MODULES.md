@@ -1382,7 +1382,7 @@
   - projects/packages/security/webhooks/rules/user settings.
 - Что осталось не реализовано или намеренно не выведено в UI:
   - deeper issue timeline/event-specific actions: timeline читается, но отдельные mutation-действия по событиям не смоделированы;
-  - Git Data write tools: create tree/blob/tag/commit, update/delete refs; часть уже используется внутренне, но отдельный mutation UI не сделан;
+  - Git Data write tools были отдельным gap на момент паузы; позже закрыты в секции `GitHub Git Data write tools`;
   - GitHub Actions runner groups: repo runner groups endpoint enterprise-only, не surfaced;
   - GitHub Apps/OAuth: user installations, installation repositories, legacy OAuth authorizations;
   - Enterprise/admin-only APIs: enterprise runners, org runner groups, SCIM, audit log, SAML SSO.
@@ -1425,6 +1425,28 @@
   - draft release publish скрыт без `canWrite`.
 - `BUGS.md`:
   - баг помечен исправленным и описаны фактически закрытые точки.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнены только статические проверки.
+
+### GitHub Git Data write tools
+- Закрыт Git Data gap из `GITHUB_API_ANALYSIS.md`: низкоуровневые mutation endpoints теперь выведены в Git Data tools UI.
+- `GitHubManager.kt`:
+  - добавлены `createGitBlob(...)`, `createGitTree(...)`, `createGitTag(...)`, `createGitCommit(...)`;
+  - добавлены `createGitRef(...)`, `updateGitRef(...)` и `deleteGitRef(...)`;
+  - методы используют существующий GitHub request layer и возвращают typed Git Data модели.
+- `GitHubRepoModule.kt`:
+  - `GitDataToolsScreen` теперь получает `canWrite`;
+  - во вкладках refs/tree/blob/tag/commit добавлены terminal-style write panels;
+  - create blob поддерживает utf-8/base64;
+  - create tree поддерживает base tree, path/mode/type и sha или inline content;
+  - create tag object автоматически подставляет `tags/...` и sha в create-ref поля;
+  - create commit переносит созданный sha в update-ref поле;
+  - create/update ref поддерживают branch/tag refs, update ref поддерживает force flag, delete ref требует typed confirmation `delete`;
+  - без write-доступа панели остаются read-only и не вызывают mutation endpoints.
+- `GITHUB_API_ANALYSIS.md`:
+  - create tree/blob/tag/commit и create/update/delete ref перенесены в implemented Git Data;
+  - Git Data write backlog очищен.
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнены только статические проверки.

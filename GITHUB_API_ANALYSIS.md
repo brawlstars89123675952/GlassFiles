@@ -1,6 +1,6 @@
 # GitHub API Coverage Analysis for GlassFiles
 
-Last normalized: 2026-05-03. This matrix reflects the local code and
+Last normalized: 2026-05-04. This matrix reflects the local code and
 `WORKLOG_GITHUB_MODULES.md`; keep backlog rows free of already implemented
 items.
 
@@ -86,6 +86,13 @@ items.
 | Get single ref | `/repos/{owner}/{repo}/git/ref/{ref}` | ✅ | ✅ | Git data tools ref viewer |
 | List matching refs | `/repos/{owner}/{repo}/git/matching-refs/{ref}` | ✅ | ✅ | Git data tools refs tab |
 | Get git commit | `/repos/{owner}/{repo}/git/commits/{commit_sha}` | ✅ | ✅ | Git data tools commit viewer |
+| Create ref | `/repos/{owner}/{repo}/git/refs` (POST) | ✅ | ✅ | Git data tools create branch/tag refs |
+| Create tree | `/repos/{owner}/{repo}/git/trees` (POST) | ✅ | ✅ | Git data tools write panel, gated by write access |
+| Create blob | `/repos/{owner}/{repo}/git/blobs` (POST) | ✅ | ✅ | Git data tools write panel, utf-8/base64 |
+| Create tag | `/repos/{owner}/{repo}/git/tags` (POST) | ✅ | ✅ | Annotated tag object creation |
+| Delete ref | `/repos/{owner}/{repo}/git/refs/{ref}` (DELETE) | ✅ | ✅ | Git data tools typed confirmation |
+| Update ref | `/repos/{owner}/{repo}/git/refs/{ref}` (PATCH) | ✅ | ✅ | Git data tools supports force flag |
+| Create commit | `/repos/{owner}/{repo}/git/commits` (POST) | ✅ | ✅ | Git data tools commit object creation |
 
 ### Issues
 | Feature | API Endpoint | Backend | UI | Notes |
@@ -360,16 +367,6 @@ None currently tracked.
 |---------|-------------|----------|-------|
 | Deeper timeline event actions | Multiple issue timeline/event endpoints | Low | Timeline is readable; event-specific mutations are not modeled |
 
-### Git Data (Advanced)
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| Create tree | `/repos/{owner}/{repo}/git/trees` (POST) | Low | Already used internally |
-| Create blob | `/repos/{owner}/{repo}/git/blobs` (POST) | Low | Already used internally |
-| Create tag | `/repos/{owner}/{repo}/git/tags` (POST) | Low | Annotated tags |
-| Delete ref | `/repos/{owner}/{repo}/git/refs/{ref}` (DELETE) | Low | Already have branch delete |
-| Update ref | `/repos/{owner}/{repo}/git/refs/{ref}` (PATCH) | Low | Force push, etc |
-| Create commit | `/repos/{owner}/{repo}/git/commits` (POST) | Low | Already used internally |
-
 ### GitHub Actions (Advanced)
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
@@ -400,7 +397,7 @@ None currently tracked.
 | Authentication & User | ✅ Complete | None tracked |
 | Repositories / Files | ✅ Complete for core mobile flows | None tracked |
 | Branches | ✅ Complete for list/create/delete/switch/signature protection | Other advanced protection sub-resources |
-| Commits / Compare / Git Data | ✅ Complete for current read-only UI | Low-level Git Data write endpoints remain internal or unsurfaced |
+| Commits / Compare / Git Data | ✅ Complete for current mobile UI | None tracked |
 | Issues | ✅ Complete for main issue flow | Deeper timeline event actions |
 | Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs/check suites | None tracked |
 | Releases | ✅ Complete | None tracked |
@@ -450,11 +447,10 @@ None currently tracked.
 - None currently tracked.
 
 **Not Implemented / Early Coverage — Major Gaps:**
-- ⚠️ Git Data write tools remain internal or intentionally unsurfaced.
 - ⚠️ Deeper issue timeline event actions.
 - ⚠️ Legacy OAuth authorizations and Enterprise-only APIs.
 
 ### Recommendations for Next Implementation
 
 **Low Priority (nice to have):**
-1. **Git Data write tools** — tree/blob/tag/ref mutation UI only if a concrete workflow needs it.
+1. **Issue timeline event actions** — only if a concrete workflow needs event-specific mutations.
