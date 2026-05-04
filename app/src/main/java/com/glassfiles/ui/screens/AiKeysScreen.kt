@@ -412,15 +412,17 @@ private fun AceMusicSessionWebViewScreen(
                         settings.cacheMode = WebSettings.LOAD_DEFAULT
                         settings.loadWithOverviewMode = true
                         settings.useWideViewPort = true
+                        settings.setSupportZoom(true)
                         settings.builtInZoomControls = true
                         settings.displayZoomControls = false
-                        settings.textZoom = 100
+                        settings.textZoom = 90
                         settings.loadsImagesAutomatically = true
                         settings.javaScriptCanOpenWindowsAutomatically = true
                         settings.setSupportMultipleWindows(true)
                         settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                         settings.mediaPlaybackRequiresUserGesture = false
                         settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                        setInitialScale(80)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         webChromeClient = object : WebChromeClient() {
                             override fun onCreateWindow(
@@ -434,9 +436,13 @@ private fun AceMusicSessionWebViewScreen(
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.databaseEnabled = true
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+                                    settings.setSupportZoom(true)
                                     settings.javaScriptCanOpenWindowsAutomatically = true
                                     settings.setSupportMultipleWindows(true)
                                     settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                                    setInitialScale(80)
                                     webViewClient = object : WebViewClient() {
                                         override fun shouldOverrideUrlLoading(
                                             view: WebView?,
@@ -484,6 +490,17 @@ private fun AceMusicSessionWebViewScreen(
 
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 status = "page: ${url.orEmpty().ifBlank { "acemusic.ai" }}"
+                                view?.evaluateJavascript(
+                                    """
+                                    (function() {
+                                      document.documentElement.style.zoom = '0.8';
+                                      document.body.style.zoom = '0.8';
+                                      document.body.style.maxWidth = '100vw';
+                                      document.body.style.overflowX = 'auto';
+                                    })();
+                                    """.trimIndent(),
+                                    null,
+                                )
                             }
 
                             override fun onReceivedError(
