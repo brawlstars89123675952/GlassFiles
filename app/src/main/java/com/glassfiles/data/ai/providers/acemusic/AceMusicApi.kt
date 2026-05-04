@@ -6,13 +6,11 @@ import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Url
 
 interface AceMusicApi {
-    @GET("token")
-    suspend fun fetchEngineTokenRaw(): JsonElement
-
-    @GET("/token")
-    suspend fun fetchRootTokenRaw(): JsonElement
+    @GET
+    suspend fun fetchTokenRaw(@Url url: String): JsonElement
 
     @FormUrlEncoded
     @POST("engine/release_task")
@@ -25,7 +23,7 @@ interface AceMusicApi {
     @FormUrlEncoded
     @POST("engine/query_result")
     suspend fun queryResult(
-        @Field("Ai_token") aiToken: String,
+        @Field("ai_token") aiToken: String,
         @Field("task_id_list") taskIdList: String,
         @Field("app") app: String = "studio-web",
     ): JsonElement

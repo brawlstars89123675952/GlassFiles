@@ -27,8 +27,8 @@ import java.util.UUID
  *
  * Music generation is a separate flow from chat/image/video.
  * The current ACEMusic engine endpoint is form-urlencoded:
- * `/token` returns data.token, `/release_task` starts a task,
- * and `/query_result` is polled until audio_url is returned.
+ * `acem-api /user/ai/token` returns data.token, engine `/release_task`
+ * starts a task, and engine `/query_result` is polled until audio is returned.
  */
 object AceMusicProvider : AiProvider {
     override val id: AiProviderId = AiProviderId.ACEMUSIC

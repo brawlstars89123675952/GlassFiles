@@ -12,18 +12,15 @@ import retrofit2.HttpException
 import java.io.IOException
 
 private const val REPOSITORY_LOG_TAG = "ACEMusicRepository"
+private const val ACEMUSIC_TOKEN_URL = "https://acem-api.acemusic.ai/api/acem/user/ai/token"
 
 class AceMusicRepository(
     private val api: AceMusicApi,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     suspend fun fetchAiTokenOrThrow(): String = withContext(ioDispatcher) {
-        val raw = try {
-            callOrThrow("token:/engine/api/token") { api.fetchEngineTokenRaw() }
-        } catch (e: AceMusicHttpDebugException) {
-            if (e.statusCode != 404) throw@withContext e
-            Log.w(REPOSITORY_LOG_TAG, "ACEMusic token /engine/api/token returned 404; trying /token")
-            callOrThrow("token:/token") { api.fetchRootTokenRaw() }
+        val raw = callOrThrow("token:acem-api/user/ai/token") {
+            api.fetchTokenRaw(ACEMUSIC_TOKEN_URL)
         }
         val parsed = raw.toJsonValue()
         (parsed as? JSONObject)?.requireEngineOk("token")
@@ -184,24 +181,63 @@ class AceMusicRepository(
     }
 
     private fun parseTaskRecord(j: JSONObject, fallbackTaskId: String): AceMusicTaskRecord {
-        val audioUrl = firstPresentString(j, "audio_url", "audioUrl", "url", "file", "path")
+        val directAudioUrl = firstPresentString(j, "audio_url", "audioUrl", "url", "file", "path")
         val resultValue = if (j.has("audio_paths") || j.has("first_audio_path")) {
             j
         } else {
-            firstJsonValue(j, "result", "audio", "output", "outputs") ?: audioUrl
+            firstJsonValue(j, "result", "audio", "output", "outputs") ?: directAudioUrl
         }
+        val resultStatus = statusCodeFromResultValue(resultValue)
+        val audioUrl = directAudioUrl.ifBlank { audioUrlFromResultValue(resultValue) }
         val resultText = when (resultValue) {
             null, JSONObject.NULL -> j.toString()
             is String -> resultValue
             else -> resultValue.toString()
         }
+        val directStatus = if (j.has("status")) statusCode(j.opt("status")) else null
+        val status = when {
+            audioUrl.isNotBlank() -> 1
+            directStatus != null && directStatus != 0 -> directStatus
+            resultStatus != null -> resultStatus
+            directStatus != null -> directStatus
+            resultValue != null && resultValue != JSONObject.NULL -> 1
+            else -> 0
+        }
         return AceMusicTaskRecord(
             taskId = firstPresentString(j, "task_id", "taskId", "id").ifBlank { fallbackTaskId },
-            status = if (j.has("status")) statusCode(j.opt("status")) else if (audioUrl.isNotBlank() || resultValue != null && resultValue != JSONObject.NULL) 1 else 0,
+            status = status,
             result = resultText,
             audioUrl = audioUrl,
             error = null,
         )
+    }
+
+    private fun audioUrlFromResultValue(value: Any?): String =
+        firstResultObject(value)?.let { firstPresentString(it, "audio_url", "audioUrl", "url", "file", "path") }.orEmpty()
+
+    private fun statusCodeFromResultValue(value: Any?): Int? =
+        firstResultObject(value)?.takeIf { it.has("status") }?.let { statusCode(it.opt("status")) }
+
+    private fun firstResultObject(value: Any?): JSONObject? {
+        val parsed = when (value) {
+            is JSONObject -> value
+            is JSONArray -> value
+            is String -> value.takeIf { it.isNotBlank() }?.let {
+                runCatching { JSONTokener(it).nextValue() }.getOrNull()
+            }
+            else -> null
+        }
+        return when (parsed) {
+            is JSONObject -> parsed
+            is JSONArray -> {
+                for (i in 0 until parsed.length()) {
+                    val child = parsed.optJSONObject(i)
+                    if (child != null) return child
+                }
+                null
+            }
+            else -> null
+        }
     }
 
     private fun statusCode(value: Any?): Int = when (value) {

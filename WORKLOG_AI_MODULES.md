@@ -23,7 +23,7 @@
 ### ACEMusic engine endpoint
 - Switched ACEMusic default base URL to `https://ai-api.acemusic.ai/engine/api/`.
 - Implemented the Eruda-observed engine flow:
-  - `GET /token` before every generation, with fallback from `/engine/api/token` to host-root `/token` when the first path returns 404;
+  - `GET https://acem-api.acemusic.ai/api/acem/user/ai/token` before every generation;
   - `POST /engine/release_task`
   - `POST /engine/query_result` polling until `audio_url`
 - `token` response is mapped from `data.token` to the release form `ai_token`.
@@ -31,7 +31,7 @@
   - `ai_token=<jwt>`
   - `task_id_list=["<uuid>"]`
   - `app=studio-web`
-- `query_result` uses form field `Ai_token` and reads audio URL from the first `data` array item.
+- `query_result` uses form field `ai_token` and reads audio from the first `data` array item, including JSON-stringified `result` payloads.
 - Generation now creates a fresh UUID task id before submit.
 - Kept raw HTTP body logging/error extraction for debugging 500 responses.
 - Re-enabled Music Generation in the AI hub after the previous ACEMusic pause.
