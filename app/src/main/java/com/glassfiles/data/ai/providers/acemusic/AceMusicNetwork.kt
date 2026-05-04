@@ -9,7 +9,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
-private const val DEFAULT_ACEMUSIC_BASE_URL = "https://ai-api.acemusic.ai/engine/api/engine/"
+private const val DEFAULT_ACEMUSIC_BASE_URL = "https://ai-api.acemusic.ai/engine/api/"
 private const val HTTP_LOG_TAG = "ACEMusicHttp"
 
 enum class AceMusicAuthMode {

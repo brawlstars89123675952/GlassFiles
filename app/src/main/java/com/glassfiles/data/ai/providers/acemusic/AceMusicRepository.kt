@@ -17,10 +17,19 @@ class AceMusicRepository(
     private val api: AceMusicApi,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    suspend fun releaseTaskResultOrThrow(
+    suspend fun fetchAiTokenOrThrow(): String = withContext(ioDispatcher) {
+        val raw = callOrThrow("token") { api.fetchTokenRaw() }
+        val parsed = raw.toJsonValue()
+        (parsed as? JSONObject)?.requireEngineOk("token")
+        findString(parsed, "token").ifBlank {
+            throw RuntimeException("ACEMusic token: response data.token is empty")
+        }
+    }
+
+    suspend fun releaseTaskOrThrow(
         aiToken: String,
         taskIds: List<String>,
-    ): JSONObject = withContext(ioDispatcher) {
+    ): String = withContext(ioDispatcher) {
         val requestedTaskId = taskIds.firstOrNull().orEmpty()
         val raw = callOrThrow("release_task") {
             api.releaseTask(
@@ -30,14 +39,28 @@ class AceMusicRepository(
         }
         val parsed = raw.toJsonValue()
         (parsed as? JSONObject)?.requireEngineOk("release_task")
-        val root = when (parsed) {
-            is JSONObject -> parsed
-            is JSONArray -> JSONObject().put("result", parsed)
-            is String -> JSONObject().put("result", parsed)
-            else -> JSONObject().put("result", parsed.toString())
+        findString(parsed, "task_id", "taskId", "id").ifBlank { requestedTaskId }
+    }
+
+    suspend fun queryResultOrThrow(
+        aiToken: String,
+        taskIds: List<String>,
+    ): List<AceMusicTaskRecord> = withContext(ioDispatcher) {
+        val raw = callOrThrow("query_result") {
+            api.queryResult(
+                aiToken = aiToken,
+                taskIdList = JSONArray(taskIds).toString(),
+            )
         }
-        if (!root.has("id")) root.put("id", findString(root, "task_id", "taskId", "id").ifBlank { requestedTaskId })
-        root
+        val parsed = raw.toJsonValue()
+        (parsed as? JSONObject)?.requireEngineOk("query_result")
+        val records = mutableListOf<AceMusicTaskRecord>()
+        collectTaskRecords(
+            value = if (parsed is JSONObject) firstJsonValue(parsed, "data", "result", "tasks", "task_list", "taskList") ?: parsed else parsed,
+            fallbackTaskIds = taskIds,
+            target = records,
+        )
+        records
     }
 
     suspend fun listModelsOrThrow(): AceMusicModelData = withContext(ioDispatcher) {
@@ -109,6 +132,92 @@ class AceMusicRepository(
         is JSONObject -> if (value.length() == 0) "" else firstPresentString(value, "message", "msg", "detail", "type").ifBlank { value.toString() }
         is JSONArray -> value.toString().takeIf { it != "[]" }.orEmpty()
         else -> value.toString().takeIf { it.isNotBlank() && it != "0" && it != "false" }.orEmpty()
+    }
+
+    private fun collectTaskRecords(value: Any?, fallbackTaskIds: List<String>, target: MutableList<AceMusicTaskRecord>) {
+        when (value) {
+            is JSONArray -> {
+                for (i in 0 until value.length()) {
+                    collectTaskRecords(value.opt(i), fallbackTaskIds.drop(i).ifEmpty { fallbackTaskIds }, target)
+                }
+            }
+            is JSONObject -> {
+                if (looksLikeTaskRecord(value)) {
+                    target += parseTaskRecord(value, fallbackTaskIds.getOrNull(target.size).orEmpty())
+                    return
+                }
+                val nested = firstJsonValue(value, "data", "result", "tasks", "task_list", "taskList")
+                if (nested != null && nested !== value) {
+                    collectTaskRecords(nested, fallbackTaskIds, target)
+                    return
+                }
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val child = value.opt(key)
+                    if (child is JSONObject) {
+                        val withTaskId = JSONObject(child.toString())
+                        if (firstPresentString(withTaskId, "task_id", "taskId", "id").isBlank()) {
+                            withTaskId.put("task_id", key)
+                        }
+                        collectTaskRecords(withTaskId, listOf(key), target)
+                    }
+                }
+            }
+            is String -> if (value.isNotBlank()) {
+                target += AceMusicTaskRecord(
+                    taskId = fallbackTaskIds.firstOrNull(),
+                    status = if (value.startsWith("http", ignoreCase = true)) 1 else 0,
+                    result = value,
+                    audioUrl = value.takeIf { it.startsWith("http", ignoreCase = true) },
+                    error = null,
+                )
+            }
+        }
+    }
+
+    private fun parseTaskRecord(j: JSONObject, fallbackTaskId: String): AceMusicTaskRecord {
+        val audioUrl = firstPresentString(j, "audio_url", "audioUrl", "url", "file", "path")
+        val resultValue = if (j.has("audio_paths") || j.has("first_audio_path")) {
+            j
+        } else {
+            firstJsonValue(j, "result", "audio", "output", "outputs") ?: audioUrl
+        }
+        val resultText = when (resultValue) {
+            null, JSONObject.NULL -> j.toString()
+            is String -> resultValue
+            else -> resultValue.toString()
+        }
+        return AceMusicTaskRecord(
+            taskId = firstPresentString(j, "task_id", "taskId", "id").ifBlank { fallbackTaskId },
+            status = if (j.has("status")) statusCode(j.opt("status")) else if (audioUrl.isNotBlank() || resultValue != null && resultValue != JSONObject.NULL) 1 else 0,
+            result = resultText,
+            audioUrl = audioUrl,
+            error = null,
+        )
+    }
+
+    private fun statusCode(value: Any?): Int = when (value) {
+        is Number -> value.toInt()
+        is String -> value.toIntOrNull() ?: when (value.lowercase()) {
+            "success", "succeeded", "done", "complete", "completed", "finished" -> 1
+            "failed", "fail", "error", "errored", "canceled", "cancelled" -> 2
+            else -> 0
+        }
+        else -> 0
+    }
+
+    private fun looksLikeTaskRecord(j: JSONObject): Boolean =
+        listOf(
+            "task_id", "taskId", "id", "status", "result", "audio", "audio_url",
+            "audioUrl", "audio_paths", "first_audio_path", "file", "url", "path", "output", "outputs",
+        ).any { j.has(it) }
+
+    private fun firstJsonValue(obj: JSONObject, vararg keys: String): Any? {
+        keys.forEach { key ->
+            if (obj.has(key) && !obj.isNull(key)) return obj.opt(key)
+        }
+        return null
     }
 
     private fun findString(value: Any?, vararg keys: String): String {

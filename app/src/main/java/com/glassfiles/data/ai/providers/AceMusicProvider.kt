@@ -10,6 +10,8 @@ import com.glassfiles.data.ai.providers.acemusic.AceMusicHttpDebugException
 import com.glassfiles.data.ai.providers.acemusic.AceMusicNetwork
 import com.glassfiles.data.ai.providers.acemusic.AceMusicModelData
 import com.glassfiles.data.ai.providers.acemusic.AceMusicRepository
+import com.glassfiles.data.ai.providers.acemusic.AceMusicTaskRecord
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -25,12 +27,15 @@ import java.util.UUID
  *
  * Music generation is a separate flow from chat/image/video.
  * The current ACEMusic engine endpoint is form-urlencoded:
- * `/release_task` receives ai_token + task ids and returns the web client payload.
+ * `/token` returns data.token, `/release_task` starts a task,
+ * and `/query_result` is polled until audio_url is returned.
  */
 object AceMusicProvider : AiProvider {
     override val id: AiProviderId = AiProviderId.ACEMUSIC
 
-    private const val DEFAULT_BASE_URL = "https://ai-api.acemusic.ai/engine/api/engine"
+    private const val DEFAULT_BASE_URL = "https://ai-api.acemusic.ai/engine/api"
+    private const val POLL_INTERVAL_MS = 3_000L
+    private const val GENERATION_TIMEOUT_MS = 11 * 60_000L
     private val fallbackModels = listOf(
         "acestep-v15-turbo",
         "acestep-v15-turbo-shift3",
@@ -65,7 +70,7 @@ object AceMusicProvider : AiProvider {
         apiKey: String,
         onProgress: (String) -> Unit,
     ): List<AiMusicResult> = withContext(Dispatchers.IO) {
-        onProgress("release_task")
+        onProgress("token")
         val taskResult = createMusicTaskResult(apiKey, onProgress)
         val taskId = taskResult.optString("id", "acemusic-${System.currentTimeMillis()}")
         val records = parseTaskAudio(taskResult, request)
@@ -98,10 +103,11 @@ object AceMusicProvider : AiProvider {
         val auth = parseAuth(apiKey)
         val repo = repository(auth)
         val taskId = UUID.randomUUID().toString()
-        val aiToken = auth.aiToken.ifBlank { auth.apiKey }
+        val aiToken = repo.fetchAiTokenOrThrow()
         val formDebug = "ai_token=<hidden>&task_id_list=${JSONArray(listOf(taskId))}&app=studio-web"
+        onProgress("release_task")
         val release = try {
-            repo.releaseTaskResultOrThrow(aiToken, listOf(taskId))
+            repo.releaseTaskOrThrow(aiToken, listOf(taskId))
         } catch (e: AceMusicHttpDebugException) {
             throw RuntimeException(
                 buildString {
@@ -119,9 +125,48 @@ object AceMusicProvider : AiProvider {
                 e,
             )
         }
-        if (!release.has("id")) release.put("id", taskId)
-        return release
+        val releasedTaskId = release.ifBlank { taskId }
+        if (releasedTaskId.isBlank()) throw RuntimeException("${id.displayName}: release_task returned empty task_id")
+        onProgress("queued")
+        return pollTaskResult(repo, aiToken, releasedTaskId, onProgress)
     }
+
+    private suspend fun pollTaskResult(
+        repo: AceMusicRepository,
+        aiToken: String,
+        taskId: String,
+        onProgress: (String) -> Unit,
+    ): JSONObject {
+        val deadline = System.currentTimeMillis() + GENERATION_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            delay(POLL_INTERVAL_MS)
+            val records = repo.queryResultOrThrow(aiToken, listOf(taskId))
+            val record = records.firstOrNull { it.taskId == taskId } ?: records.firstOrNull()
+            if (record == null) {
+                onProgress("poll:empty")
+                continue
+            }
+            val audioUrl = record.audioUrl.orEmpty()
+            when {
+                audioUrl.isNotBlank() -> return taskRecordToJson(taskId, record)
+                record.status == 1 -> return taskRecordToJson(taskId, record)
+                record.status == 2 -> throw RuntimeException("${id.displayName}: task failed: ${taskErrorText(record)}")
+                else -> onProgress("poll:${record.status ?: 0}")
+            }
+        }
+        throw RuntimeException("${id.displayName}: generation timed out for task $taskId")
+    }
+
+    private fun taskRecordToJson(taskId: String, record: AceMusicTaskRecord): JSONObject =
+        JSONObject()
+            .put("id", taskId)
+            .put("audio_url", record.audioUrl.orEmpty())
+            .put("result", record.result.orEmpty().ifBlank { record.audioUrl.orEmpty() })
+
+    private fun taskErrorText(record: AceMusicTaskRecord): String =
+        record.error?.takeIf { !it.isJsonNull }?.toString().orEmpty()
+            .ifBlank { record.result.orEmpty() }
+            .ifBlank { "unknown error" }
 
     private fun downloadAudio(fileValue: String, auth: AceMusicAuth, target: File) {
         val url = when {
