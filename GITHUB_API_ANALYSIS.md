@@ -52,6 +52,7 @@ items.
 | Update repo settings | `/repos/{owner}/{repo}` (PATCH) | ✅ | ✅ | Description, homepage, features, merge settings, archive |
 | Repo topics | `/repos/{owner}/{repo}/topics` | ✅ | ✅ | List/replace topics in settings |
 | Repo tags | `/repos/{owner}/{repo}/tags` | ✅ | ✅ | Read-only tags list in settings |
+| Repo deploy keys | `/repos/{owner}/{repo}/keys` | ✅ | ✅ | List/create/delete deploy keys in repo settings |
 | Branch protection rules | `/repos/{owner}/{repo}/branches/{branch}/protection` | ✅ | ✅ | Required checks/reviews/admins/conversation resolution |
 | Required signatures | `/repos/{owner}/{repo}/branches/{branch}/protection/required_signatures` | ✅ | ✅ | Signed commits toggle in branch protection |
 | Repo collaborators | `/repos/{owner}/{repo}/collaborators` | ✅ | ✅ | List/add/remove/update permission |

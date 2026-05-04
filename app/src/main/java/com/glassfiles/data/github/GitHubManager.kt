@@ -3685,6 +3685,49 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/topics", "PUT", body).success
     }
 
+    suspend fun getRepoDeployKeys(context: Context, owner: String, repo: String): List<GHDeployKey> {
+        val r = request(context, "/repos/$owner/$repo/keys?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHDeployKey(
+                    id = j.optLong("id", 0L),
+                    title = j.optString("title", ""),
+                    key = j.optString("key", ""),
+                    verified = j.optBoolean("verified", false),
+                    readOnly = j.optBoolean("read_only", true),
+                    createdAt = j.optString("created_at", ""),
+                    addedBy = j.optString("added_by", ""),
+                    lastUsed = j.optString("last_used", ""),
+                    enabled = j.optBoolean("enabled", true),
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun createRepoDeployKey(
+        context: Context,
+        owner: String,
+        repo: String,
+        title: String,
+        key: String,
+        readOnly: Boolean,
+    ): Boolean {
+        val body = JSONObject().apply {
+            put("title", title)
+            put("key", key)
+            put("read_only", readOnly)
+        }.toString()
+        return request(context, "/repos/$owner/$repo/keys", "POST", body).code == 201
+    }
+
+    suspend fun deleteRepoDeployKey(context: Context, owner: String, repo: String, keyId: Long): Boolean =
+        request(context, "/repos/$owner/$repo/keys/$keyId", "DELETE").let { it.code == 204 || it.success }
+
     suspend fun transferRepo(context: Context, owner: String, repo: String, newOwner: String, newName: String? = null): Boolean {
         val body = JSONObject().apply {
             put("new_owner", newOwner)
@@ -6461,6 +6504,18 @@ data class GHRepoSettings(
     val allowSquashMerge: Boolean,
     val allowRebaseMerge: Boolean,
     val deleteBranchOnMerge: Boolean
+)
+
+data class GHDeployKey(
+    val id: Long,
+    val title: String,
+    val key: String,
+    val verified: Boolean,
+    val readOnly: Boolean,
+    val createdAt: String,
+    val addedBy: String,
+    val lastUsed: String,
+    val enabled: Boolean
 )
 
 data class GHTag(

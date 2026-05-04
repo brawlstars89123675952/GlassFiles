@@ -33,6 +33,7 @@ import com.glassfiles.ui.components.AiModuleSpinner
 import com.glassfiles.ui.components.AiModuleText as Text
 import com.glassfiles.ui.components.AiModuleTextAction
 import com.glassfiles.ui.components.AiModuleTextField
+import com.glassfiles.data.github.GHDeployKey
 import com.glassfiles.data.github.GHRepoSettings
 import com.glassfiles.data.github.GHTag
 import com.glassfiles.data.github.GitHubManager
@@ -59,10 +60,13 @@ internal fun RepoSettingsScreen(
     var settings by remember { mutableStateOf<GHRepoSettings?>(null) }
     var tags by remember { mutableStateOf<List<GHTag>>(emptyList()) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
+    var deployKeys by remember { mutableStateOf<List<GHDeployKey>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var saving by remember { mutableStateOf(false) }
     var adminActionInFlight by remember { mutableStateOf(false) }
+    var deployKeyBusy by remember { mutableStateOf(false) }
     var showArchiveConfirm by remember { mutableStateOf<Boolean?>(null) }
+    var deployKeyDeleteTarget by remember { mutableStateOf<GHDeployKey?>(null) }
 
     // Editable fields
     var description by remember { mutableStateOf("") }
@@ -90,12 +94,16 @@ internal fun RepoSettingsScreen(
     var transferOwner by remember { mutableStateOf("") }
     var transferName by remember { mutableStateOf("") }
     var transferConfirm by remember { mutableStateOf("") }
+    var deployKeyTitle by remember { mutableStateOf("") }
+    var deployKeyValue by remember { mutableStateOf("") }
+    var deployKeyReadOnly by remember { mutableStateOf(true) }
 
     LaunchedEffect(repoOwner, repoName) {
         val s = GitHubManager.getRepoSettings(context, repoOwner, repoName)
         val fetchedBranches = GitHubManager.getBranches(context, repoOwner, repoName)
         tags = GitHubManager.getRepoTags(context, repoOwner, repoName)
         branches = fetchedBranches
+        deployKeys = GitHubManager.getRepoDeployKeys(context, repoOwner, repoName)
         settings = s
         if (s != null) {
             description = s.description
@@ -419,6 +427,46 @@ internal fun RepoSettingsScreen(
                     }
                 }
 
+                item { SectionHeader("Deploy keys") }
+
+                item {
+                    DeployKeysSettingsCard(
+                        keys = deployKeys,
+                        busy = deployKeyBusy,
+                        title = deployKeyTitle,
+                        onTitleChange = { deployKeyTitle = it },
+                        keyValue = deployKeyValue,
+                        onKeyValueChange = { deployKeyValue = it },
+                        readOnly = deployKeyReadOnly,
+                        onReadOnlyChange = { deployKeyReadOnly = it },
+                        onCreate = {
+                            if (!deployKeyBusy) {
+                                val title = deployKeyTitle.trim().ifBlank { "GlassFiles deploy key" }
+                                val key = deployKeyValue.trim()
+                                deployKeyBusy = true
+                                scope.launch {
+                                    val ok = GitHubManager.createRepoDeployKey(
+                                        context = context,
+                                        owner = repoOwner,
+                                        repo = repoName,
+                                        title = title,
+                                        key = key,
+                                        readOnly = deployKeyReadOnly,
+                                    )
+                                    Toast.makeText(context, if (ok) "Deploy key added" else "Deploy key add failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) {
+                                        deployKeyTitle = ""
+                                        deployKeyValue = ""
+                                        deployKeys = GitHubManager.getRepoDeployKeys(context, repoOwner, repoName)
+                                    }
+                                    deployKeyBusy = false
+                                }
+                            }
+                        },
+                        onDelete = { key -> deployKeyDeleteTarget = key },
+                    )
+                }
+
                 item { SectionHeader("Repository API") }
 
                 item {
@@ -581,6 +629,45 @@ internal fun RepoSettingsScreen(
         }
     }
 
+    deployKeyDeleteTarget?.let { key ->
+        AiModuleAlertDialog(
+            onDismissRequest = { deployKeyDeleteTarget = null },
+            title = "delete deploy key",
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "delete",
+                    onClick = {
+                        if (!deployKeyBusy) {
+                            deployKeyBusy = true
+                            scope.launch {
+                                val ok = GitHubManager.deleteRepoDeployKey(context, repoOwner, repoName, key.id)
+                                Toast.makeText(context, if (ok) "Deploy key deleted" else "Deploy key delete failed", Toast.LENGTH_SHORT).show()
+                                if (ok) deployKeys = GitHubManager.getRepoDeployKeys(context, repoOwner, repoName)
+                                deployKeyDeleteTarget = null
+                                deployKeyBusy = false
+                            }
+                        }
+                    },
+                    tint = AiModuleTheme.colors.error,
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = Strings.cancel.lowercase(),
+                    onClick = { deployKeyDeleteTarget = null },
+                    tint = AiModuleTheme.colors.textSecondary,
+                )
+            },
+        ) {
+            Text(
+                "Deploy keys are immutable. Delete `${key.title.ifBlank { key.id.toString() }}` from $repoOwner/$repoName?",
+                color = AiModuleTheme.colors.textSecondary,
+                fontSize = 13.sp,
+                fontFamily = JetBrainsMono,
+            )
+        }
+    }
+
     val archiveTarget = showArchiveConfirm
     if (archiveTarget != null) {
         AiModuleAlertDialog(
@@ -694,6 +781,85 @@ private fun RepoTagRow(tag: GHTag) {
             }
         }
         Icon(Icons.Rounded.ChevronRight, null, Modifier.size(15.dp), tint = AiModuleTheme.colors.textMuted)
+    }
+}
+
+@Composable
+private fun DeployKeysSettingsCard(
+    keys: List<GHDeployKey>,
+    busy: Boolean,
+    title: String,
+    onTitleChange: (String) -> Unit,
+    keyValue: String,
+    onKeyValueChange: (String) -> Unit,
+    readOnly: Boolean,
+    onReadOnlyChange: (Boolean) -> Unit,
+    onCreate: () -> Unit,
+    onDelete: (GHDeployKey) -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    SettingsCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("> deploy keys", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("${keys.size} keys", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            }
+            Text(
+                "GET/POST/DELETE /repos/{owner}/{repo}/keys",
+                color = palette.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            TerminalLabeledField("title", title, onTitleChange, "deploy key title")
+            TerminalLabeledField("public_key", keyValue, onKeyValueChange, "ssh-rsa AAAA...", singleLine = false)
+            GitHubTerminalCheckbox("read only", readOnly, onToggle = { onReadOnlyChange(!readOnly) }, enabled = !busy)
+            GitHubTerminalButton(
+                label = if (busy) "running" else "add deploy key",
+                onClick = onCreate,
+                color = palette.accent,
+                enabled = !busy && keyValue.trim().isNotBlank(),
+                modifier = Modifier.align(Alignment.End),
+            )
+
+            DividerMini()
+
+            if (keys.isEmpty()) {
+                Text("No deploy keys returned, or token cannot read repository administration settings.", color = palette.textSecondary, fontSize = 12.sp)
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    keys.forEach { key ->
+                        DeployKeyRow(key, busy, onDelete)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeployKeyRow(key: GHDeployKey, busy: Boolean, onDelete: (GHDeployKey) -> Unit) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(palette.background).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(key.title.ifBlank { "deploy key ${key.id}" }, fontSize = 13.sp, color = palette.textPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(key.key.take(72).ifBlank { "key hidden" }, fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            GitHubTerminalButton("delete", onClick = { onDelete(key) }, color = palette.error, enabled = !busy)
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MiniTag(if (key.readOnly) "read-only" else "write")
+            MiniTag(if (key.verified) "verified" else "unverified")
+            MiniTag(if (key.enabled) "enabled" else "disabled")
+            if (key.addedBy.isNotBlank()) MiniTag("by ${key.addedBy}")
+            if (key.createdAt.isNotBlank()) MiniTag("created ${key.createdAt.take(10)}")
+            if (key.lastUsed.isNotBlank()) MiniTag("used ${key.lastUsed.take(10)}")
+        }
     }
 }
 

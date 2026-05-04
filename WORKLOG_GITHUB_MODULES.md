@@ -55,9 +55,12 @@
   - failed build карточка извлекает из загруженного failed step/job log подозрительные error-lines
   - показывает tail failed log рядом с pattern diagnostics
   - можно скопировать или экспортировать отдельный failure evidence report в `Downloads/GlassFiles_Git`
+- Начато расширение GitHub settings по публичному API:
+  - в repository settings добавлены deploy keys: list/create/delete через `/repos/{owner}/{repo}/keys`
+  - UI оставлен terminal-style, с read-only переключателем и явным delete confirmation
 
 ### Осталось / идеи дальше
-- Следующие улучшения делать уже вокруг конкретных GitHub workflow-сценариев: больше cross-run аналитики и repo-level failure trends.
+- Следующие GitHub settings шаги: Pages, Environments, repository interaction limits, autolinks, custom properties, immutable releases, затем account settings gaps.
 
 ## 2026-04-23
 
