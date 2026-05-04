@@ -362,6 +362,8 @@ items.
 | List enterprise runners | `/enterprises/{enterprise}/actions/runners` | ✅ | ✅ | Admin API screen, requires enterprise token |
 | SCIM users | `/scim/v2/organizations/{org}/Users` | ✅ | ✅ | Admin API screen, requires SCIM/org admin access |
 | Audit log | `/orgs/{org}/audit-log` | ✅ | ✅ | Admin API screen with optional phrase |
+| SAML SSO authorizations | `/orgs/{org}/credential-authorizations` | ✅ | ✅ | Admin API screen with login filter |
+| Remove SAML SSO authorization | `/orgs/{org}/credential-authorizations/{credential_id}` (DELETE) | ✅ | ✅ | Typed revoke confirmation |
 
 ---
 
@@ -377,13 +379,6 @@ None currently tracked.
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
 | OAuth app authorizations | `/authorizations` | Low | Legacy |
-
-### Enterprise / Advanced
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| SAML SSO auth | Various | Low | Enterprise only |
-
----
 
 ## 📊 SUMMARY
 
@@ -412,7 +407,7 @@ None currently tracked.
 | User Settings | ✅ Complete for supported public APIs | Web-only settings remain out of scope |
 | GitHub Apps / Installations | ✅ Complete | None tracked for user installation flows |
 | OAuth | ❌ Backlog | Legacy OAuth app authorization views |
-| Enterprise / Advanced | ✅ Partial admin utilities | SAML SSO auth remains out of scope |
+| Enterprise / Advanced | ✅ Partial admin utilities | None tracked beyond legacy/deprecated flows |
 
 ### Overall Assessment
 
@@ -444,9 +439,9 @@ None currently tracked.
 - None currently tracked.
 
 **Not Implemented / Early Coverage — Major Gaps:**
-- ⚠️ Legacy OAuth authorizations and SAML SSO authorization utilities.
+- ⚠️ Legacy OAuth authorizations.
 
 ### Recommendations for Next Implementation
 
 **Low Priority (nice to have):**
-1. **Legacy OAuth / SAML SSO screens** — only if a concrete admin workflow needs them.
+1. **Legacy OAuth screens** — only if a concrete legacy enterprise workflow needs them.

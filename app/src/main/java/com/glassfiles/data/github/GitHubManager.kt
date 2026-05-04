@@ -2298,6 +2298,42 @@ object GitHubManager {
         } catch (e: Exception) { GHScimUsersPage(error = e.message ?: "parse error") }
     }
 
+    suspend fun getOrgSamlAuthorizations(context: Context, org: String, login: String = "", page: Int = 1): List<GHSamlAuthorization> {
+        val cleanOrg = org.trim()
+        if (cleanOrg.isBlank()) return emptyList()
+        val query = buildString {
+            append("?per_page=100&page=$page")
+            if (login.isNotBlank()) append("&login=${URLEncoder.encode(login.trim(), "UTF-8")}")
+        }
+        val r = request(context, "/orgs/$cleanOrg/credential-authorizations$query")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val scopes = j.optJSONArray("scopes")?.let { scopeArr ->
+                    (0 until scopeArr.length()).mapNotNull { idx -> scopeArr.optString(idx).takeIf { it.isNotBlank() } }
+                } ?: emptyList()
+                GHSamlAuthorization(
+                    login = j.optString("login", ""),
+                    credentialId = j.optLong("credential_id"),
+                    credentialType = j.optString("credential_type", ""),
+                    tokenLastEight = j.optString("token_last_eight", ""),
+                    authorizedAt = j.optString("credential_authorized_at", ""),
+                    accessedAt = j.optString("credential_accessed_at", ""),
+                    expiresAt = j.optString("authorized_credential_expires_at", ""),
+                    scopes = scopes
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun removeOrgSamlAuthorization(context: Context, org: String, credentialId: Long): Boolean {
+        val cleanOrg = org.trim()
+        if (cleanOrg.isBlank() || credentialId <= 0L) return false
+        return request(context, "/orgs/$cleanOrg/credential-authorizations/$credentialId", "DELETE").let { it.code == 204 || it.success }
+    }
+
     suspend fun deleteRepoSelfHostedRunner(context: Context, owner: String, repo: String, runnerId: Long): Boolean =
         request(context, "/repos/$owner/$repo/actions/runners/$runnerId", "DELETE").let { it.code == 204 || it.success }
 
@@ -5904,6 +5940,17 @@ data class GHScimUser(
     val active: Boolean,
     val externalId: String,
     val emails: List<String>
+)
+
+data class GHSamlAuthorization(
+    val login: String,
+    val credentialId: Long,
+    val credentialType: String,
+    val tokenLastEight: String,
+    val authorizedAt: String,
+    val accessedAt: String,
+    val expiresAt: String,
+    val scopes: List<String>
 )
 
 data class GHRunnerToken(val token: String, val expiresAt: String)

@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.github.GHActionRunner
 import com.glassfiles.data.github.GHAuditLogEntry
+import com.glassfiles.data.github.GHSamlAuthorization
 import com.glassfiles.data.github.GHScimUser
 import com.glassfiles.data.github.GHScimUsersPage
 import com.glassfiles.data.github.GitHubManager
@@ -43,7 +44,7 @@ import com.glassfiles.ui.theme.AiModuleTheme
 import com.glassfiles.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 
-private enum class GitHubAdminTab { ENTERPRISE_RUNNERS, AUDIT_LOG, SCIM_USERS }
+private enum class GitHubAdminTab { ENTERPRISE_RUNNERS, AUDIT_LOG, SCIM_USERS, SAML_SSO }
 
 @Composable
 internal fun GitHubEnterpriseAdminScreen(onBack: () -> Unit) {
@@ -54,11 +55,15 @@ internal fun GitHubEnterpriseAdminScreen(onBack: () -> Unit) {
     var enterprise by rememberSaveable { mutableStateOf("") }
     var org by rememberSaveable { mutableStateOf("") }
     var auditPhrase by rememberSaveable { mutableStateOf("") }
+    var samlLogin by rememberSaveable { mutableStateOf("") }
+    var samlRevokeId by rememberSaveable { mutableStateOf("") }
+    var samlRevokeConfirm by rememberSaveable { mutableStateOf("") }
     var scimStart by rememberSaveable { mutableIntStateOf(1) }
     var loading by remember { mutableStateOf(false) }
     var enterpriseRunners by remember { mutableStateOf<List<GHActionRunner>>(emptyList()) }
     var auditLog by remember { mutableStateOf<List<GHAuditLogEntry>>(emptyList()) }
     var scimPage by remember { mutableStateOf(GHScimUsersPage()) }
+    var samlAuthorizations by remember { mutableStateOf<List<GHSamlAuthorization>>(emptyList()) }
     var notice by remember { mutableStateOf("") }
 
     fun loadCurrent() {
@@ -78,6 +83,32 @@ internal fun GitHubEnterpriseAdminScreen(onBack: () -> Unit) {
                     scimPage = GitHubManager.getOrgScimUsers(context, org, startIndex = scimStart)
                     notice = scimPage.error.ifBlank { "scim users=${scimPage.users.size}/${scimPage.totalResults}" }
                 }
+                GitHubAdminTab.SAML_SSO -> {
+                    samlAuthorizations = GitHubManager.getOrgSamlAuthorizations(context, org, samlLogin)
+                    notice = if (samlAuthorizations.isEmpty()) "no saml authorizations returned" else "saml authorizations=${samlAuthorizations.size}"
+                }
+            }
+            loading = false
+        }
+    }
+
+    fun revokeSamlAuthorization() {
+        val credentialId = samlRevokeId.toLongOrNull() ?: 0L
+        if (samlRevokeConfirm.trim() != "revoke" || credentialId <= 0L) {
+            notice = "type revoke and provide credential id"
+            return
+        }
+        loading = true
+        notice = ""
+        scope.launch {
+            val ok = GitHubManager.removeOrgSamlAuthorization(context, org, credentialId)
+            if (ok) {
+                samlRevokeId = ""
+                samlRevokeConfirm = ""
+                samlAuthorizations = GitHubManager.getOrgSamlAuthorizations(context, org, samlLogin)
+                notice = "saml credential revoked"
+            } else {
+                notice = "failed to revoke saml credential"
             }
             loading = false
         }
@@ -127,6 +158,14 @@ internal fun GitHubEnterpriseAdminScreen(onBack: () -> Unit) {
                 if (tab == GitHubAdminTab.SCIM_USERS) {
                     GitHubAdminInput("start index", scimStart.toString(), { scimStart = it.filter { ch -> ch.isDigit() }.toIntOrNull() ?: 1 }, "1")
                 }
+                if (tab == GitHubAdminTab.SAML_SSO) {
+                    GitHubAdminInput("login filter", samlLogin, { samlLogin = it }, "optional member login")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GitHubAdminInput("credential id", samlRevokeId, { samlRevokeId = it.filter { ch -> ch.isDigit() } }, "id to revoke", modifier = Modifier.weight(1f))
+                        GitHubAdminInput("confirm", samlRevokeConfirm, { samlRevokeConfirm = it }, "type revoke", modifier = Modifier.weight(1f))
+                    }
+                    GitHubTerminalButton("revoke saml credential", onClick = { revokeSamlAuthorization() }, color = palette.error, enabled = !loading)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     GitHubTerminalButton(if (loading) "loading..." else "load", onClick = { loadCurrent() }, color = palette.accent, enabled = !loading)
                     if (notice.isNotBlank()) Text(notice, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
@@ -161,6 +200,18 @@ internal fun GitHubEnterpriseAdminScreen(onBack: () -> Unit) {
                             if (scimPage.users.isEmpty() && scimPage.error.isBlank()) item { GitHubAdminEmpty("no scim users loaded") }
                             items(scimPage.users) { user -> ScimUserCard(user) }
                         }
+                        GitHubAdminTab.SAML_SSO -> {
+                            if (samlAuthorizations.isEmpty()) item { GitHubAdminEmpty("no saml authorizations loaded") }
+                            items(samlAuthorizations) { authorization ->
+                                SamlAuthorizationCard(
+                                    authorization = authorization,
+                                    onSelect = {
+                                        samlRevokeId = authorization.credentialId.toString()
+                                        samlRevokeConfirm = ""
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -175,9 +226,10 @@ private fun GitHubAdminInput(
     onValueChange: (String) -> Unit,
     placeholder: String,
     enabled: Boolean = true,
+    modifier: Modifier = Modifier,
 ) {
     val palette = AiModuleTheme.colors
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, color = if (enabled) palette.textMuted else palette.textMuted.copy(alpha = 0.45f), fontFamily = JetBrainsMono, fontSize = 11.sp)
         GitHubTerminalTextField(
             value = value,
@@ -222,6 +274,20 @@ private fun ScimUserCard(user: GHScimUser) {
         GitHubAdminKv("external", user.externalId)
         GitHubAdminKv("emails", user.emails.joinToString(", "))
         GitHubAdminKv("id", user.id)
+    }
+}
+
+@Composable
+private fun SamlAuthorizationCard(authorization: GHSamlAuthorization, onSelect: () -> Unit) {
+    GitHubAdminCard(authorization.login.ifBlank { "credential ${authorization.credentialId}" }) {
+        GitHubAdminKv("credential", authorization.credentialId.toString())
+        GitHubAdminKv("type", authorization.credentialType)
+        GitHubAdminKv("token", authorization.tokenLastEight.takeIf { it.isNotBlank() }?.let { "****$it" } ?: "")
+        GitHubAdminKv("authorized", authorization.authorizedAt)
+        GitHubAdminKv("accessed", authorization.accessedAt)
+        GitHubAdminKv("expires", authorization.expiresAt)
+        GitHubAdminKv("scopes", authorization.scopes.joinToString(", "))
+        GitHubTerminalButton("select for revoke", onClick = onSelect, color = AiModuleTheme.colors.warning)
     }
 }
 

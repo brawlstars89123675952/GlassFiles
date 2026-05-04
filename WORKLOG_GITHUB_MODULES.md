@@ -1509,3 +1509,21 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнены только статические проверки.
+
+### GitHub SAML SSO authorizations
+- Закрыта SAML SSO часть enterprise/admin backlog из `GITHUB_API_ANALYSIS.md`.
+- `GitHubManager.kt`:
+  - добавлен `getOrgSamlAuthorizations(...)` для `/orgs/{org}/credential-authorizations`;
+  - добавлен `removeOrgSamlAuthorization(...)` для `/orgs/{org}/credential-authorizations/{credential_id}`;
+  - добавлена модель `GHSamlAuthorization`.
+- `GitHubEnterpriseAdminModule.kt`:
+  - добавлена вкладка `saml sso`;
+  - список credential authorizations поддерживает login filter;
+  - revoke требует `credential_id` и typed confirmation `revoke`;
+  - выбор строки подставляет credential id в revoke форму.
+- `GITHUB_API_ANALYSIS.md`:
+  - SAML SSO authorizations и remove SAML authorization перенесены в implemented;
+  - в tracked backlog остался только legacy OAuth authorization flow.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнены только статические проверки.
