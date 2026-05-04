@@ -22,6 +22,8 @@ object GitHubManager {
     private const val PREFS = "github_prefs"
     private const val KEY_TOKEN = "token"
     private const val KEY_USER = "user_json"
+    private const val KEY_API_ERRORS = "api_error_log"
+    private const val MAX_API_ERROR_LOG = 30
 
     fun saveToken(context: Context, token: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_TOKEN, token).apply()
@@ -36,7 +38,14 @@ object GitHubManager {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
-    private suspend fun request(context: Context, endpoint: String, method: String = "GET", body: String? = null, extraHeaders: Map<String, String> = emptyMap()): ApiResult =
+    private suspend fun request(
+        context: Context,
+        endpoint: String,
+        method: String = "GET",
+        body: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
+        trackErrors: Boolean = true,
+    ): ApiResult =
         withContext(Dispatchers.IO) {
             try {
                 val token = getToken(context)
@@ -62,13 +71,68 @@ object GitHubManager {
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 conn.disconnect()
 
-                if (code in 200..299) ApiResult(true, text, code, headers)
-                else ApiResult(false, text, code, headers)
+                val result = if (code in 200..299) ApiResult(true, text, code, headers) else ApiResult(false, text, code, headers)
+                if (!result.success && trackErrors) recordApiError(context, endpoint, method, result)
+                result
             } catch (e: Exception) {
                 Log.e(TAG, "Request error: ${e.message}")
-                ApiResult(false, e.message ?: "Network error", -1)
+                val result = ApiResult(false, e.message ?: "Network error", -1)
+                if (trackErrors) recordApiError(context, endpoint, method, result)
+                result
             }
         }
+
+    fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_API_ERRORS, "[]") ?: "[]"
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { index ->
+                val item = arr.optJSONObject(index) ?: return@mapNotNull null
+                GHApiErrorLogEntry(
+                    timestamp = item.optLong("timestamp"),
+                    method = item.optString("method"),
+                    endpoint = item.optString("endpoint"),
+                    statusCode = item.optInt("statusCode"),
+                    message = item.optString("message"),
+                    body = item.optString("body"),
+                    requestId = item.optString("requestId"),
+                    rateRemaining = item.optString("rateRemaining"),
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun clearApiErrorLog(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_API_ERRORS).apply()
+    }
+
+    private fun recordApiError(context: Context, endpoint: String, method: String, result: ApiResult) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val current = try {
+            JSONArray(prefs.getString(KEY_API_ERRORS, "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val entry = JSONObject().apply {
+            put("timestamp", System.currentTimeMillis())
+            put("method", method)
+            put("endpoint", endpoint.take(220))
+            put("statusCode", result.code)
+            put("message", apiErrorMessage(result).take(300))
+            put("body", result.body.trim().take(900))
+            put("requestId", result.headers["x-github-request-id"].orEmpty())
+            put("rateRemaining", result.headers["x-ratelimit-remaining"].orEmpty())
+        }
+        val next = JSONArray().apply {
+            put(entry)
+            for (i in 0 until minOf(current.length(), MAX_API_ERROR_LOG - 1)) {
+                current.optJSONObject(i)?.let { put(it) }
+            }
+        }
+        prefs.edit().putString(KEY_API_ERRORS, next.toString()).apply()
+    }
 
     private fun responseHeaders(conn: HttpURLConnection): Map<String, String> =
         conn.headerFields
@@ -3358,7 +3422,7 @@ object GitHubManager {
             )
         }
 
-        val userResult = request(context, "/user")
+        val userResult = request(context, "/user", trackErrors = false)
         val login = parseLogin(userResult.body)
         addResult(
             title = "Token identity",
@@ -3368,7 +3432,7 @@ object GitHubManager {
             hint = "401 means token is missing, expired, or revoked.",
         )
 
-        val rateResult = request(context, "/rate_limit")
+        val rateResult = request(context, "/rate_limit", trackErrors = false)
         val rate = parseRateLimitSummary(rateResult.body)
         addResult(
             title = "Rate limit",
@@ -3381,14 +3445,14 @@ object GitHubManager {
         addResult(
             title = "Repository list",
             endpoint = "/user/repos?type=all&per_page=1",
-            result = request(context, "/user/repos?type=all&per_page=1"),
+            result = request(context, "/user/repos?type=all&per_page=1", trackErrors = false),
             successMessage = "repository list is readable",
             hint = "Requires repository access on fine-grained tokens.",
         )
         addResult(
             title = "Organizations",
             endpoint = "/user/orgs?per_page=1",
-            result = request(context, "/user/orgs?per_page=1"),
+            result = request(context, "/user/orgs?per_page=1", trackErrors = false),
             successMessage = "organization list is readable",
             hint = "Some organizations may be hidden by SSO or token restrictions.",
         )
@@ -3399,21 +3463,21 @@ object GitHubManager {
             addResult(
                 title = "Repository access",
                 endpoint = "/repos/$cleanOwner/$cleanRepo",
-                result = request(context, "/repos/$encodedOwner/$encodedRepo"),
+                result = request(context, "/repos/$encodedOwner/$encodedRepo", trackErrors = false),
                 successMessage = "repository metadata is readable",
                 hint = "404 can mean the repo is private or the token has no repository permission.",
             )
             addResult(
                 title = "Actions workflows",
                 endpoint = "/repos/$cleanOwner/$cleanRepo/actions/workflows?per_page=1",
-                result = request(context, "/repos/$encodedOwner/$encodedRepo/actions/workflows?per_page=1"),
+                result = request(context, "/repos/$encodedOwner/$encodedRepo/actions/workflows?per_page=1", trackErrors = false),
                 successMessage = "Actions workflows are readable",
                 hint = "Requires Actions access for the selected repository.",
             )
             addResult(
                 title = "Branches",
                 endpoint = "/repos/$cleanOwner/$cleanRepo/branches?per_page=1",
-                result = request(context, "/repos/$encodedOwner/$encodedRepo/branches?per_page=1"),
+                result = request(context, "/repos/$encodedOwner/$encodedRepo/branches?per_page=1", trackErrors = false),
                 successMessage = "branches are readable",
                 hint = "Branch reads should work for any visible repository.",
             )
@@ -3421,7 +3485,7 @@ object GitHubManager {
                 addResult(
                     title = "Your repo permission",
                     endpoint = "/repos/$cleanOwner/$cleanRepo/collaborators/$login/permission",
-                    result = request(context, "/repos/$encodedOwner/$encodedRepo/collaborators/${URLEncoder.encode(login, "UTF-8")}/permission"),
+                    result = request(context, "/repos/$encodedOwner/$encodedRepo/collaborators/${URLEncoder.encode(login, "UTF-8")}/permission", trackErrors = false),
                     successMessage = "permission endpoint is readable",
                     hint = "This helps explain why write/admin buttons are disabled.",
                 )
@@ -3439,14 +3503,14 @@ object GitHubManager {
             addResult(
                 title = "Organization access",
                 endpoint = "/orgs/$cleanOrg",
-                result = request(context, "/orgs/$encodedOrg"),
+                result = request(context, "/orgs/$encodedOrg", trackErrors = false),
                 successMessage = "organization metadata is readable",
                 hint = "404/403 can mean private org membership, SSO, or missing org permission.",
             )
             addResult(
                 title = "Organization audit log",
                 endpoint = "/orgs/$cleanOrg/audit-log?per_page=1",
-                result = request(context, "/orgs/$encodedOrg/audit-log?per_page=1"),
+                result = request(context, "/orgs/$encodedOrg/audit-log?per_page=1", trackErrors = false),
                 successMessage = "audit log is readable",
                 hint = "Usually requires org owner/admin permissions.",
             )
@@ -3460,7 +3524,7 @@ object GitHubManager {
             addResult(
                 title = "Enterprise runners",
                 endpoint = "/enterprises/$cleanEnterprise/actions/runners?per_page=1",
-                result = request(context, "/enterprises/$encodedEnterprise/actions/runners?per_page=1"),
+                result = request(context, "/enterprises/$encodedEnterprise/actions/runners?per_page=1", trackErrors = false),
                 successMessage = "enterprise runners are readable",
                 hint = "Requires enterprise owner/admin permissions.",
             )
@@ -5846,6 +5910,17 @@ data class GHApiDiagnosticCheck(
     val status: String,
     val message: String,
     val hint: String,
+)
+
+data class GHApiErrorLogEntry(
+    val timestamp: Long,
+    val method: String,
+    val endpoint: String,
+    val statusCode: Int,
+    val message: String,
+    val body: String,
+    val requestId: String,
+    val rateRemaining: String,
 )
 
 data class GHUser(val login: String, val name: String, val avatarUrl: String, val bio: String,

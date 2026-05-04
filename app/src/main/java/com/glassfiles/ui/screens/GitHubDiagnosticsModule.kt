@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.glassfiles.data.github.GHApiDiagnosticCheck
 import com.glassfiles.data.github.GHApiDiagnostics
+import com.glassfiles.data.github.GHApiErrorLogEntry
 import com.glassfiles.data.github.GitHubManager
 import com.glassfiles.ui.components.AiModuleSpinner
 import com.glassfiles.ui.components.AiModuleText as Text
@@ -56,6 +57,7 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
     var enterprise by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var report by remember { mutableStateOf<GHApiDiagnostics?>(null) }
+    var errorLog by remember { mutableStateOf<List<GHApiErrorLogEntry>>(emptyList()) }
     var notice by remember { mutableStateOf("") }
 
     fun runChecks() {
@@ -64,6 +66,7 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
         notice = ""
         scope.launch {
             report = GitHubManager.runApiDiagnostics(context, owner, repo, org, enterprise)
+            errorLog = GitHubManager.getApiErrorLog(context)
             notice = "checks=${report?.checks?.size ?: 0}"
             loading = false
         }
@@ -72,6 +75,7 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) {
         loading = true
         report = GitHubManager.runApiDiagnostics(context)
+        errorLog = GitHubManager.getApiErrorLog(context)
         notice = "basic checks ready"
         loading = false
     }
@@ -137,6 +141,20 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
 
             report?.let { current ->
                 item { GitHubDiagnosticsSummary(current) }
+                item {
+                    GitHubApiErrorLogPanel(
+                        errors = errorLog,
+                        onClear = {
+                            GitHubManager.clearApiErrorLog(context)
+                            errorLog = emptyList()
+                            notice = "api error log cleared"
+                        },
+                        onRefresh = {
+                            errorLog = GitHubManager.getApiErrorLog(context)
+                            notice = "api error log refreshed"
+                        },
+                    )
+                }
                 items(current.checks, key = { "${it.title}:${it.endpoint}" }) { check ->
                     GitHubDiagnosticCheckRow(check)
                 }
@@ -152,6 +170,77 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun GitHubApiErrorLogPanel(
+    errors: List<GHApiErrorLogEntry>,
+    onClear: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    GitHubDiagnosticPanel {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "recent api errors",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp,
+                )
+                Text(
+                    if (errors.isEmpty()) "no stored errors" else "stored=${errors.size} · newest first",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                )
+            }
+            GitHubTerminalButton("refresh", onClick = onRefresh, color = palette.textSecondary)
+            GitHubTerminalButton("clear", onClick = onClear, color = palette.error, enabled = errors.isNotEmpty())
+        }
+        if (errors.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                errors.take(8).forEach { item ->
+                    GitHubApiErrorRow(item)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GitHubApiErrorRow(item: GHApiErrorLogEntry) {
+    val palette = AiModuleTheme.colors
+    val color = when (item.statusCode) {
+        401, 403 -> GitHubWarningAmber()
+        404 -> palette.textMuted
+        in 500..599 -> GitHubErrorRed
+        else -> palette.error
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .background(palette.background, RoundedCornerShape(3.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("${item.method} HTTP ${item.statusCode}", color = color, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 11.sp)
+            Text(githubDiagnosticsTime(item.timestamp), color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(item.endpoint, color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(item.message.ifBlank { item.body.ifBlank { "no error body" } }, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp, lineHeight = 16.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        val meta = listOfNotNull(
+            item.requestId.takeIf { it.isNotBlank() }?.let { "request=$it" },
+            item.rateRemaining.takeIf { it.isNotBlank() }?.let { "remaining=$it" },
+        ).joinToString(" · ")
+        if (meta.isNotBlank()) {
+            Text(meta, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

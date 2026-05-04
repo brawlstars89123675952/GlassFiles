@@ -23,9 +23,14 @@
   - Git Data write cards показывают единый терминальный hint вместо разрозненного текста
   - Actions overview показывает `write required` рядом с workflow enable/disable и run dispatch
   - Branch picker показывает, почему создание ветки недоступно
+- Добавлен журнал последних GitHub API ошибок внутри приложения:
+  - `GitHubManager.request(...)` сохраняет последние 30 неуспешных REST вызовов
+  - в лог пишутся method, endpoint, HTTP code, GitHub message, short body, request id и остаток rate limit
+  - request body не сохраняется, чтобы не писать токены/секреты
+  - Diagnostics screen показывает `recent api errors`, поддерживает refresh и clear
+  - диагностические probe-запросы не пишутся в журнал, чтобы не засорять его ожидаемыми `403/404`
 
 ### Осталось / идеи дальше
-- Добавить журнал последних GitHub API ошибок внутри приложения.
 - Добавить экспорт diagnostics report в `.txt`/`.json` для отладки токенов и прав.
 
 ## 2026-04-23

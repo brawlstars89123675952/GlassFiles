@@ -355,6 +355,7 @@ items.
 | Delete social account | `/user/social_accounts` (DELETE) | ✅ | ✅ | SettingsModule |
 | Rate limit check | `/rate_limit` | ✅ | ✅ | SettingsModule |
 | API diagnostics | `/user`, `/rate_limit`, `/user/repos`, `/user/orgs`, optional repo/org/enterprise checks | ✅ | ✅ | GitHubDiagnosticsScreen with scopes, rate limits, endpoint statuses and permission hints |
+| Recent API error log | Local REST error journal | ✅ | ✅ | Last 30 failed GitHub API calls in GitHubDiagnosticsScreen, no request bodies stored |
 | Clear cache | Local | ✅ | ✅ | SettingsModule |
 
 ### Enterprise / Admin
