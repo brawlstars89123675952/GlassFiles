@@ -1383,9 +1383,9 @@
 - Что осталось не реализовано или намеренно не выведено в UI:
   - deeper issue timeline/event-specific actions: timeline читается, но отдельные mutation-действия по событиям не смоделированы;
   - Git Data write tools были отдельным gap на момент паузы; позже закрыты в секции `GitHub Git Data write tools`;
-  - GitHub Actions runner groups: repo runner groups endpoint enterprise-only, не surfaced;
+  - GitHub Actions runner groups были отдельным gap на момент паузы; позже закрыты для org-level self-hosted runner groups;
   - GitHub Apps/OAuth: user installations, installation repositories, legacy OAuth authorizations;
-  - Enterprise/admin-only APIs: enterprise runners, org runner groups, SCIM, audit log, SAML SSO.
+  - Enterprise/admin-only APIs: enterprise runners, SCIM, audit log, SAML SSO.
 - Для следующего возврата к GitHub приоритет лучше держать низким, кроме случая, когда появится конкретный пользовательский сценарий под Git Data mutations или Apps/OAuth.
 
 ### GitHub Apps / installations
@@ -1466,6 +1466,25 @@
 - `GITHUB_API_ANALYSIS.md`:
   - per-issue events и single issue event перенесены в implemented;
   - issue timeline/event backlog очищен.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнены только статические проверки.
+
+### GitHub Actions runner groups
+- Закрыт runner groups gap из `GITHUB_API_ANALYSIS.md` для org-level self-hosted runner groups.
+- `GitHubManager.kt`:
+  - общий parser self-hosted runners вынесен в `parseActionRunner(...)`;
+  - добавлен `getOrgRunnerGroups(...)` для `/orgs/{org}/actions/runner-groups`;
+  - добавлен `getOrgRunnerGroupRunners(...)` для `/orgs/{org}/actions/runner-groups/{runner_group_id}/runners`;
+  - добавлена модель `GHActionRunnerGroup`.
+- `GitHubActionsModule.kt`:
+  - Actions runners panel теперь грузит runner groups для owner/org репозитория;
+  - группы показывают visibility/default/inherited/public/workflow restriction badges;
+  - выбранную группу можно раскрыть и посмотреть runners внутри;
+  - для личных репозиториев или токенов без enterprise/org access показывается terminal-style empty state.
+- `GITHUB_API_ANALYSIS.md`:
+  - org runner groups и group runners перенесены в implemented Actions;
+  - backlog Actions сужен до enterprise runners only.
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнены только статические проверки.

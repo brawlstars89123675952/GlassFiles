@@ -83,6 +83,7 @@ import coil.compose.AsyncImage
 import com.glassfiles.R
 import com.glassfiles.data.Strings
 import com.glassfiles.data.github.GHActionRunner
+import com.glassfiles.data.github.GHActionRunnerGroup
 import com.glassfiles.data.github.GHActionSecret
 import com.glassfiles.data.github.GHActionVariable
 import com.glassfiles.data.github.GHActionsCacheEntry
@@ -1709,13 +1710,25 @@ private fun ActionsRunnersPanel(repo: GHRepo) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var runners by remember { mutableStateOf<List<GHActionRunner>>(emptyList()) }
+    var runnerGroups by remember { mutableStateOf<List<GHActionRunnerGroup>>(emptyList()) }
+    var selectedGroup by remember { mutableStateOf<GHActionRunnerGroup?>(null) }
+    var groupRunners by remember { mutableStateOf<List<GHActionRunner>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var loadingGroup by remember { mutableStateOf(false) }
     var runnerToken by remember { mutableStateOf("") }
 
     suspend fun load() {
         loading = true
         runners = GitHubManager.getRepoSelfHostedRunners(context, repo.owner, repo.name)
+        runnerGroups = GitHubManager.getOrgRunnerGroups(context, repo.owner)
         loading = false
+    }
+
+    suspend fun loadGroup(group: GHActionRunnerGroup) {
+        selectedGroup = group
+        loadingGroup = true
+        groupRunners = GitHubManager.getOrgRunnerGroupRunners(context, repo.owner, group.id)
+        loadingGroup = false
     }
 
     LaunchedEffect(repo.owner, repo.name) { load() }
@@ -1745,6 +1758,42 @@ private fun ActionsRunnersPanel(repo: GHRepo) {
                 }
             }
         }
+        item {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Rounded.Timeline, null, tint = Purple, modifier = Modifier.size(18.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Runner groups", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                        Text("Organization/Enterprise runner groups for ${repo.owner}. Requires eligible org access.", fontSize = 11.sp, color = TextSecondary, lineHeight = 15.sp)
+                    }
+                }
+                if (runnerGroups.isEmpty() && !loading) {
+                    Text("// no runner groups returned", fontSize = 12.sp, color = TextTertiary, fontFamily = JetBrainsMono)
+                } else {
+                    runnerGroups.forEach { group ->
+                        RunnerGroupRow(
+                            group = group,
+                            selected = selectedGroup?.id == group.id,
+                            onOpen = { scope.launch { loadGroup(group) } },
+                        )
+                    }
+                }
+                selectedGroup?.let { group ->
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(SeparatorColor))
+                    Text("group:${group.name}", fontSize = 12.sp, color = Purple, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold)
+                    when {
+                        loadingGroup -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AiModuleSpinner()
+                            Text("loading group runners", fontSize = 12.sp, color = TextSecondary, fontFamily = JetBrainsMono)
+                        }
+                        groupRunners.isEmpty() -> Text("// no runners in this group", fontSize = 12.sp, color = TextTertiary, fontFamily = JetBrainsMono)
+                        else -> groupRunners.forEach { runner ->
+                            RunnerInlineRow(runner)
+                        }
+                    }
+                }
+            }
+        }
         if (runners.isEmpty() && !loading) item { EmptyActionsText("No self-hosted runners found") }
         items(runners) { runner ->
             ActionInfoCard(
@@ -1761,6 +1810,56 @@ private fun ActionsRunnersPanel(repo: GHRepo) {
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun RunnerGroupRow(group: GHActionRunnerGroup, selected: Boolean, onOpen: () -> Unit) {
+    val tint = if (selected) Purple else TextSecondary
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, tint.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+            .clickable(onClick = onOpen)
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(group.name.ifBlank { "runner group #${group.id}" }, fontSize = 13.sp, color = TextPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            GitHubTerminalButton("runners", onClick = onOpen, color = tint)
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            MiniActionsBadge(group.visibility.ifBlank { "visibility?" }, Purple)
+            if (group.isDefault) MiniActionsBadge("default", Blue)
+            if (group.inherited) MiniActionsBadge("inherited", TextSecondary)
+            if (group.allowsPublicRepositories) MiniActionsBadge("public repos", Green)
+            if (group.restrictedToWorkflows) MiniActionsBadge("workflow-restricted", Orange)
+        }
+        if (group.selectedWorkflows.isNotEmpty()) {
+            Text(
+                group.selectedWorkflows.take(3).joinToString(" | "),
+                fontSize = 10.sp,
+                color = TextTertiary,
+                fontFamily = JetBrainsMono,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RunnerInlineRow(runner: GHActionRunner) {
+    Row(
+        Modifier.fillMaxWidth().border(1.dp, SeparatorColor, RoundedCornerShape(3.dp)).padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(if (runner.busy) "●" else "○", color = if (runner.busy) Orange else Green, fontSize = 12.sp, fontFamily = JetBrainsMono)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(runner.name, fontSize = 12.sp, color = TextPrimary, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${runner.os} · ${runner.status}", fontSize = 10.sp, color = TextTertiary, fontFamily = JetBrainsMono)
         }
     }
 }

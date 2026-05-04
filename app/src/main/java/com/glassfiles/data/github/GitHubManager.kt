@@ -978,6 +978,20 @@ object GitHubManager {
         )
     }
 
+    private fun parseActionRunner(j: JSONObject): GHActionRunner {
+        val labels = j.optJSONArray("labels")?.let { labelArr ->
+            (0 until labelArr.length()).mapNotNull { idx -> labelArr.optJSONObject(idx)?.optString("name") }
+        } ?: emptyList()
+        return GHActionRunner(
+            id = j.optLong("id"),
+            name = j.optString("name"),
+            os = j.optString("os"),
+            status = j.optString("status"),
+            busy = j.optBoolean("busy", false),
+            labels = labels
+        )
+    }
+
     private fun parseTrafficSeries(j: JSONObject, itemKey: String): GHTrafficSeries {
         val items = j.optJSONArray(itemKey) ?: JSONArray()
         return GHTrafficSeries(
@@ -2167,20 +2181,46 @@ object GitHubManager {
         if (!r.success) return emptyList()
         return try {
             val arr = JSONObject(r.body).optJSONArray("runners") ?: JSONArray()
+            (0 until arr.length()).map { i -> parseActionRunner(arr.getJSONObject(i)) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getOrgRunnerGroups(context: Context, org: String): List<GHActionRunnerGroup> {
+        val cleanOrg = org.trim()
+        if (cleanOrg.isBlank()) return emptyList()
+        val r = request(context, "/orgs/$cleanOrg/actions/runner-groups?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("runner_groups") ?: JSONArray()
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
-                val labels = j.optJSONArray("labels")?.let { labelArr ->
-                    (0 until labelArr.length()).mapNotNull { idx -> labelArr.optJSONObject(idx)?.optString("name") }
+                val workflows = j.optJSONArray("selected_workflows")?.let { wf ->
+                    (0 until wf.length()).mapNotNull { idx -> wf.optString(idx).takeIf { it.isNotBlank() } }
                 } ?: emptyList()
-                GHActionRunner(
+                GHActionRunnerGroup(
                     id = j.optLong("id"),
                     name = j.optString("name"),
-                    os = j.optString("os"),
-                    status = j.optString("status"),
-                    busy = j.optBoolean("busy", false),
-                    labels = labels
+                    visibility = j.optString("visibility"),
+                    isDefault = j.optBoolean("default", false),
+                    inherited = j.optBoolean("inherited", false),
+                    allowsPublicRepositories = j.optBoolean("allows_public_repositories", false),
+                    restrictedToWorkflows = j.optBoolean("restricted_to_workflows", false),
+                    selectedWorkflows = workflows,
+                    runnersUrl = j.optString("runners_url", ""),
+                    selectedRepositoriesUrl = j.optString("selected_repositories_url", "")
                 )
             }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getOrgRunnerGroupRunners(context: Context, org: String, groupId: Long): List<GHActionRunner> {
+        val cleanOrg = org.trim()
+        if (cleanOrg.isBlank() || groupId <= 0L) return emptyList()
+        val r = request(context, "/orgs/$cleanOrg/actions/runner-groups/$groupId/runners?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("runners") ?: JSONArray()
+            (0 until arr.length()).map { i -> parseActionRunner(arr.getJSONObject(i)) }
         } catch (e: Exception) { emptyList() }
     }
 
@@ -5747,6 +5787,19 @@ data class GHActionVariable(val name: String, val value: String, val createdAt: 
 
 data class GHActionRunner(val id: Long, val name: String, val os: String, val status: String,
     val busy: Boolean, val labels: List<String>)
+
+data class GHActionRunnerGroup(
+    val id: Long,
+    val name: String,
+    val visibility: String,
+    val isDefault: Boolean,
+    val inherited: Boolean,
+    val allowsPublicRepositories: Boolean,
+    val restrictedToWorkflows: Boolean,
+    val selectedWorkflows: List<String>,
+    val runnersUrl: String,
+    val selectedRepositoriesUrl: String
+)
 
 data class GHRunnerToken(val token: String, val expiresAt: String)
 

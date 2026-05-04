@@ -194,6 +194,8 @@ items.
 | Actions variables CRUD | `/repos/{owner}/{repo}/actions/variables` | ✅ | ✅ | Variables panel |
 | Actions secrets CRUD | `/repos/{owner}/{repo}/actions/secrets` | ✅ | ✅ | Secrets panel with public-key encryption |
 | Self-hosted runners | `/repos/{owner}/{repo}/actions/runners` | ✅ | ✅ | List/delete plus registration/remove tokens |
+| Org runner groups | `/orgs/{org}/actions/runner-groups` | ✅ | ✅ | Actions runners panel, enterprise/org-gated |
+| Org runner group runners | `/orgs/{org}/actions/runner-groups/{runner_group_id}/runners` | ✅ | ✅ | Expand runner group to runners |
 | Actions permissions read/write | `/repos/{owner}/{repo}/actions/permissions` | ✅ | ✅ | Settings panel |
 | Workflow token permissions read/write | `/repos/{owner}/{repo}/actions/permissions/workflow` | ✅ | ✅ | Settings panel |
 | Artifact/log retention read/write | `/repos/{owner}/{repo}/actions/permissions/artifact-and-log-retention` | ✅ | ✅ | Settings panel |
@@ -364,11 +366,6 @@ None currently tracked.
 
 ## ❌ NOT IMPLEMENTED / REMAINING BACKLOG
 
-### GitHub Actions (Advanced)
-| Feature | API Endpoint | Priority | Notes |
-|---------|-------------|----------|-------|
-| List runner groups | `/repos/{owner}/{repo}/actions/runner-groups` | Low | Enterprise-only / not surfaced |
-
 ### OAuth
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
@@ -378,7 +375,6 @@ None currently tracked.
 | Feature | API Endpoint | Priority | Notes |
 |---------|-------------|----------|-------|
 | List enterprise runners | `/enterprises/{enterprise}/actions/runners` | Low | Enterprise only |
-| List org runner groups | `/orgs/{org}/actions/runner-groups` | Low | Enterprise only |
 | SCIM provisioning | `/scim/v2/organizations/{org}/Users` | Low | Enterprise only |
 | Audit log | `/orgs/{org}/audit-log` | Low | Enterprise only |
 | SAML SSO auth | Various | Low | Enterprise only |
@@ -398,7 +394,7 @@ None currently tracked.
 | Issues | ✅ Complete for main issue flow and event/timeline inspection | None tracked |
 | Pull Requests | ✅ Complete for PR detail/reviews/comments/merge methods/check runs/check suites | None tracked |
 | Releases | ✅ Complete | None tracked |
-| GitHub Actions | ✅ Complete for runs/logs/artifacts/dispatch/jobs/cache/secrets/variables/runners/settings/workflow detail | Enterprise runner groups |
+| GitHub Actions | ✅ Complete for runs/logs/artifacts/dispatch/jobs/cache/secrets/variables/runners/runner groups/settings/workflow detail | Enterprise runners |
 | Gists | ✅ Complete | None tracked |
 | Notifications | ✅ Complete | None tracked |
 | Search | ✅ Complete | None tracked |
@@ -412,7 +408,7 @@ None currently tracked.
 | User Settings | ✅ Complete for supported public APIs | Web-only settings remain out of scope |
 | GitHub Apps / Installations | ✅ Complete | None tracked for user installation flows |
 | OAuth | ❌ Backlog | Legacy OAuth app authorization views |
-| Enterprise / Advanced | ❌ Backlog | Enterprise runners, org runner groups, SCIM, audit log, SAML SSO |
+| Enterprise / Advanced | ❌ Backlog | Enterprise runners, SCIM, audit log, SAML SSO |
 
 ### Overall Assessment
 
