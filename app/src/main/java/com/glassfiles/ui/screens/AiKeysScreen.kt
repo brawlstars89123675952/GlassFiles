@@ -502,7 +502,7 @@ private fun AceMusicSessionWebViewScreen(
                                     error: WebResourceError?,
                                 ) {
                                     if (request?.isForMainFrame == true) {
-                                        status = "webview error: ${error?.description.orEmpty()}"
+                                        status = "webview error: ${error?.description?.toString().orEmpty()}"
                                     }
                                 }
                             }
