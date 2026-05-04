@@ -823,7 +823,7 @@ private fun DeployKeysSettingsCard(
                 modifier = Modifier.align(Alignment.End),
             )
 
-            DividerMini()
+            DeployKeyDivider()
 
             if (keys.isEmpty()) {
                 Text("No deploy keys returned, or token cannot read repository administration settings.", color = palette.textSecondary, fontSize = 12.sp)
@@ -853,14 +853,40 @@ private fun DeployKeyRow(key: GHDeployKey, busy: Boolean, onDelete: (GHDeployKey
             GitHubTerminalButton("delete", onClick = { onDelete(key) }, color = palette.error, enabled = !busy)
         }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            MiniTag(if (key.readOnly) "read-only" else "write")
-            MiniTag(if (key.verified) "verified" else "unverified")
-            MiniTag(if (key.enabled) "enabled" else "disabled")
-            if (key.addedBy.isNotBlank()) MiniTag("by ${key.addedBy}")
-            if (key.createdAt.isNotBlank()) MiniTag("created ${key.createdAt.take(10)}")
-            if (key.lastUsed.isNotBlank()) MiniTag("used ${key.lastUsed.take(10)}")
+            DeployKeyMiniTag(if (key.readOnly) "read-only" else "write")
+            DeployKeyMiniTag(if (key.verified) "verified" else "unverified")
+            DeployKeyMiniTag(if (key.enabled) "enabled" else "disabled")
+            if (key.addedBy.isNotBlank()) DeployKeyMiniTag("by ${key.addedBy}")
+            if (key.createdAt.isNotBlank()) DeployKeyMiniTag("created ${key.createdAt.take(10)}")
+            if (key.lastUsed.isNotBlank()) DeployKeyMiniTag("used ${key.lastUsed.take(10)}")
         }
     }
+}
+
+@Composable
+private fun DeployKeyDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(AiModuleTheme.colors.border.copy(alpha = 0.45f))
+    )
+}
+
+@Composable
+private fun DeployKeyMiniTag(label: String) {
+    Text(
+        label,
+        color = AiModuleTheme.colors.textMuted,
+        fontFamily = JetBrainsMono,
+        fontSize = 10.sp,
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(AiModuleTheme.colors.surfaceElevated)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
