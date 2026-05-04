@@ -23,7 +23,7 @@
 ### ACEMusic engine endpoint
 - Switched ACEMusic default base URL to `https://ai-api.acemusic.ai/engine/api/`.
 - Implemented the Eruda-observed engine flow:
-  - `GET /token` before every generation;
+  - `GET /token` before every generation, with fallback from `/engine/api/token` to host-root `/token` when the first path returns 404;
   - `POST /engine/release_task`
   - `POST /engine/query_result` polling until `audio_url`
 - `token` response is mapped from `data.token` to the release form `ai_token`.

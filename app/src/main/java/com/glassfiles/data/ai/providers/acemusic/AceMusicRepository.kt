@@ -18,7 +18,13 @@ class AceMusicRepository(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     suspend fun fetchAiTokenOrThrow(): String = withContext(ioDispatcher) {
-        val raw = callOrThrow("token") { api.fetchTokenRaw() }
+        val raw = try {
+            callOrThrow("token:/engine/api/token") { api.fetchEngineTokenRaw() }
+        } catch (e: AceMusicHttpDebugException) {
+            if (e.statusCode != 404) throw@withContext e
+            Log.w(REPOSITORY_LOG_TAG, "ACEMusic token /engine/api/token returned 404; trying /token")
+            callOrThrow("token:/token") { api.fetchRootTokenRaw() }
+        }
         val parsed = raw.toJsonValue()
         (parsed as? JSONObject)?.requireEngineOk("token")
         findString(parsed, "token").ifBlank {

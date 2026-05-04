@@ -9,7 +9,10 @@ import retrofit2.http.POST
 
 interface AceMusicApi {
     @GET("token")
-    suspend fun fetchTokenRaw(): JsonElement
+    suspend fun fetchEngineTokenRaw(): JsonElement
+
+    @GET("/token")
+    suspend fun fetchRootTokenRaw(): JsonElement
 
     @FormUrlEncoded
     @POST("engine/release_task")
