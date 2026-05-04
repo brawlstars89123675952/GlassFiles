@@ -58,9 +58,14 @@
 - Начато расширение GitHub settings по публичному API:
   - в repository settings добавлены deploy keys: list/create/delete через `/repos/{owner}/{repo}/keys`
   - UI оставлен terminal-style, с read-only переключателем и явным delete confirmation
+- Продолжено расширение account/profile settings по публичному API:
+  - `GET /user` теперь используется для своего профиля, чтобы подтягивать private/account metadata, если токен это возвращает
+  - `PATCH /user` расширен полями `email`, `twitter_username`, `hireable`
+  - профильный экран получил public email picker, Twitter/X username, hireable toggle и read-only account metadata
+  - UI оставлен terminal-style, без Material UI-компонентов
 
 ### Осталось / идеи дальше
-- Следующие GitHub settings шаги: Pages, Environments, repository interaction limits, autolinks, custom properties, immutable releases, затем account settings gaps.
+- Следующие GitHub settings шаги: Pages, Environments, repository interaction limits, autolinks, custom properties, immutable releases, затем оставшиеся account settings gaps.
 
 ## 2026-04-23
 

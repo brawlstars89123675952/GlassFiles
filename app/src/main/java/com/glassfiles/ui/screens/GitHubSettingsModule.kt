@@ -118,6 +118,9 @@ internal fun GitHubSettingsScreen(
     var profileCompany by remember { mutableStateOf("") }
     var profileLocation by remember { mutableStateOf("") }
     var profileBlog by remember { mutableStateOf("") }
+    var profileEmail by remember { mutableStateOf("") }
+    var profileTwitter by remember { mutableStateOf("") }
+    var profileHireable by remember { mutableStateOf(false) }
 
     var emails by remember { mutableStateOf<List<GHEmailEntry>>(emptyList()) }
     var newEmail by remember { mutableStateOf("") }
@@ -162,11 +165,15 @@ internal fun GitHubSettingsScreen(
             SettingsSection.PROFILE -> {
                 user = GitHubManager.getUser(context) ?: GitHubManager.getCachedUser(context)
                 profile = GitHubManager.getCurrentUserProfile(context)
+                emails = GitHubManager.getEmailEntries(context)
                 profileName = profile?.name ?: user?.name.orEmpty()
                 profileBio = profile?.bio.orEmpty()
                 profileCompany = profile?.company.orEmpty()
                 profileLocation = profile?.location.orEmpty()
                 profileBlog = profile?.blog.orEmpty()
+                profileEmail = profile?.email.orEmpty()
+                profileTwitter = profile?.twitterUsername.orEmpty()
+                profileHireable = profile?.hireable ?: false
             }
             SettingsSection.EMAILS -> {
                 emails = GitHubManager.getEmailEntries(context)
@@ -239,10 +246,27 @@ internal fun GitHubSettingsScreen(
                             CompactField("Company", profileCompany) { profileCompany = it }
                             CompactField("Location", profileLocation) { profileLocation = it }
                             CompactField("Blog", profileBlog) { profileBlog = it }
+                            CompactField("Public email", profileEmail) { profileEmail = it }
+                            PublicEmailChooser(profileEmail, emails) { profileEmail = it }
+                            CompactField("Twitter/X username", profileTwitter) { profileTwitter = it }
+                            HireableChooser(profileHireable) { profileHireable = it }
+                            ProfileAccountSummary(profile)
                             ActionRow(Icons.Rounded.Check, "Save profile") {
                                 scope.launch {
-                                    val ok = GitHubManager.updateCurrentUserProfile(context, profileName, profileBio, profileCompany, profileLocation, profileBlog)
-                                    addLog("Profile updated: $ok")
+                                    val profileOk = GitHubManager.updateCurrentUserProfile(
+                                        context = context,
+                                        name = profileName,
+                                        bio = profileBio,
+                                        company = profileCompany,
+                                        location = profileLocation,
+                                        blog = profileBlog,
+                                        email = profileEmail,
+                                        twitterUsername = profileTwitter,
+                                        hireable = profileHireable,
+                                    )
+                                    val visibilityOk = if (profileEmail.isBlank()) GitHubManager.setEmailVisibility(context, "private") else true
+                                    val ok = profileOk && visibilityOk
+                                    addLog("Profile updated: profile=$profileOk visibility=$visibilityOk")
                                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                                     refreshSection(SettingsSection.PROFILE)
                                 }
@@ -786,6 +810,87 @@ private fun VisibilityChip(label: String, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
+private fun PublicEmailChooser(current: String, emails: List<GHEmailEntry>, onSet: (String) -> Unit) {
+    if (emails.isEmpty()) {
+        Text(
+            "No email list returned. The token may not have user:email scope.",
+            color = AiModuleTheme.colors.textMuted,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
+        )
+        return
+    }
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ProfileChoiceChip("private/no public email", current.isBlank()) { onSet("") }
+        emails.filter { it.verified }.distinctBy { it.email }.forEach { email ->
+            ProfileChoiceChip(
+                label = buildString {
+                    append(email.email)
+                    if (email.primary) append(" primary")
+                },
+                selected = current.equals(email.email, ignoreCase = true),
+            ) { onSet(email.email) }
+        }
+    }
+}
+
+@Composable
+private fun HireableChooser(current: Boolean, onSet: (Boolean) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text("> hireable", color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ProfileChoiceChip("available", current) { onSet(true) }
+            ProfileChoiceChip("not hireable", !current) { onSet(false) }
+        }
+    }
+}
+
+@Composable
+private fun ProfileChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surfaceElevated)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+    ) {
+        Text(
+            if (selected) "[$label]" else label,
+            color = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textMuted,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ProfileAccountSummary(profile: GHUserProfile?) {
+    if (profile == null) return
+    Spacer(Modifier.height(8.dp))
+    SectionHeader("Account metadata")
+    InfoLine("Login", "@${profile.login}")
+    InfoLine(
+        "Public stats",
+        "repos ${formatGitHubNumber(profile.publicRepos)} • gists ${formatGitHubNumber(profile.publicGists)} • followers ${formatGitHubNumber(profile.followers)} • following ${formatGitHubNumber(profile.following)}",
+    )
+    if (profile.privateRepos > 0 || profile.privateGists > 0 || profile.collaborators > 0 || profile.diskUsageKb > 0L) {
+        InfoLine(
+            "Private account stats",
+            "repos ${formatGitHubNumber(profile.privateRepos)} • gists ${formatGitHubNumber(profile.privateGists)} • collaborators ${formatGitHubNumber(profile.collaborators)} • disk ${formatGitHubKilobytes(profile.diskUsageKb)}",
+        )
+    }
+    InfoLine("2FA", profile.twoFactorAuthentication?.let { if (it) "enabled" else "disabled" } ?: "not returned")
+    if (profile.planName.isNotBlank()) {
+        InfoLine("Plan", "${profile.planName}${profile.planSpace.takeIf { it > 0L }?.let { " • ${formatGitHubKilobytes(it)}" }.orEmpty()}")
+    }
+    if (profile.createdAt.isNotBlank()) InfoLine("Joined", profile.createdAt.take(10))
+    if (profile.updatedAt.isNotBlank()) InfoLine("Updated", profile.updatedAt.take(10))
+}
+
+@Composable
 private fun KeyModeRow(mode: KeyMode, onSet: (KeyMode) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         VisibilityChip("SSH", mode == KeyMode.SSH) { onSet(KeyMode.SSH) }
@@ -908,4 +1013,11 @@ private fun InfoLine(label: String, value: String) {
 private fun maskToken(token: String): String {
     if (token.isBlank()) return "Not set"
     return if (token.length <= 8) "••••••••" else token.take(4) + "••••••••" + token.takeLast(4)
+}
+
+private fun formatGitHubKilobytes(kb: Long): String = when {
+    kb <= 0L -> "0 KB"
+    kb < 1024L -> "$kb KB"
+    kb < 1024L * 1024L -> "${kb / 1024L} MB"
+    else -> "${kb / (1024L * 1024L)} GB"
 }

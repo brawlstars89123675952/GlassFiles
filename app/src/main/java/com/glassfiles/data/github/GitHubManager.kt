@@ -2934,17 +2934,42 @@ object GitHubManager {
         val r = request(context, "/users/$username")
         if (!r.success) return null
         return try {
-            val j = JSONObject(r.body)
-            GHUserProfile(
-                login = j.optString("login"), name = j.optString("name", ""),
-                avatarUrl = j.optString("avatar_url", ""), bio = j.optString("bio", ""),
-                company = j.optString("company", ""), location = j.optString("location", ""),
-                blog = j.optString("blog", ""), publicRepos = j.optInt("public_repos", 0),
-                followers = j.optInt("followers", 0), following = j.optInt("following", 0),
-                createdAt = j.optString("created_at", "")
-            )
+            parseUserProfile(JSONObject(r.body))
         } catch (e: Exception) { null }
     }
+
+    private fun parseUserProfile(j: JSONObject): GHUserProfile =
+        GHUserProfile(
+            login = j.cleanString("login"),
+            name = j.cleanString("name"),
+            avatarUrl = j.cleanString("avatar_url"),
+            bio = j.cleanString("bio"),
+            company = j.cleanString("company"),
+            location = j.cleanString("location"),
+            blog = j.cleanString("blog"),
+            email = j.cleanString("email"),
+            twitterUsername = j.cleanString("twitter_username"),
+            hireable = if (j.isNull("hireable")) false else j.optBoolean("hireable", false),
+            publicRepos = j.optInt("public_repos", 0),
+            publicGists = j.optInt("public_gists", 0),
+            privateRepos = j.optInt("total_private_repos", 0),
+            ownedPrivateRepos = j.optInt("owned_private_repos", 0),
+            privateGists = j.optInt("private_gists", 0),
+            diskUsageKb = j.optLong("disk_usage", 0L),
+            collaborators = j.optInt("collaborators", 0),
+            followers = j.optInt("followers", 0),
+            following = j.optInt("following", 0),
+            twoFactorAuthentication = if (j.has("two_factor_authentication") && !j.isNull("two_factor_authentication")) {
+                j.optBoolean("two_factor_authentication", false)
+            } else null,
+            planName = j.optJSONObject("plan")?.cleanString("name").orEmpty(),
+            planSpace = j.optJSONObject("plan")?.optLong("space", 0L) ?: 0L,
+            createdAt = j.cleanString("created_at"),
+            updatedAt = j.cleanString("updated_at")
+        )
+
+    private fun JSONObject.cleanString(key: String): String =
+        optString(key, "").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty()
 
     suspend fun getUserRepos(context: Context, username: String): List<GHRepo> {
         val r = request(context, "/users/$username/repos?sort=updated&per_page=30")
@@ -3169,8 +3194,16 @@ object GitHubManager {
 
 
     suspend fun getCurrentUserProfile(context: Context): GHUserProfile? {
-        val login = getCachedUser(context)?.login ?: getUser(context)?.login ?: return null
-        return getUserProfile(context, login)
+        val r = request(context, "/user")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
+            parseUserProfile(j)
+        } catch (e: Exception) {
+            Log.e(TAG, "Parse current profile: ${e.message}")
+            null
+        }
     }
 
     suspend fun updateCurrentUserProfile(
@@ -3179,7 +3212,10 @@ object GitHubManager {
         bio: String,
         company: String,
         location: String,
-        blog: String
+        blog: String,
+        email: String? = null,
+        twitterUsername: String? = null,
+        hireable: Boolean? = null
     ): Boolean {
         val body = JSONObject().apply {
             put("name", name)
@@ -3187,6 +3223,12 @@ object GitHubManager {
             put("company", company)
             put("location", location)
             put("blog", blog)
+            if (email != null && email.isNotBlank()) put("email", email.trim())
+            if (twitterUsername != null) {
+                if (twitterUsername.isBlank()) put("twitter_username", JSONObject.NULL)
+                else put("twitter_username", twitterUsername.trim().removePrefix("@"))
+            }
+            if (hireable != null) put("hireable", hireable)
         }.toString()
         val ok = request(context, "/user", "PATCH", body).success
         if (ok) getUser(context)
@@ -6464,9 +6506,32 @@ data class GHLabelSearchResult(
     val score: Double
 )
 
-data class GHUserProfile(val login: String, val name: String, val avatarUrl: String, val bio: String,
-    val company: String, val location: String, val blog: String,
-    val publicRepos: Int, val followers: Int, val following: Int, val createdAt: String)
+data class GHUserProfile(
+    val login: String,
+    val name: String,
+    val avatarUrl: String,
+    val bio: String,
+    val company: String,
+    val location: String,
+    val blog: String,
+    val publicRepos: Int,
+    val followers: Int,
+    val following: Int,
+    val createdAt: String,
+    val email: String = "",
+    val twitterUsername: String = "",
+    val hireable: Boolean = false,
+    val publicGists: Int = 0,
+    val privateRepos: Int = 0,
+    val ownedPrivateRepos: Int = 0,
+    val privateGists: Int = 0,
+    val diskUsageKb: Long = 0L,
+    val collaborators: Int = 0,
+    val twoFactorAuthentication: Boolean? = null,
+    val planName: String = "",
+    val planSpace: Long = 0L,
+    val updatedAt: String = ""
+)
 
 data class GHOrg(val login: String, val avatarUrl: String, val description: String)
 
