@@ -2,6 +2,7 @@ package com.glassfiles.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -48,6 +49,7 @@ private val WEBHOOK_EVENT_PRESETS = listOf(
 internal fun WebhooksScreen(
     repoOwner: String,
     repoName: String,
+    canAdmin: Boolean = true,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -65,6 +67,11 @@ internal fun WebhooksScreen(
     var query by remember { mutableStateOf("") }
 
     fun loadWebhooks() {
+        if (!canAdmin) {
+            webhooks = emptyList()
+            loading = false
+            return
+        }
         loading = true
         scope.launch {
             webhooks = GitHubManager.getWebhooks(context, repoOwner, repoName)
@@ -72,7 +79,7 @@ internal fun WebhooksScreen(
         }
     }
 
-    LaunchedEffect(repoOwner, repoName) { loadWebhooks() }
+    LaunchedEffect(repoOwner, repoName, canAdmin) { loadWebhooks() }
 
     deliveriesHook?.let { hook ->
         WebhookDeliveriesScreen(
@@ -97,15 +104,21 @@ internal fun WebhooksScreen(
                     tint = AiModuleTheme.colors.accent,
                     contentDescription = "refresh webhooks",
                 )
-                GitHubTopBarAction(
-                    glyph = GhGlyphs.PLUS,
-                    onClick = { createNew = true },
-                    tint = AiModuleTheme.colors.accent,
-                    contentDescription = "create webhook",
-                )
+                if (canAdmin) {
+                    GitHubTopBarAction(
+                        glyph = GhGlyphs.PLUS,
+                        onClick = { createNew = true },
+                        tint = AiModuleTheme.colors.accent,
+                        contentDescription = "create webhook",
+                    )
+                }
             }
         },
     ) {
+        if (!canAdmin) {
+            WebhooksAdminRequiredState()
+            return@GitHubScreenFrame
+        }
 
         if (loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -183,7 +196,7 @@ internal fun WebhooksScreen(
         }
     }
 
-    if (createNew || showEditor != null) {
+    if (canAdmin && (createNew || showEditor != null)) {
         WebhookEditorDialog(
             webhook = showEditor,
             onDismiss = {
@@ -218,7 +231,7 @@ internal fun WebhooksScreen(
         )
     }
 
-    detailHook?.let { hook ->
+    if (canAdmin) detailHook?.let { hook ->
         WebhookDetailDialog(
             hook = hook,
             onDismiss = { detailHook = null },
@@ -233,7 +246,7 @@ internal fun WebhooksScreen(
         )
     }
 
-    configHook?.let { hook ->
+    if (canAdmin) configHook?.let { hook ->
         WebhookConfigDialog(
             repoOwner = repoOwner,
             repoName = repoName,
@@ -246,7 +259,7 @@ internal fun WebhooksScreen(
         )
     }
 
-    deleteTarget?.let { hook ->
+    if (canAdmin) deleteTarget?.let { hook ->
         AiModuleAlertDialog(
             onDismissRequest = { deleteTarget = null },
             title = "delete webhook",
@@ -272,6 +285,36 @@ internal fun WebhooksScreen(
             },
         ) {
             Text(hook.url.ifBlank { "Webhook #${hook.id}" }, color = AiModuleTheme.colors.textSecondary, fontSize = 13.sp, fontFamily = JetBrainsMono)
+        }
+    }
+}
+
+@Composable
+private fun WebhooksAdminRequiredState() {
+    val palette = AiModuleTheme.colors
+    Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                .background(palette.surface)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                "! admin access required",
+                color = palette.warning,
+                fontFamily = JetBrainsMono,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Repository webhooks are admin-only GitHub endpoints. This token can view the repository in read-only mode, so webhook actions are disabled.",
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+            )
         }
     }
 }

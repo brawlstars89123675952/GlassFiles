@@ -1409,3 +1409,22 @@
 - Проверка:
   - локальная Android сборка не запускалась по прямой просьбе пользователя;
   - выполнена только статическая проверка исходников.
+
+### GitHub repository permission gating
+- Закрыта практическая бага из `BUGS.md`: write/admin кнопки не должны показываться на репозиториях, где текущий токен не имеет прав.
+- `GitHubRepoModule.kt`:
+  - `canWrite` и `canAdmin` вычисляются до nested route screens;
+  - settings / branch protection / collaborators / teams / rulesets / security защищены admin guard;
+  - webhooks вызываются с явным `canAdmin`;
+  - для прямого попадания в admin-only экран добавлен terminal-style read-only state.
+- `GitHubWebhooksModule.kt`:
+  - добавлен параметр `canAdmin`;
+  - без admin-доступа webhooks endpoint не грузится, create/edit/config/delete/ping/test не открываются;
+  - показан terminal-style message вместо 403 от GitHub API.
+- `GitHubReleasesModule.kt`:
+  - draft release publish скрыт без `canWrite`.
+- `BUGS.md`:
+  - баг помечен исправленным и описаны фактически закрытые точки.
+- Проверка:
+  - локальная Android сборка не запускалась по прямой просьбе пользователя;
+  - выполнены только статические проверки.

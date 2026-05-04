@@ -172,6 +172,8 @@ internal fun RepoDetailScreen(
     val commitsListState = rememberSaveable(repo.fullName, "commits", saver = LazyListState.Saver) { LazyListState(0, 0) }
     val issuesListState = rememberSaveable(repo.fullName, "issues", saver = LazyListState.Saver) { LazyListState(0, 0) }
     val pullsListState = rememberSaveable(repo.fullName, "pulls", saver = LazyListState.Saver) { LazyListState(0, 0) }
+    val canWrite = repo.canWrite()
+    val canAdmin = repo.canAdmin()
 
     LaunchedEffect(initialTarget) {
         val target = initialTarget ?: return@LaunchedEffect
@@ -396,15 +398,22 @@ internal fun RepoDetailScreen(
         )
         return
     }
-    if (showRepoSettings) { RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onTeams = { showRepoSettings = false; showTeams = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true }) ; return }
-    if (showBranchProtection) { BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) ; return }
-    if (showCollaborators) { CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false }; return }
-    if (showTeams) { RepoTeamsScreen(repoOwner = repo.owner, repoName = repo.name) { showTeams = false }; return }
+    if (showRepoSettings) {
+        if (canAdmin) {
+            RepoSettingsScreen(repoOwner = repo.owner, repoName = repo.name, onBack = { showRepoSettings = false }, onBranchProtection = { showRepoSettings = false; showBranchProtection = true }, onCollaborators = { showRepoSettings = false; showCollaborators = true }, onTeams = { showRepoSettings = false; showTeams = true }, onWebhooks = { showRepoSettings = false; showWebhooks = true }, onDiscussions = { showRepoSettings = false; showDiscussions = true }, onRulesets = { showRepoSettings = false; showRulesets = true }, onSecurity = { showRepoSettings = false; showSecurity = true })
+        } else {
+            GitHubAdminRequiredScreen(title = "> settings", repoFullName = repo.fullName) { showRepoSettings = false }
+        }
+        return
+    }
+    if (showBranchProtection) { if (canAdmin) BranchProtectionScreen(repoOwner = repo.owner, repoName = repo.name, branches = branches, onBack = { showBranchProtection = false }) else GitHubAdminRequiredScreen(title = "> branch protection", repoFullName = repo.fullName) { showBranchProtection = false } ; return }
+    if (showCollaborators) { if (canAdmin) CollaboratorsScreen(repoOwner = repo.owner, repoName = repo.name) { showCollaborators = false } else GitHubAdminRequiredScreen(title = "> collaborators", repoFullName = repo.fullName) { showCollaborators = false }; return }
+    if (showTeams) { if (canAdmin) RepoTeamsScreen(repoOwner = repo.owner, repoName = repo.name) { showTeams = false } else GitHubAdminRequiredScreen(title = "> teams", repoFullName = repo.fullName) { showTeams = false }; return }
     if (showCompare) { CompareCommitsScreen(repoOwner = repo.owner, repoName = repo.name, initialBase = selectedBranch) { showCompare = false }; return }
-    if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name) { showWebhooks = false }; return }
-    if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name, canWrite = repo.canWrite()) { showDiscussions = false }; return }
-    if (showRulesets) { RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { showRulesets = false }; return }
-    if (showSecurity) { SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { showSecurity = false }; return }
+    if (showWebhooks) { WebhooksScreen(repoOwner = repo.owner, repoName = repo.name, canAdmin = canAdmin) { showWebhooks = false }; return }
+    if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name, canWrite = canWrite) { showDiscussions = false }; return }
+    if (showRulesets) { if (canAdmin) RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { showRulesets = false } else GitHubAdminRequiredScreen(title = "> rulesets", repoFullName = repo.fullName) { showRulesets = false }; return }
+    if (showSecurity) { if (canAdmin) SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { showSecurity = false } else GitHubAdminRequiredScreen(title = "> security", repoFullName = repo.fullName) { showSecurity = false }; return }
     
     // File editor screen
     val safeEditingFile = editingFile
@@ -459,7 +468,7 @@ internal fun RepoDetailScreen(
             repoOwner = repo.owner,
             repoName = repo.name,
             defaultBranch = repo.defaultBranch,
-            canWrite = repo.canWrite(),
+            canWrite = canWrite,
             onBack = { selectedTab = RepoTab.FILES },
             onReleaseClick = { /* optional */ }
         )
@@ -566,9 +575,6 @@ internal fun RepoDetailScreen(
         }
     }
 
-
-    val canWrite = repo.canWrite()
-    val canAdmin = repo.canAdmin()
 
     AiModuleSurface {
     val palette = AiModuleTheme.colors
@@ -918,6 +924,43 @@ internal fun RepoDetailScreen(
     if (deleteTarget != null) DeleteFileDialog(repo, deleteTarget!!, selectedBranch, { deleteTarget = null }) { deleteTarget = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
     if (showBranchPicker) BranchPickerDialog(branches, selectedBranch, canWrite, { selectedBranch = it; showBranchPicker = false }, { showBranchPicker = false }) { showBranchPicker = false; showCreateBranch = true }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
+    }
+}
+
+@Composable
+private fun GitHubAdminRequiredScreen(title: String, repoFullName: String, onBack: () -> Unit) {
+    GitHubScreenFrame(
+        title = title,
+        subtitle = repoFullName,
+        onBack = onBack,
+    ) {
+        val palette = AiModuleTheme.colors
+        Box(Modifier.fillMaxSize().padding(18.dp), contentAlignment = Alignment.Center) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                    .background(palette.surface)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "! admin access required",
+                    color = palette.warning,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "This repository is read-only for the current token. Admin-only GitHub endpoints are hidden to avoid 403 responses.",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                )
+                GitHubTerminalButton("back", onClick = onBack, color = palette.textSecondary)
+            }
+        }
     }
 }
 

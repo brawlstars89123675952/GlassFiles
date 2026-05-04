@@ -241,7 +241,7 @@ private fun ReleaseCard(
                 Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (release.draft) {
+                if (canWrite && release.draft) {
                     GitHubTerminalButton(
                         label = "publish",
                         onClick = {

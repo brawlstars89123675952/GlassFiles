@@ -1,6 +1,13 @@
 # BUGS
 
-### Бага: Кнопки редактирования показываются на чужих репо
+### Исправлено: Кнопки редактирования показывались на чужих репо
+
+Статус:
+- `GHRepo.permissions`, `GHPermissions`, `GHRepo.canWrite()` и `GHRepo.canAdmin()` уже подключены к парсингу GitHub API.
+- Основные write-действия в Files / Releases / Actions / Branches / Repo UI скрываются по `canWrite()`.
+- Admin-only входы в settings / branch protection / collaborators / teams / webhooks / rulesets / security теперь дополнительно защищены по `canAdmin()`.
+- Webhooks screen не грузит admin-only endpoint без admin-доступа и показывает terminal-style read-only state.
+- Draft release publish тоже скрыт без write-доступа.
 
 Симптомы:
 - Открываешь чужой репозиторий (например d2phap/ImageGlass)
