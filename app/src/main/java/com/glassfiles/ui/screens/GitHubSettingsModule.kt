@@ -1,6 +1,7 @@
 package com.glassfiles.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -161,6 +162,10 @@ internal fun GitHubSettingsScreen(
         while (actionLog.size > 25) actionLog.removeLast()
     }
 
+    fun handleBack() {
+        if (currentSection == null) onBack() else currentSection = null
+    }
+
     suspend fun refreshSection(section: SettingsSection?) {
         loading = true
         when (section) {
@@ -207,11 +212,12 @@ internal fun GitHubSettingsScreen(
     }
 
     LaunchedEffect(currentSection) { refreshSection(currentSection) }
+    BackHandler(onBack = ::handleBack)
 
     GitHubScreenFrame(
         title = "> ${(currentSection?.title ?: "settings").lowercase()}",
         subtitle = currentSection?.let { user?.name?.takeIf { n -> n.isNotBlank() } ?: user?.login },
-        onBack = { if (currentSection == null) onBack() else currentSection = null },
+        onBack = ::handleBack,
         trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (loading) {
