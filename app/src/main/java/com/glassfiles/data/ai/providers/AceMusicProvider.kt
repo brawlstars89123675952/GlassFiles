@@ -10,6 +10,7 @@ import com.glassfiles.data.ai.providers.acemusic.AceMusicHttpDebugException
 import com.glassfiles.data.ai.providers.acemusic.AceMusicNetwork
 import com.glassfiles.data.ai.providers.acemusic.AceMusicModelData
 import com.glassfiles.data.ai.providers.acemusic.AceMusicRepository
+import com.glassfiles.data.ai.providers.acemusic.AceMusicSessionStore
 import com.glassfiles.data.ai.providers.acemusic.AceMusicTaskRecord
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +48,7 @@ object AceMusicProvider : AiProvider {
 
     override suspend fun listModels(context: Context, apiKey: String): List<AiModel> = withContext(Dispatchers.IO) {
         runCatching {
-            val auth = parseAuth(apiKey)
+            val auth = parseAuth(context, apiKey)
             val data = repository(auth).listModelsOrThrow()
             parseModels(data).ifEmpty { fallbackModelList() }
         }.getOrElse {
@@ -71,11 +72,11 @@ object AceMusicProvider : AiProvider {
         onProgress: (String) -> Unit,
     ): List<AiMusicResult> = withContext(Dispatchers.IO) {
         onProgress("token")
-        val taskResult = createMusicTaskResult(apiKey, modelId, request, onProgress)
+        val taskResult = createMusicTaskResult(context, apiKey, modelId, request, onProgress)
         val taskId = taskResult.optString("id", "acemusic-${System.currentTimeMillis()}")
         val records = parseTaskAudio(taskResult, request)
         val outDir = File(context.cacheDir, "ai_music").apply { mkdirs() }
-        val auth = parseAuth(apiKey)
+        val auth = parseAuth(context, apiKey)
         records.mapIndexed { index, payload ->
             val ext = extensionForPayload(payload, request.audioFormat)
             val target = File(outDir, "acemusic_${System.currentTimeMillis()}_$index.$ext")
@@ -97,12 +98,13 @@ object AceMusicProvider : AiProvider {
     }
 
     private suspend fun createMusicTaskResult(
+        context: Context,
         apiKey: String,
         modelId: String,
         request: AiMusicRequest,
         onProgress: (String) -> Unit,
     ): JSONObject {
-        val auth = parseAuth(apiKey)
+        val auth = parseAuth(context, apiKey)
         val repo = repository(auth)
         val taskId = UUID.randomUUID().toString()
         val aiToken = auth.aiToken.ifBlank { repo.fetchAiTokenOrThrow() }
@@ -442,13 +444,15 @@ object AceMusicProvider : AiProvider {
             ),
         )
 
-    private fun parseAuth(raw: String): AceMusicAuth {
+    private fun parseAuth(context: Context, raw: String): AceMusicAuth {
         val clean = raw.trim()
         var key = clean
         var aiToken = ""
         var baseUrl = DEFAULT_BASE_URL
         var authMode = AceMusicAuthMode.BEARER
-        val extraHeaders = linkedMapOf<String, String>()
+        val extraHeaders = linkedMapOf<String, String>().apply {
+            putAll(AceMusicSessionStore.headers(context))
+        }
         var sawStructuredConfig = false
         var keyWasSet = false
 

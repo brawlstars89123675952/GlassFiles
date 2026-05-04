@@ -225,6 +225,13 @@ object Strings {
         "ACEMusic: ключ, Cookie/Authorization headers или JSON headers; token -> release_task -> query_result",
         "ACEMusic: key, Cookie/Authorization headers, or JSON headers; token -> release_task -> query_result",
     )
+    val aiAceMusicConnectSession get() = s("Подключить сессию", "Connect session")
+    val aiAceMusicSessionConnected get() = s("session captured", "session captured")
+    val aiAceMusicSessionTitle get() = s("ACEMusic session", "ACEMusic session")
+    val aiAceMusicSessionSubtitle get() = s(
+        "видимый вход · перехват Authorization header",
+        "visible login · Authorization header capture",
+    )
     val aiRefresh get() = s("Обновить", "Refresh")
     val aiRefreshing get() = s("Обновляем…", "Refreshing…")
     val aiNoModels get() = s("Нет моделей. Введите ключ и нажмите «Обновить».", "No models. Enter the API key and tap “Refresh”.")

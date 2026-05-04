@@ -38,6 +38,11 @@
   - `Cookie: ...` / `Authorization: Bearer ...` lines in the ACEMusic API key field;
   - JSON `headers` object support;
   - direct temporary `ai_token` support to skip token preflight.
+- Added visible ACEMusic WebView session connector in API Keys:
+  - opens `acemusic.ai/login` only after the user taps connect;
+  - captures `Authorization: Bearer ...` from ACEMusic requests;
+  - stores the captured session in `EncryptedSharedPreferences`;
+  - injects the saved session headers into future ACEMusic calls.
 - Expanded `release_task` form payload with generation parameters instead of submitting only task ids:
   - `prompt`, `caption`, `lyrics`, `model`, `model_name`, `task_type=text2music`;
   - duration/BPM/key/time signature, thinking/use_format, seed/batch, diffusion and LM controls.

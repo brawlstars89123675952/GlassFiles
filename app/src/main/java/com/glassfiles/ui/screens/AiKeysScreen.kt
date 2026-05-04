@@ -2,6 +2,14 @@ package com.glassfiles.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,7 +20,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +39,7 @@ import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -48,9 +59,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.glassfiles.data.Strings
 import com.glassfiles.data.ai.AiKeyStore
 import com.glassfiles.data.ai.models.AiProviderId
+import com.glassfiles.data.ai.providers.acemusic.AceMusicSessionStore
 import com.glassfiles.ui.components.AiModuleHairline
 import com.glassfiles.ui.components.AiModulePillButton
 import com.glassfiles.ui.components.AiModuleScreenScaffold
@@ -76,9 +89,34 @@ fun AiKeysScreen(onBack: () -> Unit) {
     val expanded = remember { mutableStateMapOf<AiProviderId, Boolean>() }
     val savedFlash = remember { mutableStateMapOf<AiProviderId, Boolean>() }
     var savedRefreshTick by remember { mutableStateOf(0) }
+    var aceMusicSessionConnect by remember { mutableStateOf(false) }
+    var aceMusicSessionTick by remember { mutableStateOf(0) }
 
     LaunchedEffect(savedRefreshTick) {
         AiProviderId.entries.forEach { keyValues[it] = AiKeyStore.getKey(context, it) }
+    }
+
+    if (aceMusicSessionConnect) {
+        AceMusicSessionWebViewScreen(
+            onBack = { aceMusicSessionConnect = false },
+            onCaptured = { authorization, cookie, userAgent ->
+                AceMusicSessionStore.save(
+                    context = context,
+                    authorization = authorization,
+                    cookie = cookie,
+                    userAgent = userAgent,
+                )
+                if (AiKeyStore.getKey(context, AiProviderId.ACEMUSIC).isBlank()) {
+                    AiKeyStore.saveKey(context, AiProviderId.ACEMUSIC, AceMusicSessionStore.KEY_MARKER)
+                    keyValues[AiProviderId.ACEMUSIC] = AceMusicSessionStore.KEY_MARKER
+                }
+                savedFlash[AiProviderId.ACEMUSIC] = true
+                aceMusicSessionTick++
+                savedRefreshTick++
+                aceMusicSessionConnect = false
+            },
+        )
+        return
     }
 
     AiModuleScreenScaffold(
@@ -113,6 +151,10 @@ fun AiKeysScreen(onBack: () -> Unit) {
                     },
                     onClear = {
                         AiKeyStore.saveKey(context, provider, "")
+                        if (provider == AiProviderId.ACEMUSIC) {
+                            AceMusicSessionStore.clear(context)
+                            aceMusicSessionTick++
+                        }
                         keyValues[provider] = ""
                         savedFlash[provider] = false
                     },
@@ -124,6 +166,14 @@ fun AiKeysScreen(onBack: () -> Unit) {
                             )
                         }
                     },
+                    onConnectAceMusic = if (provider == AiProviderId.ACEMUSIC) {
+                        { aceMusicSessionConnect = true }
+                    } else {
+                        null
+                    },
+                    aceMusicSessionReady = provider == AiProviderId.ACEMUSIC &&
+                        AceMusicSessionStore.hasSession(context) &&
+                        aceMusicSessionTick >= 0,
                 )
                 AiModuleHairline()
             }
@@ -144,6 +194,8 @@ private fun ProviderRow(
     onSave: () -> Unit,
     onClear: () -> Unit,
     onOpenConsole: () -> Unit,
+    onConnectAceMusic: (() -> Unit)?,
+    aceMusicSessionReady: Boolean,
 ) {
     val colors = AiModuleTheme.colors
     val hasKey = value.isNotBlank()
@@ -269,6 +321,26 @@ private fun ProviderRow(
                         color = colors.textMuted,
                         lineHeight = 1.3.em,
                     )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        AiModulePillButton(
+                            label = Strings.aiAceMusicConnectSession.lowercase(),
+                            onClick = { onConnectAceMusic?.invoke() },
+                            enabled = onConnectAceMusic != null,
+                            accent = !aceMusicSessionReady,
+                        )
+                        if (aceMusicSessionReady) {
+                            Text(
+                                Strings.aiAceMusicSessionConnected,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                color = colors.accent,
+                                lineHeight = 1.3.em,
+                            )
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -290,6 +362,102 @@ private fun ProviderRow(
                         accent = !saved,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AceMusicSessionWebViewScreen(
+    onBack: () -> Unit,
+    onCaptured: (authorization: String, cookie: String, userAgent: String) -> Unit,
+) {
+    val colors = AiModuleTheme.colors
+    var status by remember { mutableStateOf("loading https://acemusic.ai/login") }
+    var webView: WebView? by remember { mutableStateOf(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            webView?.stopLoading()
+            webView?.destroy()
+            webView = null
+        }
+    }
+
+    AiModuleScreenScaffold(
+        title = Strings.aiAceMusicSessionTitle,
+        onBack = onBack,
+        subtitle = Strings.aiAceMusicSessionSubtitle,
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                status,
+                fontSize = 11.sp,
+                fontFamily = JetBrainsMono,
+                color = colors.textMuted,
+                lineHeight = 1.3.em,
+            )
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(6.dp)),
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        val mainHandler = Handler(Looper.getMainLooper())
+                        var captured = false
+                        CookieManager.getInstance().setAcceptCookie(true)
+                        WebView(ctx).apply {
+                            webView = this
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            settings.cacheMode = WebSettings.LOAD_DEFAULT
+                            settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                            webViewClient = object : WebViewClient() {
+                                override fun shouldInterceptRequest(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                ): WebResourceResponse? {
+                                    val url = request?.url ?: return null
+                                    val host = url.host.orEmpty()
+                                    if (!host.endsWith("acemusic.ai")) return null
+                                    val authorization = request.requestHeaders.entries
+                                        .firstOrNull { it.key.equals("Authorization", ignoreCase = true) }
+                                        ?.value
+                                        .orEmpty()
+                                    if (!captured && authorization.startsWith("Bearer ", ignoreCase = true)) {
+                                        captured = true
+                                        val cookie = CookieManager.getInstance().getCookie("https://acemusic.ai").orEmpty()
+                                        val userAgent = view?.settings?.userAgentString.orEmpty()
+                                            .ifBlank { AceMusicSessionStore.DEFAULT_USER_AGENT }
+                                        mainHandler.post {
+                                            status = "captured Authorization header"
+                                            onCaptured(authorization, cookie, userAgent)
+                                        }
+                                    }
+                                    return null
+                                }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    status = "page: ${url.orEmpty().ifBlank { "acemusic.ai" }}"
+                                }
+                            }
+                            loadUrl("https://acemusic.ai/login")
+                        }
+                    },
+                )
             }
         }
     }
