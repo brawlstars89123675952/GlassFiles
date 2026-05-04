@@ -382,7 +382,9 @@ internal fun GitHubTerminalCheckbox(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(if (checked) "[✓]" else "[ ]", color = color, fontFamily = JetBrainsMono, fontSize = 13.sp)
-        Text(label.lowercase(Locale.US), color = color, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        if (label.isNotBlank()) {
+            Text(label.lowercase(Locale.US), color = color, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        }
     }
 }
 

@@ -191,6 +191,7 @@ items.
 | Workflow run usage | `/repos/{owner}/{repo}/actions/runs/{id}/timing` | ✅ | ✅ | Run summary metadata |
 | Pending deployments | `/repos/{owner}/{repo}/actions/runs/{id}/pending_deployments` | ✅ | ✅ | Deployment review section |
 | Actions cache usage/list/delete | `/repos/{owner}/{repo}/actions/cache/*` | ✅ | ✅ | Caches panel |
+| Actions bulk cleanup | Local UI over artifacts/cache delete endpoints | - | ✅ | Select visible/expired artifacts, select visible caches, typed bulk delete confirmation |
 | Actions variables CRUD | `/repos/{owner}/{repo}/actions/variables` | ✅ | ✅ | Variables panel |
 | Actions secrets CRUD | `/repos/{owner}/{repo}/actions/secrets` | ✅ | ✅ | Secrets panel with public-key encryption |
 | Self-hosted runners | `/repos/{owner}/{repo}/actions/runners` | ✅ | ✅ | List/delete plus registration/remove tokens |

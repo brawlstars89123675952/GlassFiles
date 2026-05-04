@@ -42,9 +42,13 @@
 - Выполнен terminal UI rounding pass для GitHub controls:
   - добавлен общий `GitHubControlRadius = 6.dp`
   - terminal buttons, quick chips, Actions filters, repo tabs, branch picker rows, release actions и terminal pills приведены к более мягкому радиусу
+- Добавлен GitHub Actions bulk cleanup:
+  - repository artifacts поддерживают выбор элементов, `select visible`, `select expired`, clear и typed confirmation `delete N`
+  - repository caches поддерживают выбор элементов, `select visible`, clear и typed confirmation `delete N`
+  - bulk delete выполняется последовательно и показывает результат `Deleted X/N`, затем обновляет список
 
 ### Осталось / идеи дальше
-- Следующие улучшения делать уже вокруг конкретных GitHub workflow-сценариев: массовые действия, экспорт списков/логов, deeper Actions failure analysis.
+- Следующие улучшения делать уже вокруг конкретных GitHub workflow-сценариев: экспорт списков/логов, deeper Actions failure analysis.
 
 ## 2026-04-23
 

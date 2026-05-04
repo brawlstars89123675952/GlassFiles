@@ -1460,6 +1460,9 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
     var hasMore by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var busyArtifact by remember { mutableStateOf<Long?>(null) }
+    var selectedArtifactIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var bulkConfirm by remember { mutableStateOf("") }
+    var bulkDeleting by remember { mutableStateOf(false) }
 
     suspend fun load(reset: Boolean = true) {
         loading = true
@@ -1468,6 +1471,10 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
         page = nextPage
         hasMore = fetched.size >= 100
         artifacts = if (reset) fetched else (artifacts + fetched).distinctBy { it.id }
+        if (reset) {
+            selectedArtifactIds = emptySet()
+            bulkConfirm = ""
+        }
         loading = false
     }
 
@@ -1491,6 +1498,40 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 GitHubTerminalButton("apply", onClick = { scope.launch { load(true) } }, enabled = !loading, color = Blue)
             }
+            ActionsBulkToolbar(
+                selectedCount = selectedArtifactIds.size,
+                totalCount = artifacts.size,
+                confirm = bulkConfirm,
+                confirmTarget = "delete ${selectedArtifactIds.size}",
+                deleting = bulkDeleting,
+                onConfirmChange = { bulkConfirm = it },
+                onSelectVisible = {
+                    selectedArtifactIds = artifacts.map { it.id }.toSet()
+                    bulkConfirm = ""
+                },
+                onSelectExpired = {
+                    selectedArtifactIds = artifacts.filter { it.expired }.map { it.id }.toSet()
+                    bulkConfirm = ""
+                },
+                onClear = { selectedArtifactIds = emptySet(); bulkConfirm = "" },
+                onDelete = {
+                    val ids = selectedArtifactIds
+                    if (ids.isEmpty() || bulkConfirm.trim() != "delete ${ids.size}") return@ActionsBulkToolbar
+                    bulkDeleting = true
+                    scope.launch {
+                        var deleted = 0
+                        try {
+                            ids.forEach { id ->
+                                if (runCatching { GitHubManager.deleteArtifact(context, repo.owner, repo.name, id) }.getOrDefault(false)) deleted++
+                            }
+                            Toast.makeText(context, "Deleted $deleted/${ids.size}", Toast.LENGTH_SHORT).show()
+                            load(true)
+                        } finally {
+                            bulkDeleting = false
+                        }
+                    }
+                },
+            )
         }
         if (artifacts.isEmpty() && !loading) {
             item { EmptyActionsText("No artifacts found") }
@@ -1499,6 +1540,12 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
             ArtifactRow(
                 artifact = artifact,
                 busy = busyArtifact == artifact.id,
+                disabled = bulkDeleting,
+                selected = artifact.id in selectedArtifactIds,
+                onToggleSelected = {
+                    selectedArtifactIds = if (artifact.id in selectedArtifactIds) selectedArtifactIds - artifact.id else selectedArtifactIds + artifact.id
+                    bulkConfirm = ""
+                },
                 onDownload = {
                     busyArtifact = artifact.id
                     scope.launch {
@@ -1535,11 +1582,16 @@ private fun ActionsCachesPanel(repo: GHRepo) {
     var caches by remember { mutableStateOf<List<GHActionsCacheEntry>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<Long?>(null) }
+    var selectedCacheIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var bulkConfirm by remember { mutableStateOf("") }
+    var bulkDeleting by remember { mutableStateOf(false) }
 
     suspend fun load() {
         loading = true
         usage = GitHubManager.getActionsCacheUsage(context, repo.owner, repo.name)
         caches = GitHubManager.getActionsCaches(context, repo.owner, repo.name)
+        selectedCacheIds = emptySet()
+        bulkConfirm = ""
         loading = false
     }
 
@@ -1554,16 +1606,50 @@ private fun ActionsCachesPanel(repo: GHRepo) {
                     StatCard("Size", formatArtifactSize(it.activeCachesSizeInBytes), Icons.Rounded.Article, Green)
                 }
             }
+            ActionsBulkToolbar(
+                selectedCount = selectedCacheIds.size,
+                totalCount = caches.size,
+                confirm = bulkConfirm,
+                confirmTarget = "delete ${selectedCacheIds.size}",
+                deleting = bulkDeleting,
+                onConfirmChange = { bulkConfirm = it },
+                onSelectVisible = {
+                    selectedCacheIds = caches.map { it.id }.toSet()
+                    bulkConfirm = ""
+                },
+                onSelectExpired = null,
+                onClear = { selectedCacheIds = emptySet(); bulkConfirm = "" },
+                onDelete = {
+                    val ids = selectedCacheIds
+                    if (ids.isEmpty() || bulkConfirm.trim() != "delete ${ids.size}") return@ActionsBulkToolbar
+                    bulkDeleting = true
+                    scope.launch {
+                        var deleted = 0
+                        try {
+                            ids.forEach { id ->
+                                if (runCatching { GitHubManager.deleteActionsCache(context, repo.owner, repo.name, id) }.getOrDefault(false)) deleted++
+                            }
+                            Toast.makeText(context, "Deleted $deleted/${ids.size}", Toast.LENGTH_SHORT).show()
+                            load()
+                        } finally {
+                            bulkDeleting = false
+                        }
+                    }
+                },
+            )
         }
         if (caches.isEmpty() && !loading) item { EmptyActionsText("No caches found") }
         items(caches) { cache ->
-            ActionInfoCard(
-                title = cache.key,
-                subtitle = "${formatArtifactSize(cache.sizeInBytes)} • ${cache.ref}",
-                meta = listOf("Created ${cache.createdAt.take(10)}", "Last used ${cache.lastAccessedAt.take(10)}", cache.version.take(12)),
-                actionLabel = if (deleting == cache.id) "Deleting" else "Delete",
-                actionTint = Red,
-                onAction = {
+            ActionsCacheRow(
+                cache = cache,
+                selected = cache.id in selectedCacheIds,
+                deleting = deleting == cache.id,
+                disabled = bulkDeleting,
+                onToggleSelected = {
+                    selectedCacheIds = if (cache.id in selectedCacheIds) selectedCacheIds - cache.id else selectedCacheIds + cache.id
+                    bulkConfirm = ""
+                },
+                onDelete = {
                     deleting = cache.id
                     scope.launch {
                         val ok = GitHubManager.deleteActionsCache(context, repo.owner, repo.name, cache.id)
@@ -1571,7 +1657,7 @@ private fun ActionsCachesPanel(repo: GHRepo) {
                         deleting = null
                         if (ok) load()
                     }
-                }
+                },
             )
         }
     }
@@ -2066,8 +2152,17 @@ private fun ActionsPanelHeader(title: String, subtitle: String, loading: Boolean
 }
 
 @Composable
-private fun ArtifactRow(artifact: GHArtifact, busy: Boolean, onDownload: () -> Unit, onDelete: () -> Unit) {
+private fun ArtifactRow(
+    artifact: GHArtifact,
+    busy: Boolean,
+    disabled: Boolean,
+    selected: Boolean,
+    onToggleSelected: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit
+) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !busy && !disabled)
         Icon(Icons.Rounded.Article, null, tint = if (artifact.expired) TextTertiary else Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2084,8 +2179,78 @@ private fun ArtifactRow(artifact: GHArtifact, busy: Boolean, onDownload: () -> U
         }
         if (busy) AiModuleSpinner()
         else {
-            IconButton(onClick = onDownload, enabled = !artifact.expired) { Icon(Icons.Rounded.Article, null, tint = if (artifact.expired) TextTertiary else Blue) }
-            IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, null, tint = Red) }
+            IconButton(onClick = onDownload, enabled = !artifact.expired && !disabled) { Icon(Icons.Rounded.Article, null, tint = if (artifact.expired || disabled) TextTertiary else Blue) }
+            IconButton(onClick = onDelete, enabled = !disabled) { Icon(Icons.Rounded.Delete, null, tint = if (disabled) TextTertiary else Red) }
+        }
+    }
+}
+
+@Composable
+private fun ActionsCacheRow(
+    cache: GHActionsCacheEntry,
+    selected: Boolean,
+    deleting: Boolean,
+    disabled: Boolean,
+    onToggleSelected: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !deleting && !disabled)
+        Icon(Icons.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(cache.key, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${formatArtifactSize(cache.sizeInBytes)} • ${cache.ref}", fontSize = 12.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                MiniActionsBadge("Created ${cache.createdAt.take(10)}", TextSecondary)
+                MiniActionsBadge("Last used ${cache.lastAccessedAt.take(10)}", TextSecondary)
+                if (cache.version.isNotBlank()) MiniActionsBadge(cache.version.take(12), TextSecondary)
+            }
+        }
+        GitHubTerminalButton(if (deleting) "deleting" else "delete", onClick = onDelete, color = Red, enabled = !deleting && !disabled)
+    }
+}
+
+@Composable
+private fun ActionsBulkToolbar(
+    selectedCount: Int,
+    totalCount: Int,
+    confirm: String,
+    confirmTarget: String,
+    deleting: Boolean,
+    onConfirmChange: (String) -> Unit,
+    onSelectVisible: () -> Unit,
+    onSelectExpired: (() -> Unit)?,
+    onClear: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column {
+            Text("bulk cleanup", fontSize = 13.sp, color = TextPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold)
+            Text("selected $selectedCount / $totalCount", fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono)
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            GitHubTerminalButton("select visible", onClick = onSelectVisible, color = Blue, enabled = totalCount > 0 && !deleting)
+            if (onSelectExpired != null) GitHubTerminalButton("select expired", onClick = onSelectExpired, color = Orange, enabled = totalCount > 0 && !deleting)
+            GitHubTerminalButton("clear", onClick = onClear, color = TextSecondary, enabled = selectedCount > 0 && !deleting)
+        }
+        if (selectedCount > 0) {
+            Text("Type `$confirmTarget` to delete selected items.", fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                GitHubTerminalTextField(
+                    value = confirm,
+                    onValueChange = onConfirmChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = confirmTarget,
+                    singleLine = true,
+                    minHeight = 38.dp,
+                )
+                GitHubTerminalButton(
+                    if (deleting) "deleting..." else "delete selected",
+                    onClick = onDelete,
+                    color = Red,
+                    enabled = !deleting && confirm.trim() == confirmTarget,
+                )
+            }
         }
     }
 }
