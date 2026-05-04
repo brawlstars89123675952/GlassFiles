@@ -178,11 +178,15 @@ fun GlassFilesApp(
         } catch (_: Exception) {}
     }
 
+    fun minimizeGitHub() {
+        githubMiniMode = true
+        activeScreen = previousScreen.takeUnless { it == AppScreen.GITHUB } ?: AppScreen.MAIN
+        previousScreen = AppScreen.MAIN
+    }
+
     fun goBack() {
         if (activeScreen == AppScreen.GITHUB && githubWasOpened) {
-            githubMiniMode = true
-            activeScreen = previousScreen
-            previousScreen = AppScreen.MAIN
+            minimizeGitHub()
             return
         }
         val prev = previousScreen
@@ -206,11 +210,7 @@ fun GlassFilesApp(
                 aiSheetVisible = false
                 aiAgentInitialRepo = null; aiAgentInitialBranch = null; aiAgentInitialPrompt = null
             }
-            activeScreen == AppScreen.GITHUB && githubWasOpened -> {
-                githubMiniMode = true
-                activeScreen = previousScreen
-                previousScreen = AppScreen.MAIN
-            }
+            activeScreen == AppScreen.GITHUB && githubWasOpened -> minimizeGitHub()
             activeScreen != AppScreen.MAIN -> goBack()
             folderStack.isNotEmpty() -> {
                 folderStack = folderStack.dropLast(1)
@@ -222,13 +222,9 @@ fun GlassFilesApp(
         }
     }
 
-    // Single GitHubScreen instance shared between the full-screen Box and
-    // the floating mini-window. movableContentOf lets Compose physically
-    // re-parent the same composition (and therefore preserve every
-    // remember{ ... } block inside GitHubScreen) when the user toggles
-    // mini-mode. Without this, mini ↔ full transitions would unmount
-    // the full screen and remount a fresh one — which is why navigation
-    // would reset to the profile tab on every minimize.
+    // Single GitHubScreen instance hosted by one animated window. Keeping
+    // this content mounted while only the host geometry changes preserves
+    // every remember{ ... } block inside GitHubScreen across mini/full mode.
     val gitHubContent = remember {
         movableContentOf { compact: Boolean ->
             GitHubScreen(
@@ -238,16 +234,10 @@ fun GlassFilesApp(
                     onGitHubNotificationTargetConsumed()
                 },
                 onBack = {
-                    githubMiniMode = true
-                    val prev = previousScreen
-                    activeScreen = prev
-                    previousScreen = AppScreen.MAIN
+                    minimizeGitHub()
                 },
                 onMinimize = {
-                    githubMiniMode = true
-                    val prev = previousScreen
-                    activeScreen = prev
-                    previousScreen = AppScreen.MAIN
+                    minimizeGitHub()
                 },
                 onClose = { closeGitHubFully() },
                 compact = compact,
@@ -271,20 +261,6 @@ fun GlassFilesApp(
             Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (activeScreen == AppScreen.TERMINAL) 1f else 0f }) {
                 TerminalScreen(initialDir = terminalDir, onBackClick = { goBack() }, onOpenFile = { openFileExternal(it) })
             }
-        }
-
-        // Full-screen GitHub view. AnimatedVisibility crossfades + scales
-        // it against the floating mini-window below so the
-        // mini ↔ full-screen toggle feels like a continuous zoom
-        // instead of a hard cut. The shared `gitHubContent` (a
-        // movableContentOf) keeps internal navigation state across the
-        // transition.
-        AnimatedVisibility(
-            visible = githubWasOpened && !githubMiniMode && activeScreen == AppScreen.GITHUB,
-            enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.94f),
-            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 0.94f),
-        ) {
-            Box(Modifier.fillMaxSize()) { gitHubContent(false) }
         }
 
         AnimatedContent(
@@ -548,16 +524,16 @@ fun GlassFilesApp(
             }
         }
 
-        // Mini-window. Same animation idiom as the full-screen view —
-        // they're each other's inverse, so when the user taps expand
-        // the mini fades+scales out as the full-screen view fades+scales
-        // in (and vice versa on minimize).
+        // GitHub host stays mounted across full <-> mini transitions.
+        // Only its bounds/chrome animate, so internal GitHub navigation
+        // state survives minimize and restore.
         AnimatedVisibility(
-            visible = githubWasOpened && githubMiniMode && !githubBubbleMode,
-            enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 1.04f),
-            exit = fadeOut(tween(180)) + scaleOut(tween(180), targetScale = 1.04f),
+            visible = githubWasOpened && !githubBubbleMode && (githubMiniMode || activeScreen == AppScreen.GITHUB),
+            enter = fadeIn(tween(180)) + scaleIn(tween(220), initialScale = 0.96f),
+            exit = fadeOut(tween(150)) + scaleOut(tween(180), targetScale = 0.96f),
         ) {
             GitHubFloatingWindow(
+                expanded = !githubMiniMode && activeScreen == AppScreen.GITHUB,
                 onExpand = {
                     githubMiniMode = false
                     previousScreen = activeScreen
@@ -567,7 +543,7 @@ fun GlassFilesApp(
                 onCollapse = { githubBubbleMode = true },
                 winW = ghWinW, winH = ghWinH, winX = ghWinX, winY = ghWinY,
                 onGeometryChange = { w, h, x, y -> ghWinW = w; ghWinH = h; ghWinX = x; ghWinY = y },
-                content = { gitHubContent(true) },
+                content = { compact -> gitHubContent(compact) },
             )
         }
 
@@ -644,12 +620,13 @@ private fun PermissionScreen(onRequest: () -> Unit) {
 
 @Composable
 private fun GitHubFloatingWindow(
+    expanded: Boolean,
     onExpand: () -> Unit,
     onClose: () -> Unit,
     onCollapse: () -> Unit,
     winW: Float, winH: Float, winX: Float, winY: Float,
     onGeometryChange: (Float, Float, Float, Float) -> Unit,
-    content: @Composable () -> Unit,
+    content: @Composable (Boolean) -> Unit,
 ) {
     val density = LocalDensity.current
 
@@ -673,54 +650,92 @@ private fun GitHubFloatingWindow(
             offsetY = offsetY.coerceIn(with(density) { 32.dp.toPx() }, screenH - windowH + m)
         }
 
-        LaunchedEffect(windowW, windowH, offsetX, offsetY) { onGeometryChange(windowW, windowH, offsetX, offsetY) }
+        LaunchedEffect(screenW, screenH) { clamp() }
+        LaunchedEffect(windowW, windowH, offsetX, offsetY, expanded) {
+            if (!expanded) onGeometryChange(windowW, windowH, offsetX, offsetY)
+        }
+
+        val targetW = if (expanded) screenW else windowW
+        val targetH = if (expanded) screenH else windowH
+        val targetX = if (expanded) 0f else offsetX
+        val targetY = if (expanded) 0f else offsetY
+        val animatedX by animateFloatAsState(targetX, tween(260), label = "github-window-x")
+        val animatedY by animateFloatAsState(targetY, tween(260), label = "github-window-y")
+        val animatedW by animateDpAsState(with(density) { targetW.toDp() }, tween(260), label = "github-window-w")
+        val animatedH by animateDpAsState(with(density) { targetH.toDp() }, tween(260), label = "github-window-h")
+        val animatedCorner by animateDpAsState(if (expanded) 0.dp else 16.dp, tween(240), label = "github-window-corner")
+        val animatedShadow by animateDpAsState(if (expanded) 0.dp else 16.dp, tween(240), label = "github-window-shadow")
+        val animatedScale by animateFloatAsState(if (expanded) 1f else 0.985f, tween(240), label = "github-window-scale")
+        val chromeAlpha by animateFloatAsState(if (expanded) 0f else 1f, tween(180), label = "github-window-chrome")
 
         Box(
             Modifier
-                .offset { IntOffset(offsetX.toInt(), offsetY.toInt()) }
-                .size(width = with(density) { windowW.toDp() }, height = with(density) { windowH.toDp() })
-                .shadow(16.dp, RoundedCornerShape(16.dp))
-                .clip(RoundedCornerShape(16.dp))
+                .offset { IntOffset(animatedX.toInt(), animatedY.toInt()) }
+                .size(width = animatedW, height = animatedH)
+                .graphicsLayer {
+                    scaleX = animatedScale
+                    scaleY = animatedScale
+                }
+                .shadow(animatedShadow, RoundedCornerShape(animatedCorner))
+                .clip(RoundedCornerShape(animatedCorner))
                 .background(SurfaceLight)
-                .border(0.5.dp, SeparatorColor, RoundedCornerShape(16.dp))
+                .border(0.5.dp, SeparatorColor.copy(alpha = if (expanded) 0f else 1f), RoundedCornerShape(animatedCorner))
         ) {
             Column(Modifier.fillMaxSize()) {
-                Row(
-                    Modifier.fillMaxWidth().background(SurfaceWhite)
-                        .pointerInput(Unit) { detectDragGestures { _, d -> offsetX += d.x; offsetY += d.y; clamp() } }
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(Modifier.width(28.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary))
-                    Spacer(Modifier.width(6.dp))
-                    Icon(Icons.Rounded.Code, null, Modifier.size(14.dp), tint = Blue)
-                    Spacer(Modifier.width(4.dp))
-                    Text("GitHub", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
-                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF9500).copy(0.1f)).clickable { onCollapse() }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.RemoveCircleOutline, null, Modifier.size(13.dp), tint = Color(0xFFFF9500))
+                if (!expanded || chromeAlpha > 0f) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .graphicsLayer { alpha = chromeAlpha }
+                            .background(SurfaceWhite)
+                            .then(
+                                if (!expanded) {
+                                    Modifier.pointerInput(Unit) {
+                                        detectDragGestures { _, d ->
+                                            offsetX += d.x
+                                            offsetY += d.y
+                                            clamp()
+                                        }
+                                    }
+                                } else Modifier
+                            )
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(Modifier.width(28.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary))
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Rounded.Code, null, Modifier.size(14.dp), tint = Blue)
+                        Spacer(Modifier.width(4.dp))
+                        Text("GitHub", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, modifier = Modifier.weight(1f))
+                        Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF9500).copy(0.1f)).clickable(enabled = !expanded) { onCollapse() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.RemoveCircleOutline, null, Modifier.size(13.dp), tint = Color(0xFFFF9500))
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Box(Modifier.size(26.dp).clip(CircleShape).background(Blue.copy(0.1f)).clickable(enabled = !expanded) { onExpand() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.OpenInFull, null, Modifier.size(13.dp), tint = Blue)
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF3B30).copy(0.1f)).clickable(enabled = !expanded) { onClose() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Rounded.Close, null, Modifier.size(13.dp), tint = Color(0xFFFF3B30))
+                        }
                     }
-                    Spacer(Modifier.width(4.dp))
-                    Box(Modifier.size(26.dp).clip(CircleShape).background(Blue.copy(0.1f)).clickable { onExpand() }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.OpenInFull, null, Modifier.size(13.dp), tint = Blue)
-                    }
-                    Spacer(Modifier.width(4.dp))
-                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color(0xFFFF3B30).copy(0.1f)).clickable { onClose() }, contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.Close, null, Modifier.size(13.dp), tint = Color(0xFFFF3B30))
-                    }
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).graphicsLayer { alpha = chromeAlpha }.background(SeparatorColor))
                 }
-                Box(Modifier.fillMaxWidth().height(0.5.dp).background(SeparatorColor))
                 Box(Modifier.fillMaxSize().weight(1f)) {
-                    content()
+                    content(!expanded)
                 }
             }
-            Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }.padding(4.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Rounded.DragHandle, null, Modifier.size(14.dp).graphicsLayer { rotationZ = -45f }, tint = TextTertiary)
-            }
-            Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.4f).height(12.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }, contentAlignment = Alignment.Center) {
-                Box(Modifier.width(40.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
-            }
-            Box(Modifier.align(Alignment.CenterEnd).width(12.dp).fillMaxHeight(0.4f).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); clamp() } }, contentAlignment = Alignment.Center) {
-                Box(Modifier.width(3.dp).height(40.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
+            if (!expanded) {
+                Box(Modifier.align(Alignment.BottomEnd).size(28.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }.padding(4.dp), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.DragHandle, null, Modifier.size(14.dp).graphicsLayer { rotationZ = -45f }, tint = TextTertiary)
+                }
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.4f).height(12.dp).pointerInput(Unit) { detectDragGestures { _, d -> windowH = (windowH + d.y).coerceIn(minH, maxH); clamp() } }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(40.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
+                }
+                Box(Modifier.align(Alignment.CenterEnd).width(12.dp).fillMaxHeight(0.4f).pointerInput(Unit) { detectDragGestures { _, d -> windowW = (windowW + d.x).coerceIn(minW, maxW); clamp() } }, contentAlignment = Alignment.Center) {
+                    Box(Modifier.width(3.dp).height(40.dp).clip(RoundedCornerShape(2.dp)).background(TextTertiary.copy(0.5f)))
+                }
             }
         }
     }

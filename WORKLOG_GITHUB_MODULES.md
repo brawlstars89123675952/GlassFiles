@@ -73,6 +73,10 @@
   - общий `GitHubPageBar` теперь регистрирует `BackHandler` на тот же callback, что и верхняя стрелка назад
   - все экраны и подэкраны, построенные через `GitHubScreenFrame` или `GitHubPageBar`, получают одинаковое поведение кнопки/жеста назад
   - это предотвращает выброс на главный GitHub экран, когда пользователь находится внутри вложенного раздела
+- Исправлено сохранение места при GitHub full/mini mode:
+  - GitHub теперь живет в одном mounted host при переключении full ↔ mini, а не в двух отдельных animated branches
+  - minimize/restore больше не должен сбрасывать внутренний GitHub navigation state
+  - добавлена анимация изменения геометрии окна: позиция, размер, scale, shadow, corner radius и chrome fade
 
 ### Осталось / идеи дальше
 - Следующие GitHub settings шаги: Pages, Environments, repository interaction limits, autolinks, custom properties, immutable releases, затем оставшиеся account settings gaps.
