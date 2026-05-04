@@ -2,6 +2,7 @@ package com.glassfiles.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -410,14 +411,18 @@ private fun AceMusicSessionWebViewScreen(
                     settings.setSupportZoom(true)
                     settings.builtInZoomControls = true
                     settings.displayZoomControls = false
-                    settings.textZoom = 90
+                    settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
+                    settings.textZoom = 100
                     settings.loadsImagesAutomatically = true
                     settings.javaScriptCanOpenWindowsAutomatically = true
                     settings.setSupportMultipleWindows(true)
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     settings.mediaPlaybackRequiresUserGesture = false
                     settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
-                    setInitialScale(80)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        settings.forceDark = WebSettings.FORCE_DARK_OFF
+                    }
+                    setInitialScale(1)
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                     webChromeClient = object : WebChromeClient() {
                         override fun onCreateWindow(
@@ -434,10 +439,14 @@ private fun AceMusicSessionWebViewScreen(
                                 settings.useWideViewPort = true
                                 settings.loadWithOverviewMode = true
                                 settings.setSupportZoom(true)
+                                settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING
                                 settings.javaScriptCanOpenWindowsAutomatically = true
                                 settings.setSupportMultipleWindows(true)
                                 settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
-                                setInitialScale(80)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                    settings.forceDark = WebSettings.FORCE_DARK_OFF
+                                }
+                                setInitialScale(1)
                                 webViewClient = object : WebViewClient() {
                                     override fun shouldOverrideUrlLoading(
                                         view: WebView?,
@@ -488,8 +497,10 @@ private fun AceMusicSessionWebViewScreen(
                             view?.evaluateJavascript(
                                 """
                                 (function() {
-                                  document.documentElement.style.zoom = '0.8';
-                                  document.body.style.zoom = '0.8';
+                                  document.documentElement.style.colorScheme = 'light';
+                                  document.body.style.colorScheme = 'light';
+                                  document.documentElement.style.zoom = '1';
+                                  document.body.style.zoom = '1';
                                   document.body.style.maxWidth = '100vw';
                                   document.body.style.overflowX = 'auto';
                                 })();
