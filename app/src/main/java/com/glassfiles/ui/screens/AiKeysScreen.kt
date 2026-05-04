@@ -393,124 +393,125 @@ private fun AceMusicSessionWebViewScreen(
         onBack = onBack,
         subtitle = Strings.aiAceMusicSessionSubtitle,
     ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+        Box(Modifier.fillMaxSize()) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    val mainHandler = Handler(Looper.getMainLooper())
+                    var captured = false
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    WebView(ctx).apply {
+                        webView = this
+                        setBackgroundColor(android.graphics.Color.WHITE)
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        requestFocus()
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.databaseEnabled = true
+                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        settings.builtInZoomControls = true
+                        settings.displayZoomControls = false
+                        settings.textZoom = 100
+                        settings.loadsImagesAutomatically = true
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.setSupportMultipleWindows(true)
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                        CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onCreateWindow(
+                                view: WebView?,
+                                isDialog: Boolean,
+                                isUserGesture: Boolean,
+                                resultMsg: Message?,
+                            ): Boolean {
+                                val parentView = view ?: return false
+                                val child = WebView(ctx).apply {
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.databaseEnabled = true
+                                    settings.javaScriptCanOpenWindowsAutomatically = true
+                                    settings.setSupportMultipleWindows(true)
+                                    settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
+                                    webViewClient = object : WebViewClient() {
+                                        override fun shouldOverrideUrlLoading(
+                                            view: WebView?,
+                                            request: WebResourceRequest?,
+                                        ): Boolean {
+                                            request?.url?.toString()?.let(parentView::loadUrl)
+                                            return true
+                                        }
+
+                                        override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                            if (!url.isNullOrBlank()) parentView.loadUrl(url)
+                                        }
+                                    }
+                                }
+                                val transport = resultMsg?.obj as? WebViewTransport ?: return false
+                                transport.webView = child
+                                resultMsg.sendToTarget()
+                                return true
+                            }
+                        }
+                        webViewClient = object : WebViewClient() {
+                            override fun shouldInterceptRequest(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                            ): WebResourceResponse? {
+                                val url = request?.url ?: return null
+                                val host = url.host.orEmpty()
+                                if (!host.endsWith("acemusic.ai")) return null
+                                val authorization = request.requestHeaders.entries
+                                    .firstOrNull { it.key.equals("Authorization", ignoreCase = true) }
+                                    ?.value
+                                    .orEmpty()
+                                if (!captured && authorization.startsWith("Bearer ", ignoreCase = true)) {
+                                    captured = true
+                                    val cookie = CookieManager.getInstance().getCookie("https://acemusic.ai").orEmpty()
+                                    val userAgent = view?.settings?.userAgentString.orEmpty()
+                                        .ifBlank { AceMusicSessionStore.DEFAULT_USER_AGENT }
+                                    mainHandler.post {
+                                        status = "captured Authorization header"
+                                        onCaptured(authorization, cookie, userAgent)
+                                    }
+                                }
+                                return null
+                            }
+
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                status = "page: ${url.orEmpty().ifBlank { "acemusic.ai" }}"
+                            }
+
+                            override fun onReceivedError(
+                                view: WebView?,
+                                request: WebResourceRequest?,
+                                error: WebResourceError?,
+                            ) {
+                                if (request?.isForMainFrame == true) {
+                                    status = "webview error: ${error?.description?.toString().orEmpty()}"
+                                }
+                            }
+                        }
+                        loadUrl("https://acemusic.ai/")
+                    }
+                },
+            )
             Text(
                 status,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontFamily = JetBrainsMono,
-                color = colors.textMuted,
-                lineHeight = 1.3.em,
-            )
-            Box(
-                Modifier
+                color = colors.textSecondary,
+                lineHeight = 1.2.em,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(colors.surface)
-                    .border(1.dp, colors.border, RoundedCornerShape(6.dp)),
-            ) {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        val mainHandler = Handler(Looper.getMainLooper())
-                        var captured = false
-                        CookieManager.getInstance().setAcceptCookie(true)
-                        WebView(ctx).apply {
-                            webView = this
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.databaseEnabled = true
-                            settings.cacheMode = WebSettings.LOAD_DEFAULT
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.loadsImagesAutomatically = true
-                            settings.javaScriptCanOpenWindowsAutomatically = true
-                            settings.setSupportMultipleWindows(true)
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
-                            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                            webChromeClient = object : WebChromeClient() {
-                                override fun onCreateWindow(
-                                    view: WebView?,
-                                    isDialog: Boolean,
-                                    isUserGesture: Boolean,
-                                    resultMsg: Message?,
-                                ): Boolean {
-                                    val parentView = view ?: return false
-                                    val child = WebView(ctx).apply {
-                                        settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        settings.userAgentString = AceMusicSessionStore.DEFAULT_USER_AGENT
-                                        webViewClient = object : WebViewClient() {
-                                            override fun shouldOverrideUrlLoading(
-                                                view: WebView?,
-                                                request: WebResourceRequest?,
-                                            ): Boolean {
-                                                request?.url?.toString()?.let(parentView::loadUrl)
-                                                return true
-                                            }
-
-                                            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
-                                                if (!url.isNullOrBlank()) parentView.loadUrl(url)
-                                            }
-                                        }
-                                    }
-                                    val transport = resultMsg?.obj as? WebViewTransport ?: return false
-                                    transport.webView = child
-                                    resultMsg.sendToTarget()
-                                    return true
-                                }
-                            }
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldInterceptRequest(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                ): WebResourceResponse? {
-                                    val url = request?.url ?: return null
-                                    val host = url.host.orEmpty()
-                                    if (!host.endsWith("acemusic.ai")) return null
-                                    val authorization = request.requestHeaders.entries
-                                        .firstOrNull { it.key.equals("Authorization", ignoreCase = true) }
-                                        ?.value
-                                        .orEmpty()
-                                    if (!captured && authorization.startsWith("Bearer ", ignoreCase = true)) {
-                                        captured = true
-                                        val cookie = CookieManager.getInstance().getCookie("https://acemusic.ai").orEmpty()
-                                        val userAgent = view?.settings?.userAgentString.orEmpty()
-                                            .ifBlank { AceMusicSessionStore.DEFAULT_USER_AGENT }
-                                        mainHandler.post {
-                                            status = "captured Authorization header"
-                                            onCaptured(authorization, cookie, userAgent)
-                                        }
-                                    }
-                                    return null
-                                }
-
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    status = "page: ${url.orEmpty().ifBlank { "acemusic.ai" }}"
-                                }
-
-                                override fun onReceivedError(
-                                    view: WebView?,
-                                    request: WebResourceRequest?,
-                                    error: WebResourceError?,
-                                ) {
-                                    if (request?.isForMainFrame == true) {
-                                        status = "webview error: ${error?.description?.toString().orEmpty()}"
-                                    }
-                                }
-                            }
-                            loadUrl("https://acemusic.ai/")
-                        }
-                    },
-                )
-            }
+                    .background(colors.background.copy(alpha = 0.86f))
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            )
         }
     }
 }
