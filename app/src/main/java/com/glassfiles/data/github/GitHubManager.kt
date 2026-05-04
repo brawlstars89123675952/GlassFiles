@@ -2998,6 +2998,45 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
+    suspend fun getWatchedRepos(context: Context, page: Int = 1): List<GHRepo> {
+        val r = request(context, "/user/subscriptions?per_page=30&page=$page")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getUserRepositoryInvitations(context: Context): List<GHUserRepositoryInvitation> {
+        val r = request(context, "/user/repository_invitations?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val repoJson = j.optJSONObject("repository")
+                val repo = repoJson?.let { parseRepo(it) }
+                val inviter = j.optJSONObject("inviter")
+                GHUserRepositoryInvitation(
+                    id = j.optLong("id"),
+                    repository = repo,
+                    repoFullName = repo?.fullName ?: repoJson?.optString("full_name", "").orEmpty(),
+                    inviter = inviter?.optString("login", "").orEmpty(),
+                    inviterAvatarUrl = inviter?.optString("avatar_url", "").orEmpty(),
+                    permissions = j.optString("permissions", ""),
+                    createdAt = j.optString("created_at", ""),
+                    expired = j.optBoolean("expired", false)
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun acceptUserRepositoryInvitation(context: Context, invitationId: Long): Boolean =
+        request(context, "/user/repository_invitations/$invitationId", "PATCH").let { it.code == 204 || it.success }
+
+    suspend fun declineUserRepositoryInvitation(context: Context, invitationId: Long): Boolean =
+        request(context, "/user/repository_invitations/$invitationId", "DELETE").let { it.code == 204 || it.success }
+
     suspend fun getOrganizations(context: Context): List<GHOrg> {
         val r = request(context, "/user/orgs?per_page=30")
         if (!r.success) return emptyList()
@@ -6547,6 +6586,16 @@ data class GHSocialAccountEntry(val provider: String, val url: String)
 data class GHFollowerEntry(val login: String, val avatarUrl: String)
 data class GHBlockedEntry(val login: String, val avatarUrl: String)
 data class GHInteractionLimitEntry(val limit: String, val expiry: String?)
+data class GHUserRepositoryInvitation(
+    val id: Long,
+    val repository: GHRepo?,
+    val repoFullName: String,
+    val inviter: String,
+    val inviterAvatarUrl: String,
+    val permissions: String,
+    val createdAt: String,
+    val expired: Boolean
+)
 data class GHUserLite(val login: String, val avatarUrl: String = "")
 data class GHPullFile(val filename: String, val status: String, val additions: Int, val deletions: Int, val patch: String)
 

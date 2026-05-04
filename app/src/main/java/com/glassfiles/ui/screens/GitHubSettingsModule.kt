@@ -71,6 +71,7 @@ import com.glassfiles.data.github.GHOrg
 import com.glassfiles.data.github.GHRepo
 import com.glassfiles.data.github.GHSocialAccountEntry
 import com.glassfiles.data.github.GHUser
+import com.glassfiles.data.github.GHUserRepositoryInvitation
 import com.glassfiles.data.github.GHUserKeyEntry
 import com.glassfiles.data.github.GHUserProfile
 import com.glassfiles.data.github.GitHubManager
@@ -93,7 +94,7 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     BLOCKED("Blocked users", "Block and unblock users"),
     INTERACTION("Interaction limits", "Temporary public interaction limits"),
     ORGANIZATIONS("Organizations", "Your organizations"),
-    REPOSITORIES("Repositories", "Starred repositories"),
+    REPOSITORIES("Repositories", "Stars, watches and invitations"),
     DEVELOPER("Developer", "Token and cache")
 }
 
@@ -148,6 +149,8 @@ internal fun GitHubSettingsScreen(
     var interactionLimit by remember { mutableStateOf<GHInteractionLimitEntry?>(null) }
     var organizations by remember { mutableStateOf<List<GHOrg>>(emptyList()) }
     var starredRepos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
+    var watchedRepos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
+    var repoInvitations by remember { mutableStateOf<List<GHUserRepositoryInvitation>>(emptyList()) }
     var rateLimitSummary by remember { mutableStateOf("Unavailable") }
     var showChangeToken by remember { mutableStateOf(false) }
     var newToken by remember { mutableStateOf("") }
@@ -193,7 +196,11 @@ internal fun GitHubSettingsScreen(
             SettingsSection.BLOCKED -> blockedUsers = GitHubManager.getBlockedUsersNative(context)
             SettingsSection.INTERACTION -> interactionLimit = GitHubManager.getInteractionLimitNative(context)
             SettingsSection.ORGANIZATIONS -> organizations = GitHubManager.getOrganizations(context)
-            SettingsSection.REPOSITORIES -> starredRepos = GitHubManager.getStarredRepos(context)
+            SettingsSection.REPOSITORIES -> {
+                starredRepos = GitHubManager.getStarredRepos(context)
+                watchedRepos = GitHubManager.getWatchedRepos(context)
+                repoInvitations = GitHubManager.getUserRepositoryInvitations(context)
+            }
             SettingsSection.DEVELOPER -> rateLimitSummary = GitHubManager.getRateLimitSummaryNative(context)
         }
         loading = false
@@ -438,9 +445,55 @@ internal fun GitHubSettingsScreen(
                             organizations.forEach { org -> CompactOrgRow(org) }
                         }
                         SettingsSection.REPOSITORIES -> SectionCard("Repositories") {
+                            Text(
+                                "stars ${starredRepos.size} • watched ${watchedRepos.size} • invites ${repoInvitations.size}",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                            )
+                            if (repoInvitations.isNotEmpty()) {
+                                Spacer(Modifier.height(10.dp))
+                                SectionHeader("Repository invitations")
+                                repoInvitations.forEach { invitation ->
+                                    UserRepositoryInvitationRow(
+                                        invitation = invitation,
+                                        onAccept = {
+                                            scope.launch {
+                                                val ok = GitHubManager.acceptUserRepositoryInvitation(context, invitation.id)
+                                                addLog("Accept invitation ${invitation.id}: $ok")
+                                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                                                refreshSection(SettingsSection.REPOSITORIES)
+                                            }
+                                        },
+                                        onDecline = {
+                                            scope.launch {
+                                                val ok = GitHubManager.declineUserRepositoryInvitation(context, invitation.id)
+                                                addLog("Decline invitation ${invitation.id}: $ok")
+                                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                                                refreshSection(SettingsSection.REPOSITORIES)
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader("Watched repositories")
+                            if (watchedRepos.isEmpty()) Text("No watched repositories", color = AiModuleTheme.colors.textMuted, fontSize = 12.sp)
+                            watchedRepos.forEach { repo ->
+                                CompactRepoRow(repo, action = "unwatch") {
+                                    scope.launch {
+                                        val ok = GitHubManager.unwatchRepo(context, repo.owner, repo.name)
+                                        addLog("Unwatch ${repo.fullName}: $ok")
+                                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                                        refreshSection(SettingsSection.REPOSITORIES)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            SectionHeader("Starred repositories")
                             if (starredRepos.isEmpty()) Text("No starred repositories", color = AiModuleTheme.colors.textMuted, fontSize = 12.sp)
                             starredRepos.forEach { repo ->
-                                CompactRepoRow(repo) {
+                                CompactRepoRow(repo, action = "unstar") {
                                     scope.launch {
                                         val ok = GitHubManager.unstarRepo(context, repo.owner, repo.name)
                                         addLog("Unstar ${repo.fullName}: $ok")
@@ -989,7 +1042,45 @@ private fun CompactOrgRow(org: GHOrg) {
 }
 
 @Composable
-private fun CompactRepoRow(repo: GHRepo, onUnstar: () -> Unit) {
+private fun UserRepositoryInvitationRow(
+    invitation: GHUserRepositoryInvitation,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        AsyncImage(
+            model = invitation.inviterAvatarUrl,
+            contentDescription = invitation.inviter,
+            modifier = Modifier.size(24.dp).clip(CircleShape).background(AiModuleTheme.colors.surfaceElevated),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                invitation.repoFullName.ifBlank { "repository invitation ${invitation.id}" },
+                color = AiModuleTheme.colors.textPrimary,
+                fontSize = 13.sp,
+                fontFamily = JetBrainsMono,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val meta = buildList {
+                if (invitation.inviter.isNotBlank()) add("from ${invitation.inviter}")
+                if (invitation.permissions.isNotBlank()) add(invitation.permissions)
+                if (invitation.expired) add("expired")
+                if (invitation.createdAt.isNotBlank()) add(invitation.createdAt.take(10))
+            }.joinToString(" • ")
+            if (meta.isNotBlank()) {
+                Text(meta, color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        AiModuleTextAction(label = "accept", onClick = onAccept)
+        Spacer(Modifier.width(8.dp))
+        AiModuleTextAction(label = "decline", onClick = onDecline, tint = AiModuleTheme.colors.error)
+    }
+}
+
+@Composable
+private fun CompactRepoRow(repo: GHRepo, action: String = "unstar", onAction: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(Icons.Rounded.Description, null, tint = AiModuleTheme.colors.accent, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(10.dp))
@@ -998,7 +1089,7 @@ private fun CompactRepoRow(repo: GHRepo, onUnstar: () -> Unit) {
             val sub = listOfNotNull(repo.language.takeIf { it.isNotBlank() }, repo.updatedAt.takeIf { it.isNotBlank() }?.take(10)).joinToString(" • ")
             if (sub.isNotBlank()) Text(sub, color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
         }
-        AiModuleTextAction(label = "unstar", onClick = onUnstar, tint = AiModuleTheme.colors.error)
+        AiModuleTextAction(label = action, onClick = onAction, tint = AiModuleTheme.colors.error)
     }
 }
 

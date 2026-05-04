@@ -63,6 +63,12 @@
   - `PATCH /user` расширен полями `email`, `twitter_username`, `hireable`
   - профильный экран получил public email picker, Twitter/X username, hireable toggle и read-only account metadata
   - UI оставлен terminal-style, без Material UI-компонентов
+- Добавлен следующий account settings pass для repositories:
+  - список watched/subscribed repositories через `GET /user/subscriptions`
+  - unwatch из настроек через `DELETE /repos/{owner}/{repo}/subscription`
+  - входящие repository invitations через `GET /user/repository_invitations`
+  - accept/decline invitation через `PATCH`/`DELETE /user/repository_invitations/{id}`
+  - `GITHUB_SETTINGS_API.md` обновлен разделами watched repositories и user repository invitations
 
 ### Осталось / идеи дальше
 - Следующие GitHub settings шаги: Pages, Environments, repository interaction limits, autolinks, custom properties, immutable releases, затем оставшиеся account settings gaps.
